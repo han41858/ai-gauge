@@ -53,8 +53,8 @@ try {
       chatgpt: { provider: 'chatgpt', state: 'ok', limits: [{ id: 'shared:primary_window', label: 'ChatGPT · 7일', category: 'product', percent: 42, resetsAt: new Date(Date.now() + 3600000).toISOString(), windowSeconds: 604800, remaining: null, unit: null, source: 'api' }], collectedAt: Date.now(), checkedAt: Date.now(), nextAttemptAt: 0, failures: 0, errorCode: null },
       claude: { provider: 'claude', state: 'error', limits: [{ id: 'five_hour', label: '5시간', category: 'window', percent: 0, resetsAt: null, windowSeconds: 18000, remaining: null, unit: null, source: 'api' }], collectedAt: Date.now() - 900000, checkedAt: Date.now(), nextAttemptAt: Date.now() + 120000, failures: 1, errorCode: 'network' },
       gemini: { provider: 'gemini', state: 'ok', limits: [
-        { id: 'gemini:1', label: '5시간', category: 'window', percent: 0, resetsAt: new Date(Date.now() + 7200000).toISOString(), windowSeconds: 18000, remaining: 600, unit: null, source: 'api' },
-        { id: 'gemini:2', label: '주간', category: 'window', percent: 42, resetsAt: new Date(Date.now() + 172800000).toISOString(), windowSeconds: 604800, remaining: 12096, unit: null, source: 'api' }
+        { id: 'gemini:2', label: '주간', category: 'window', percent: 42, resetsAt: new Date(Date.now() + 172800000).toISOString(), windowSeconds: 604800, remaining: 12096, unit: null, source: 'api' },
+        { id: 'gemini:1', label: '5시간', category: 'window', percent: 0, resetsAt: new Date(Date.now() + 7200000).toISOString(), windowSeconds: 18000, remaining: 600, unit: null, source: 'api' }
       ], collectedAt: Date.now(), checkedAt: Date.now(), nextAttemptAt: 0, failures: 0, errorCode: null }
     }
   };
@@ -81,7 +81,7 @@ try {
   assert.equal(await evaluate('document.getElementById("extension-version").textContent'), `AI Gauge ${buildLabel}`);
   assert.equal(await evaluate('Math.round(document.body.getBoundingClientRect().width)'), 600);
   assert(await evaluate(`document.body.getBoundingClientRect().height<=600`), 'The default three-service popup fits the Chrome popup height');
-  await evaluate(`window.__savedLimits=structuredClone(Object.fromEntries(['chatgpt','claude'].map(p=>[p,window.__fixture.snapshots[p].limits])));for(const p of ['chatgpt','claude']){const s=window.__fixture.snapshots[p];s.limits.push({...s.limits[0],id:'extra-weekly',label:'주간',resetsAt:new Date(Date.now()+7*86400000).toISOString()});}for(const fn of window.__storageListeners)fn({},'local');`);
+  await evaluate(`window.__savedLimits=structuredClone(Object.fromEntries(['chatgpt','claude'].map(p=>[p,window.__fixture.snapshots[p].limits])));for(const p of ['chatgpt','claude']){const s=window.__fixture.snapshots[p];s.limits.push({...s.limits[0],id:'extra-weekly',label:'주간',windowSeconds:604800,resetsAt:new Date(Date.now()+7*86400000).toISOString()});}for(const fn of window.__storageListeners)fn({},'local');`);
   for (let i = 0; i < 20; i++) { if (await evaluate(`document.querySelectorAll('.card .limit').length===6`)) break; await pause(50); }
   const compactHeight = await evaluate('Math.ceil(document.body.getBoundingClientRect().height)');
   assert(compactHeight <= 600, `Six usage windows and four individual tickets need no popup scroll: ${compactHeight}px`);
@@ -350,10 +350,10 @@ try {
     await waitForPlacement('gemini-composer');
     assert(await evaluate(`document.getElementById('ai-gauge-usage-strip')===window.__geminiStrip&&window.__fixtureUsageRoot.querySelector('progress')===window.__geminiProgress`), 'Gemini helper changes retain the same strip and progress node');
   }
-  await evaluate(`window.__fixture.snapshots.gemini.limits[1].percent=42.25;window.__fixture.snapshots.gemini.collectedAt=Date.now();for(const fn of window.__storageListeners)fn({},'local');`);
+  await evaluate(`window.__fixture.snapshots.gemini.limits.find(limit=>limit.id==='gemini:2').percent=42.25;window.__fixture.snapshots.gemini.collectedAt=Date.now();for(const fn of window.__storageListeners)fn({},'local');`);
   for (let i = 0; i < 20; i++) { if (await evaluate('window.__geminiProgress.value===42.25')) break; await pause(50); }
   assert(await evaluate(`window.__fixtureUsageRoot.querySelector('progress')===window.__geminiProgress&&window.__geminiProgress.value===42.25&&window.__geminiStrip.getAttribute('aria-label').includes('사용량: 42%')`), 'Gemini fractional usage changes update the existing bar even with unchanged rounded text');
-  await evaluate(`window.__fixture.snapshots.gemini.limits[1].percent=63;for(const fn of window.__runtimeListeners)fn({type:'invalidate'},{id:'fixture'});`);
+  await evaluate(`window.__fixture.snapshots.gemini.limits.find(limit=>limit.id==='gemini:2').percent=63;for(const fn of window.__runtimeListeners)fn({type:'invalidate'},{id:'fixture'});`);
   for (let i = 0; i < 20; i++) { if (await evaluate('window.__geminiProgress.value===63')) break; await pause(50); }
   assert(await evaluate(`window.__fixtureUsageRoot.querySelector('progress')===window.__geminiProgress&&window.__geminiProgress.value===63&&window.__geminiStrip.getAttribute('aria-label').includes('사용량: 63%')`), 'Gemini runtime invalidation updates its own visible usage');
   await cdp('Emulation.setDeviceMetricsOverride', { width: 320, height: 1000, deviceScaleFactor: 1, mobile: false }, session);

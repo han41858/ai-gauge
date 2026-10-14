@@ -51,10 +51,10 @@ test('compact popup shows exactly ChatGPT, Claude and Gemini without a separate 
 test('compact popup preserves real window and model distinctions while stripping only the known shared prefix', () => {
   const { dom, cards } = fixture(), v = view();
   try {
-    v.snapshots.chatgpt.limits = [usage('week', 'Work / Codex 공유 · 7일', 15), usage('model', 'Work / Codex 공유 · 모델 A · 1일', 45)];
+    v.snapshots.chatgpt.limits = [usage('week', 'Work / Codex 공유 · 7일', 15), { ...usage('model', 'Work / Codex 공유 · 모델 A · 1일', 45), windowSeconds: 86400 }];
     renderCards(cards, v, noop, now);
     const names = [...cards.querySelectorAll('[data-provider="chatgpt"] .limit-line > :first-child')].map(node => node.textContent);
-    assert.deepEqual(names, ['7일', '모델 A · 1일']);
+    assert.deepEqual(names, ['모델 A · 1일', '7일']);
     assert.equal(cards.querySelectorAll('[data-provider="chatgpt"] progress').length, 2);
   } finally { dom.window.close(); }
 });
@@ -124,15 +124,17 @@ test('quota retained after an explicit collection failure is marked as a previou
   } finally { dom.window.close(); }
 });
 
-test('Gemini card displays all reported windows and actual zero without inventing remaining units', () => {
+test('Gemini card displays cached windows shortest first without changing source order or inventing units', () => {
   const { dom, cards } = fixture(), v = view();
   try {
     v.snapshots.gemini.limits = [
-      { ...usage('gemini-short', '5시간', 0), remaining: 600, windowSeconds: 18000 },
       { ...usage('gemini-week', '주간', 62.5), remaining: 12096 },
-      { ...usage('gemini-unknown', '알 수 없는 기간', null), remaining: 12 }
+      { ...usage('gemini-unknown', '알 수 없는 기간', null), remaining: 12, windowSeconds: null },
+      { ...usage('gemini-short', '5시간', 0), remaining: 600, windowSeconds: 18000 }
     ];
+    const original = structuredClone(v.snapshots.gemini.limits);
     renderCards(cards, v, noop, now);
+    assert.deepEqual(v.snapshots.gemini.limits, original);
     const card = cards.querySelector('[data-provider="gemini"]')!;
     assert.deepEqual([...card.querySelectorAll('.limit-line')].map(row => row.textContent), [
       '5시간사용량: 0%', '주간사용량: 63%', '알 수 없는 기간사용량: 확인 불가'

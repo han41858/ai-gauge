@@ -31,7 +31,8 @@ export function renderCards(container: HTMLElement, view: View, actions: Actions
     else if (!s.limits.length) card.append(el('p', '사용량 확인 불가', 'status'));
     if (enabled && s.limits.length) {
       if (s.state !== 'ok') card.append(el('p', '이전 수집값', 'status'));
-      for (const limit of s.limits) {
+      const limits = [...s.limits].sort((a, b) => (a.windowSeconds || Infinity) - (b.windowSeconds || Infinity));
+      for (const limit of limits) {
         const name = limitLabel(p, limit.label);
         const row = el('div', undefined, `limit ${s.state === 'ok' ? '' : 'old'}`), line = el('div', undefined, 'limit-line');
         line.append(el('span', name), el('span', usagePercentLabel(limit.percent), 'percent'));
