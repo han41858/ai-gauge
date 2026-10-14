@@ -93,7 +93,7 @@ function worker() {
   };
 }
 
-test('context changes clear only that provider plan, preserve usage and honor cooldowns', async () => {
+test('tab activation, initial content attachment and SPA routes preserve each fresh provider plan during cooldown', async () => {
   const w = worker();
   await waitFor(() => w.pushes() >= 4);
   const popup = await w.send({ type: 'view' });
@@ -101,45 +101,83 @@ test('context changes clear only that provider plan, preserve usage and honor co
   assert.equal(w.requests(), 0, 'a cached popup read must retain the current plan');
 
   w.activate(2);
-  await waitFor(() => w.snapshot('chatgpt').plan === null);
+  const attached = await w.send({ type: 'context', provider: 'chatgpt' }, 2);
+  assert(attached.ok); assert.equal(attached.view.snapshots.chatgpt.plan?.label, 'Plus');
   assert.equal(w.snapshot('chatgpt').limits[0]!.percent, 27);
   assert.equal(w.snapshot('claude').plan?.label, 'Pro');
   assert.equal(w.snapshot('gemini').plan?.label, 'AI Pro');
   assert.equal(w.requests(), 0, 'switching to Codex does not bypass the shared usage cooldown');
 
-  const gemini = w.tabs[3]!;
-  w.events.updated.emit(gemini.id!, { status: 'loading' }, gemini);
-  await waitFor(() => w.snapshot('gemini').plan === null);
-  assert.equal(w.snapshot('gemini').limits[0]!.percent, 27, 'background navigation keeps usage');
-  const claude = w.tabs[2]!;
-  w.events.updated.emit(claude.id!, { url: claude.url! }, claude);
-  await waitFor(() => w.snapshot('claude').plan === null);
-  assert.equal(w.requests(), 0, 'background navigation does not fetch');
-
-  w.seed('chatgpt');
-  const switched = await w.send({ type: 'context', provider: 'chatgpt' }, 2);
-  assert(switched.ok); assert.equal(switched.view.snapshots.chatgpt.plan, null);
-  assert.equal(switched.view.snapshots.chatgpt.limits[0]!.percent, 27);
+  for (const [provider, id] of [['chatgpt', 2], ['claude', 3], ['gemini', 4]] as const) {
+    w.activate(id);
+    const tab = w.tabs.find(value => value.id === id)!;
+    const pushed = w.pushes();
+    w.events.updated.emit(id, { url: tab.url! }, tab);
+    await waitFor(() => w.pushes() > pushed);
+    const route = await w.send({ type: 'context', provider }, id);
+    assert(route.ok); assert.equal(route.view.snapshots[provider].plan?.label, labels[provider]);
+    assert.equal(route.view.snapshots[provider].limits[0]!.percent, 27);
+    assert.notEqual(route.view.snapshots[provider].planRefreshPending, true);
+  }
   assert.equal(w.requests(), 0);
   assert.equal((await w.send({ type: 'context', provider: 'claude' }, 2)).ok, false, 'one site cannot invalidate another site plan');
   assert.equal((await w.send({ type: 'context', provider: 'chatgpt' })).ok, false, 'popup cannot pretend to be a site context');
   assert(!JSON.stringify(w.stored).includes('https://'), 'plan lifecycle never stores tab URLs or account identifiers');
 });
 
-test('window return invalidates the active service plan without touching unrelated sites', async () => {
+test('returning to Chrome and opening the popup do not erase a freshly collected plan', async () => {
   const w = worker();
   await waitFor(() => w.pushes() >= 4);
   w.events.focus.emit(-1);
   await new Promise(resolve => setTimeout(resolve, 10));
   assert.equal(w.snapshot('chatgpt').plan?.label, 'Plus', 'losing Chrome focus does not invalidate');
-  w.events.focus.emit(1);
-  await waitFor(() => w.snapshot('chatgpt').plan === null);
+  const returned = w.pushes(); w.events.focus.emit(1);
+  await waitFor(() => w.pushes() > returned);
+  const popup = await w.send({ type: 'view' });
+  assert(popup.ok); assert.equal(popup.view.snapshots.chatgpt.plan?.label, 'Plus');
   assert.equal(w.snapshot('claude').plan?.label, 'Pro');
   w.seed('chatgpt'); w.activate(5);
   const pushed = w.pushes(); w.events.focus.emit(1);
   await waitFor(() => w.pushes() > pushed);
   assert.equal(w.snapshot('chatgpt').plan?.label, 'Plus');
   assert.equal(w.requests(), 0);
+});
+
+test('new-tab attachment, window focus and SPA navigation during one request do not discard its successful plan', async () => {
+  const w = worker();
+  await waitFor(() => w.pushes() >= 4);
+  w.advance(); w.responsePlan('promax'); w.hold();
+  w.activate(2);
+  await waitFor(() => w.requests() === 1);
+  const initial = w.send({ type: 'context', provider: 'chatgpt' }, 2);
+  w.events.focus.emit(1);
+  const codex = w.tabs[1]!;
+  w.events.updated.emit(2, { url: codex.url! }, codex);
+  const route = w.send({ type: 'context', provider: 'chatgpt' }, 2);
+  w.release();
+  const replies = await Promise.all([initial, route]);
+  for (const reply of replies) {
+    assert(reply.ok); assert.equal(reply.view.snapshots.chatgpt.plan?.label, 'Pro 500');
+  }
+  const popup = await w.send({ type: 'view' });
+  assert(popup.ok); assert.equal(popup.view.snapshots.chatgpt.plan?.label, 'Pro 500');
+  assert.equal(w.snapshot('chatgpt').planRefreshPending, false);
+  assert.equal(w.requests(), 1, 'all lifecycle reads share one provider collection');
+});
+
+test('a real document load clears the potentially previous account plan and preserves quota and cooldowns', async () => {
+  const w = worker();
+  await waitFor(() => w.pushes() >= 4);
+  for (const [provider, id] of [['chatgpt', 1], ['claude', 3], ['gemini', 4]] as const) {
+    const tab = w.tabs.find(value => value.id === id)!;
+    w.events.updated.emit(id, { status: 'loading' }, tab);
+    await waitFor(() => w.snapshot(provider).plan === null);
+    assert.equal(w.snapshot(provider).planRefreshPending, true);
+    const attached = await w.send({ type: 'context', provider }, id);
+    assert(attached.ok); assert.equal(attached.view.snapshots[provider].plan, null);
+    assert.equal(attached.view.snapshots[provider].limits[0]!.percent, 27);
+  }
+  assert.equal(w.requests(), 0, 'document loading cannot bypass the existing retry deadline');
 });
 
 test('new collection updates subscription but a late pre-navigation plan cannot reappear', async () => {

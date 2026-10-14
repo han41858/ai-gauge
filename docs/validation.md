@@ -1,6 +1,6 @@
 # 구현 및 검증 결과
 
-검증일: 2026-10-14 (Asia/Seoul). 요금제 배지 검토 빌드 **202610142125**, Chrome 내부 버전 **2026.10.14.2125**. 별도 `feat/provider-plan-badges` 브랜치에서 검토하며 main에는 병합하지 않습니다.
+검증일: 2026-10-14 (Asia/Seoul). 요금제 배지 수정 빌드 **202610142207**, Chrome 내부 버전 **2026.10.14.2207**. 사용자 확인을 받은 수정본을 기존 PR #1(`feat/provider-plan-badges`)에 포함합니다. main 병합은 사용자가 진행합니다. 설치 ZIP은 기존 main의 downloads 경로에 게시되어 있습니다.
 
 ## 현재 요금제 배지
 
@@ -8,13 +8,15 @@
 | --- | --- | --- |
 | ChatGPT·Claude | src/providers/openai-claude-plan.ts, tab-transport.ts, chatgpt.ts, claude.ts | 기존 plan_type·조직 메타데이터만 추가로 정규화. 확인된 값만 판별하며 사용량 요청 수 유지 |
 | Gemini | src/providers/gemini-plan.ts, gemini-transport.ts, gemini.ts | 사용량 성공 뒤 선택적 otAQ7b 정책 RPC, 3초 제한·실패 격리·정확한 정책 매핑, planId 단독 판별 금지 |
-| 저장·수명 | src/shared/plan.ts, types.ts, contracts.ts, src/storage/snapshots.ts, src/background/scheduler.ts, index.ts, src/content/index.ts | 선택적 요금제 필드, 10분 유효 기간, 전환/실패 시 이전 요금제 제거, 늦은 응답 차단, 재시도 기한 이후 한 번 재확인 |
-| 팝업 | src/popup/render.ts, popup.css | 서비스 제목 옆 작은 요금제 배지, 확인 불가 상태. 기존 사용량·버튼·입력창·툴바 유지 |
+| 저장·수명 | src/shared/plan.ts, types.ts, contracts.ts, src/storage/snapshots.ts, src/background/scheduler.ts, index.ts, src/content/index.ts | 선택적 요금제 필드, 10분 유효 기간, 문서 재로드/실패 시 이전 요금제 제거, 단순 탭·창·SPA 이동 중 유지, 늦은 응답 차단, 재시도 기한 이후 한 번 재확인 |
+| 팝업 | src/popup/render.ts, popup.css | 서비스 제목 옆 확인된 요금제 배지만 표시, 미확인 배지 숨김. 기존 사용량·버튼·입력창·툴바 유지 |
 | 검증 | tests/provider-plan.test.ts, gemini-plan.test.ts, plan-cache.test.ts, plan-context.test.ts, popup-plan.test.ts 및 기존 회귀, scripts/browser-fixture.mjs | 식별자·누락·손상·구독 변경·전환 경쟁·재시작·정책 실패·레이아웃 회귀 |
 
-`npm run check` **411개 테스트·타입 검사·빌드·산출물 검사 통과**, 실패/취소/스킵 0입니다. Chromium fixture도 동일 `202610142125` 빌드에서 통과했습니다. 밝은/어두운 팝업, 요금제 배지 크기·갱신·확인 불가, 정책 실패 시 사용량 유지, 기존 520/390/320px 폭·30px 표시줄·76회 화면 변경 안정성을 확인했습니다. 원본 fixture와 합성 응답을 구분하며 실제 로그인 세션을 사용하지 않았습니다.
+`npm run check` **414개 테스트·타입 검사·빌드·산출물 검사 통과**, 실패/취소/스킵 0입니다. Chromium fixture도 동일 `202610142207` 빌드에서 통과했습니다. 밝은/어두운 팝업, 요금제 배지 크기·갱신·미확인 시 DOM 제거, 정책 실패 시 사용량 유지, 기존 520/390/320px 폭·30px 표시줄·76회 화면 변경 안정성을 확인했습니다. 원본 fixture와 합성 응답을 구분하며 실제 로그인 세션을 사용하지 않았습니다.
 
-실계정의 각 요금제·구독 변경·계정 전환과 `otAQ7b` 정책 매칭은 **추가 검증 대상**입니다. 관찰 가능한 화면/탭 변화가 전혀 없는 계정 전환은 즉시 감지할 수 없으며 다음 수집 또는 10분 유효 기간으로 제한합니다. 판별 근거와 한계는 [plan-detection.md](plan-detection.md)를 참고하세요.
+실계정의 각 요금제·구독 변경·계정 전환과 `otAQ7b` 정책 매칭은 **추가 검증 대상**입니다. 문서 재로드 없이 이루어지는 계정 전환은 즉시 감지할 수 없으며 다음 수집 또는 10분 유효 기간으로 제한합니다. 판별 근거와 한계는 [plan-detection.md](plan-detection.md)를 참고하세요.
+
+사용자는 이전 `202610142125` 빌드에서 세 서비스 요금제가 모두 `확인 불가`라고 보고했습니다. 공통 lifecycle 테스트에서 탭 활성화·초기 Content Script 연결·창 복귀·SPA 이동이 성공한 요금제를 지우고, 쿨다운 동안 복구하지 못하거나 진행 중 정상 응답을 버리는 문제를 수정 전 재현했습니다(관련 테스트 5개 실패). 수정 후 일반 이벤트는 캐시를 보존하고 실제 문서 loading만 보수적으로 무효화합니다. 유효한 기존 요금제는 일반 갱신 진행 중에도 유지하되 원 확인 시각·10분 TTL을 연장하지 않습니다. 알 수 없는 요금제 배지를 숨기는 팝업 회귀 테스트도 수정 전 실패·수정 후 통과를 확인했습니다. 제공자별 식별자 매핑은 추측해서 확대하지 않았습니다. 사용자는 `202610142207` 설치 후 문제 해결을 확인했습니다. 이 확인은 보고된 표시 문제의 해결 범위이며 모든 요금제 등급·구독 변경·계정 전환의 검증으로 확대하지 않습니다.
 
 ## 기존 입력창 배치와 공유 캐시
 
@@ -69,12 +71,12 @@ Gemini 전송 파서는 사용자가 제공한 HTTP 200 JSON 응답으로 재현
 
 ## 설치 결과물
 
-[요금제 배지 검토 ZIP — 202610142125](https://github.com/han41858/ai-gauge/raw/refs/heads/feat/provider-plan-badges/downloads/ai-gauge-202610142125.zip)
+[요금제 배지 수정 ZIP — 202610142207](https://github.com/han41858/ai-gauge/raw/refs/heads/main/downloads/ai-gauge-202610142207.zip)
 
-- 크기: 70,494 bytes
-- SHA-256: 81a76229ad44b6172e600d2d59cc556aa5f583a4aa142a02e8b192f55ac07c13
+- 크기: 70,467 bytes
+- SHA-256: 62173b8a13e67822631ef8c3b873a7e6e3ba8a9f6a9f8cefc9505fe33fdae713
 - 루트 manifest와 실행 파일·로컬 PNG만 포함하며 docs/INSTALL/상위 폴더는 없습니다.
-- 소스·문서·검토 ZIP을 같은 기능 브랜치와 PR에 포함합니다. 기존 main의 설치 ZIP은 유지합니다.
+- 원격 커밋 `d5375224`는 설치 ZIP 한 파일만 추가했습니다. 이 ZIP 게시 당시에는 소스를 갱신하지 않았으며, 이후 사용자 요청으로 해당 수정 소스·문서를 기존 PR #1에 포함합니다. GitHub 다운로드·원본 바이트/SHA-256 일치·ZIP 무결성을 확인했습니다.
 
 아래는 기존 main 배포본입니다.
 

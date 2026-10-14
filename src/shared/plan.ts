@@ -16,10 +16,11 @@ export function parsePlan(provider: Provider, input: unknown): PlanInfo | null {
 }
 export function currentPlanLabel(snapshot: Snapshot, now = Date.now()): string {
   const plan = parsePlan(snapshot.provider, snapshot.plan);
-  // Unlike quota caching, a plan is a current-account claim. Hide it while a
-  // collection is pending/failed or when its independent freshness has elapsed.
+  // A routine attempt can advance checkedAt while its fresh successful plan
+  // remains usable. Document changes, failures and expiry still invalidate it.
   return plan && !snapshot.planRefreshPending && snapshot.state === 'ok' && snapshot.errorCode === null
-    && plan.checkedAt === snapshot.collectedAt && plan.checkedAt === snapshot.checkedAt
+    && plan.checkedAt === snapshot.collectedAt && finite(snapshot.checkedAt)
+    && plan.checkedAt <= snapshot.checkedAt && snapshot.checkedAt <= now
     && finite(now) && plan.checkedAt <= now && now - plan.checkedAt < PLAN_MAX_AGE_MS
     ? plan.label : '확인 불가';
 }

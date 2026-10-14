@@ -107,6 +107,29 @@ test('failed collection clears a plan while the first transient failure keeps va
   }
 });
 
+test('a routine refresh preserves each fresh plan while awaiting its new response without renewing its age', async () => {
+  for (const provider of PROVIDERS) {
+    let snapshot = success(emptySnapshot(provider), limits, base, plans[provider]);
+    const now = base + 60_000, started = deferred<void>(), response = deferred<CollectionResult>();
+    const scheduler = new Scheduler({
+      read: async () => snapshot, write: async value => { snapshot = value; },
+      enabled: async () => true, now: () => now,
+      collect: async () => { started.resolve(); return response.promise; }
+    });
+    const pending = scheduler.refresh(provider, 'event');
+    await started.promise;
+    const restored = parseSnapshot(snapshot, provider);
+    assert.equal(restored.checkedAt, now, 'the persisted attempt lease still protects against worker restarts');
+    assert.equal(restored.plan?.checkedAt, base, 'an attempt cannot extend the lifetime of the old plan');
+    assert.equal(currentPlanLabel(restored, now), plans[provider]);
+    assert.equal(currentPlanLabel(restored, base + PLAN_MAX_AGE_MS), '확인 불가');
+    response.resolve({ limits, plan: changedPlans[provider] });
+    await pending;
+    assert.equal(currentPlanLabel(snapshot, now), changedPlans[provider]);
+    assert.equal(snapshot.plan?.checkedAt, now);
+  }
+});
+
 test('a plan expires at ten minutes independently of valid usage and cannot claim a future or mismatched collection', () => {
   for (const provider of PROVIDERS) {
     const before = success(emptySnapshot(provider), limits, base, plans[provider]);
@@ -116,7 +139,9 @@ test('a plan expires at ten minutes independently of valid usage and cannot clai
     assert.deepEqual(aged.limits, limits);
     assert.equal(currentPlanLabel(aged, base + PLAN_MAX_AGE_MS), '확인 불가');
     assert.equal(currentPlanLabel(before, base - 1), '확인 불가');
-    assert.equal(currentPlanLabel({ ...before, checkedAt: base + 1 }, base + 1), '확인 불가');
+    assert.equal(currentPlanLabel({ ...before, checkedAt: base + 1 }, base + 1), plans[provider], 'a new attempt does not invalidate a fresh successful plan');
+    assert.equal(currentPlanLabel({ ...before, checkedAt: base + 1 }, base), '확인 불가');
+    assert.equal(currentPlanLabel({ ...before, checkedAt: base - 1 }, base), '확인 불가');
     assert.equal(currentPlanLabel({ ...before, collectedAt: base - 1 }, base), '확인 불가');
     assert.equal(currentPlanLabel({ ...before, errorCode: 'network' }, base), '확인 불가');
   }
@@ -153,8 +178,9 @@ test('an account switch during collection prevents a late plan from reappearing 
   });
   const pending = scheduler.refresh('claude', 'manual');
   await started.promise;
-  assert.equal(snapshot.plan, null, 'an in-progress attempt must not advertise the old account plan');
+  assert.equal(currentPlanLabel(snapshot, now), 'Max 5x', 'an ordinary request retains the fresh last successful plan');
   await scheduler.invalidatePlan('claude');
+  assert.equal(snapshot.plan, null, 'an observed document change clears the potentially previous account plan immediately');
   const nextLimits = [{ ...limits[0]!, percent: 42 }];
   response.resolve({ limits: nextLimits, plan: 'Max 5x' });
   const reply = await pending;

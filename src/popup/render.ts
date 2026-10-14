@@ -17,9 +17,12 @@ export function renderCards(container: HTMLElement, view: View, actions: Actions
     card.setAttribute('aria-label', `${title} 사용량`);
     const heading = el('div', undefined, 'card-heading');
     const plan = enabled && view.permissions[p] ? currentPlanLabel(view.snapshots[p], now) : '확인 불가';
-    const badge = el('span', plan, `plan-badge${plan === '확인 불가' ? ' unknown' : ''}`);
-    badge.setAttribute('aria-label', `${title} 요금제: ${plan}`);
-    heading.append(el('h2', title), badge);
+    heading.append(el('h2', title));
+    if (plan !== '확인 불가') {
+      const badge = el('span', plan, 'plan-badge');
+      badge.setAttribute('aria-label', `${title} 요금제: ${plan}`);
+      heading.append(badge);
+    }
     card.append(heading);
     if (!enabled || s.state !== 'ok') card.append(el('p', enabled ? statusText(s) : '꺼짐', 'status'));
     else if (!s.limits.length) card.append(el('p', '사용량 확인 불가', 'status'));

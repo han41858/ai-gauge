@@ -46,7 +46,7 @@ test('popup adds one compact plan badge next to each service title without creat
   } finally { dom.window.close(); }
 });
 
-test('missing or unsupported plan metadata remains unknown while successful usage stays visible', () => {
+test('missing or unsupported plan metadata renders no badge while successful usage stays visible', () => {
   const { dom, cards } = fixture(), v = view();
   try {
     delete v.snapshots.chatgpt.plan;
@@ -54,10 +54,13 @@ test('missing or unsupported plan metadata remains unknown while successful usag
     v.snapshots.gemini.plan = { label: 'unverified_plan_9', checkedAt: now };
     renderCards(cards, v, noop, now);
     for (const provider of PROVIDERS) {
-      assert.equal(planText(cards, provider), '확인 불가');
+      assert.equal(planText(cards, provider), undefined);
       assert.equal(cards.querySelector(`[data-provider="${provider}"] progress`)?.getAttribute('value'), '25');
       assert.equal(cards.querySelector(`[data-provider="${provider}"] .status`), null);
     }
+    assert.equal(cards.querySelectorAll('.plan-badge').length, 0);
+    assert.doesNotMatch(cards.textContent!, /확인 불가|unverified_plan_9/);
+    assert.deepEqual([...cards.querySelectorAll('h2')].map(title => title.textContent), ['ChatGPT', 'Claude', 'Gemini']);
   } finally { dom.window.close(); }
 });
 
@@ -73,8 +76,8 @@ test('subscription changes replace the plan badge and a subsequent missing resul
     assert.deepEqual(PROVIDERS.map(provider => planText(cards, provider)), ['Free', 'Free', 'Free']);
     for (const provider of PROVIDERS) v.snapshots[provider].plan = null;
     renderCards(cards, v, noop, now + 60_000);
-    assert.deepEqual(PROVIDERS.map(provider => planText(cards, provider)), ['확인 불가', '확인 불가', '확인 불가']);
-    assert.equal(cards.querySelectorAll('.plan-badge').length, 3);
+    assert.deepEqual(PROVIDERS.map(provider => planText(cards, provider)), [undefined, undefined, undefined]);
+    assert.equal(cards.querySelectorAll('.plan-badge').length, 0);
     assert.equal(cards.querySelectorAll('progress').length, 3);
   } finally { dom.window.close(); }
 });
@@ -83,12 +86,12 @@ test('stale or mismatched plan checks clear badges without treating normally age
   const { dom, cards } = fixture(), v = view();
   try {
     renderCards(cards, v, noop, now + 601_000);
-    assert.deepEqual(PROVIDERS.map(provider => planText(cards, provider)), ['확인 불가', '확인 불가', '확인 불가']);
+    assert.deepEqual(PROVIDERS.map(provider => planText(cards, provider)), [undefined, undefined, undefined]);
     assert.equal(cards.querySelector('.status'), null);
     assert.equal(cards.querySelectorAll('progress').length, 3);
     for (const provider of PROVIDERS) v.snapshots[provider].plan!.checkedAt = now - 60_000;
     renderCards(cards, v, noop, now);
-    assert.deepEqual(PROVIDERS.map(provider => planText(cards, provider)), ['확인 불가', '확인 불가', '확인 불가']);
+    assert.deepEqual(PROVIDERS.map(provider => planText(cards, provider)), [undefined, undefined, undefined]);
   } finally { dom.window.close(); }
 });
 
@@ -100,7 +103,7 @@ test('disabled, revoked and signed-out services never display a previously cache
     v.snapshots.gemini.state = 'signed_out';
     v.snapshots.gemini.errorCode = 'signed_out';
     renderCards(cards, v, noop, now);
-    assert.deepEqual(PROVIDERS.map(provider => planText(cards, provider)), ['확인 불가', '확인 불가', '확인 불가']);
+    assert.deepEqual(PROVIDERS.map(provider => planText(cards, provider)), [undefined, undefined, undefined]);
   } finally { dom.window.close(); }
 });
 
@@ -109,7 +112,7 @@ test('untrusted plan text cannot create markup or executable attributes in popup
   try {
     for (const provider of PROVIDERS) v.snapshots[provider].plan!.label = '<img src=x onerror="alert(1)">';
     renderCards(cards, v, noop, now);
-    assert.deepEqual(PROVIDERS.map(provider => planText(cards, provider)), ['확인 불가', '확인 불가', '확인 불가']);
+    assert.deepEqual(PROVIDERS.map(provider => planText(cards, provider)), [undefined, undefined, undefined]);
     assert.equal(cards.querySelector('img,script,[onerror],[onclick]'), null);
     assert.equal(cards.querySelectorAll('progress').length, 3);
   } finally { dom.window.close(); }

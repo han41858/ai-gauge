@@ -55,7 +55,7 @@ export class Scheduler {
     const before = await this.io.read(p);
     if (!await this.io.enabled(p) || !due(before, trigger, this.io.now())) return before;
     // Persist an attempt lease before fetch: a terminated worker must not instantly repeat it.
-    await this.update(p, current => ({ ...current, plan: null, checkedAt: this.io.now(), nextAttemptAt: this.io.now() + 60_000, errorCode: before.errorCode === 'open_tab' ? 'not_collected' : before.errorCode }));
+    await this.update(p, current => ({ ...current, checkedAt: this.io.now(), nextAttemptAt: this.io.now() + 60_000, errorCode: before.errorCode === 'open_tab' ? 'not_collected' : before.errorCode }));
     let after: Snapshot;
     try {
       const result = await this.io.collect(p), now = this.io.now();
