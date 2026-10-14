@@ -73,7 +73,7 @@ test('unknown input selector fails quietly with the shared display source enable
 test('popup renders zero, unknown, previous-value marker and untrusted labels as text, without XSS', () => {
   const d = new JSDOM('<div id="cards"></div>').window.document, v = view(); v.settings.enabled.claude = true;
   v.snapshots.claude = success(emptySnapshot('claude'), parseClaude({ five_hour: { utilization: 0 }, seven_day: { utilization: null }, limits: [{ kind: 'weekly_scoped', percent: 12, scope: { model: { display_name: '<img src=x onerror=alert(1)>' } } }] }), 1000); v.snapshots.claude.state = 'error';
-  renderCards(d.getElementById('cards')!, v, { enable() {}, disable() {}, revoke() {}, refresh() {}, select() {} }, 1001);
+  renderCards(d.getElementById('cards')!, v, { enable() {}, disable() {}, revoke() {}, select() {} }, 1001);
   assert.match(d.body.textContent!, /0%/); assert.match(d.body.textContent!, /확인 불가/); assert.match(d.body.textContent!, /이전 수집값/); assert.doesNotMatch(d.body.textContent!, /오래된 데이터|갱신 필요/); assert.equal(d.querySelector('img'), null);
 });
 test('Codex web textarea composer gets one strip below it without reading or changing the input', () => {
@@ -110,7 +110,7 @@ test('ordinary ChatGPT strip displays its single collected quota snapshot withou
 });
 test('popup shows ChatGPT, Claude and Gemini without a separate Codex card', () => {
   const d = new JSDOM('<div id="cards"></div>').window.document;
-  renderCards(d.getElementById('cards')!, view(), { enable() {}, disable() {}, revoke() {}, refresh() {}, select() {} });
+  renderCards(d.getElementById('cards')!, view(), { enable() {}, disable() {}, revoke() {}, select() {} });
   assert.deepEqual([...d.querySelectorAll('h2')].map(h => h.textContent), ['ChatGPT', 'Claude', 'Gemini']);
   assert.deepEqual([...d.querySelectorAll('.card')].map(card => card.getAttribute('data-provider')), ['chatgpt', 'claude', 'gemini']);
   assert.doesNotMatch(d.body.textContent!, /최근 수집 성공|Work \/ Codex 공유/);

@@ -75,6 +75,15 @@ try {
   let state;
   for (let i = 0; i < 100; i++) { state = await evaluate('({cards:document.querySelectorAll(".card").length,text:document.body?.textContent??"",width:document.documentElement?.scrollWidth??0,clientWidth:document.documentElement?.clientWidth??0})'); if (state.cards === 3) break; await pause(100); }
   assert.equal(state.cards, 3, JSON.stringify({state,exceptions})); assert.match(state.text, /42%/); assert.match(state.text, /0%/); assert.doesNotMatch(state.text, /오래된 데이터|오래된 정보|입력창에는|최근 수집 성공|Work \/ Codex 공유/); assert(state.width <= state.clientWidth);
+  assert.doesNotMatch(state.text, /새로고침|사이트 열기/);
+  assert(await evaluate(`Array.from(document.querySelectorAll('.card h2')).every(title=>{const link=title.querySelector('a'),s=link&&getComputedStyle(link),h=getComputedStyle(title);return link&&s.color===h.color&&s.fontSize===h.fontSize&&s.fontWeight===h.fontWeight&&s.textDecorationLine==='none'&&s.cursor==='pointer'&&link.target==='_blank'&&link.rel==='noopener noreferrer';})`), 'Service title links keep the existing heading appearance and pointer cursor');
+  for (const [provider, href] of Object.entries({ chatgpt: 'https://chatgpt.com/', claude: 'https://claude.ai/', gemini: 'https://gemini.google.com/' })) {
+    await evaluate(`{const link=document.querySelector('[data-provider="${provider}"] h2 a');window.__providerActivated=null;link.addEventListener('click',event=>{event.preventDefault();window.__providerActivated=link.href;},{once:true});link.focus();}`);
+    await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 }, session);
+    await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 }, session);
+    assert.equal(await evaluate('window.__providerActivated'), href, 'Service title keyboard activation opens the fixed official home URL (navigation prevented in fixture)');
+  }
+  await evaluate('document.activeElement.blur()');
   assert(await evaluate(`(()=>{const card=document.querySelector('[data-provider="claude"]');return card.querySelector('.percent').textContent==='사용량: 0%'&&card.querySelector('progress').value===0&&!card.querySelector('.status');})()`), 'Popup keeps a valid 15-minute-old cached value through one network failure without an age-only warning');
   assert.deepEqual(await evaluate(`[...document.querySelectorAll('.card .plan-badge')].map(badge=>badge.textContent)`), ['Pro 200', 'AI Pro']);
   assert(await evaluate(`Array.from(document.querySelectorAll('.card-heading')).every(heading=>{const title=heading.querySelector('h2'),badge=heading.querySelector('.plan-badge');if(!badge)return title.nextElementSibling===null;const a=title.getBoundingClientRect(),b=badge.getBoundingClientRect();return title.nextElementSibling===badge&&b.left-a.right>=7&&Math.abs((a.top+a.height/2)-(b.top+b.height/2))<1&&b.height<=22;})`), 'Each compact plan badge sits beside its service title without moving the existing usage layout');

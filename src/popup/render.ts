@@ -4,7 +4,7 @@ import { percent } from '../shared/validation';
 import { currentPlanLabel } from '../shared/plan';
 import { effectiveSnapshot } from '../storage/snapshots';
 import { ticketDisplay } from '../shared/ticket-presentation';
-export interface Actions { enable(p: Provider): void; disable(p: Provider): void; revoke(p: Provider): void; refresh(p: Provider): void; select?(p: Provider, id: string | null): void }
+export interface Actions { enable(p: Provider): void; disable(p: Provider): void; revoke(p: Provider): void; select?(p: Provider, id: string | null): void }
 const limitLabel = (provider: Provider, label: string) => provider === 'chatgpt'
   ? label.replace(/^(?:ChatGPT\s*·\s*|Work\s*\/\s*Codex\s*공유\s*(?:[·:–—-]\s*)?)/, '').trim() || '사용량' : label;
 export function renderCards(container: HTMLElement, view: View, actions: Actions, now = Date.now()) {
@@ -19,7 +19,10 @@ export function renderCards(container: HTMLElement, view: View, actions: Actions
     const heading = el('div', undefined, 'card-heading');
     const identity = el('div', undefined, 'provider-name');
     const plan = enabled && view.permissions[p] ? currentPlanLabel(view.snapshots[p], now) : '확인 불가';
-    identity.append(el('h2', title));
+    const name = el('h2'), home = el('a', title, 'provider-home');
+    home.href = HOME_URLS[p]; home.target = '_blank'; home.rel = 'noopener noreferrer';
+    home.setAttribute('aria-label', `${title} 사이트 열기 (새 탭)`);
+    name.append(home); identity.append(name);
     if (plan !== '확인 불가') {
       const badge = el('span', plan, 'plan-badge');
       badge.setAttribute('aria-label', `${title} 요금제: ${plan}`);
@@ -55,13 +58,8 @@ export function renderCards(container: HTMLElement, view: View, actions: Actions
     const controls = el('div', undefined, 'actions');
     const button = (parent: HTMLElement, text: string, fn: () => void, cls?: string) => { const b = el('button', text, cls); b.type = 'button'; b.addEventListener('click', fn); parent.append(b); return b; };
     if (!enabled || !view.permissions[p]) button(controls, view.permissions[p] ? '켜기' : '권한 승인 및 켜기', () => actions.enable(p), 'grant');
-    if (enabled) {
-      const refresh = button(controls, '새로고침', () => actions.refresh(p));
-      refresh.disabled = !view.permissions[p] || s.nextAttemptAt > now;
-      button(controls, '끄기', () => actions.disable(p));
-    }
+    if (enabled) button(controls, '끄기', () => actions.disable(p));
     if (view.permissions[p]) button(controls, '권한 철회', () => actions.revoke(p));
-    const link = el('a', '사이트 열기'); link.href = HOME_URLS[p]; link.target = '_blank'; link.rel = 'noopener noreferrer'; controls.append(link);
     heading.append(controls); return card;
   });
   container.replaceChildren(...cards);

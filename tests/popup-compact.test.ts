@@ -23,7 +23,7 @@ const view = (): View => ({
     claude: success(emptySnapshot('claude'), [usage('claude-week', '7일', 30)], now)
   }
 });
-const noop: Actions = { enable() {}, disable() {}, revoke() {}, refresh() {}, select() {} };
+const noop: Actions = { enable() {}, disable() {}, revoke() {}, select() {} };
 const fixture = () => {
   const dom = new JSDOM('<main id="cards"></main>');
   return { dom, cards: dom.window.document.getElementById('cards')! };
@@ -37,6 +37,13 @@ test('compact popup shows exactly ChatGPT, Claude and Gemini without a separate 
     const plan = cards.querySelector('[data-provider="chatgpt"]')!;
     assert.equal(plan.getAttribute('aria-label'), 'ChatGPT 사용량');
     assert.deepEqual([...cards.querySelectorAll('h2')].map(title => title.textContent), ['ChatGPT', 'Claude', 'Gemini']);
+    assert.deepEqual([...cards.querySelectorAll<HTMLAnchorElement>('h2 a')].map(link => [link.textContent, link.href, link.target, link.rel, link.tabIndex]), [
+      ['ChatGPT', 'https://chatgpt.com/', '_blank', 'noopener noreferrer', 0],
+      ['Claude', 'https://claude.ai/', '_blank', 'noopener noreferrer', 0],
+      ['Gemini', 'https://gemini.google.com/', '_blank', 'noopener noreferrer', 0]
+    ]);
+    assert.equal(cards.querySelector('.actions a'), null);
+    assert.doesNotMatch(cards.textContent!, /새로고침|사이트 열기/);
     assert.equal(plan.querySelector('.limit-line')!.textContent, '7일사용량: 15%');
     assert(plan.querySelector('.reset')!.textContent!.length > 0);
     assert.doesNotMatch(cards.textContent!, /Work \/ Codex|공유 풀|최근 수집 성공/);
@@ -156,7 +163,7 @@ test('Gemini card displays cached windows shortest first without changing source
 test('Gemini card controls affect only Gemini and a disabled card hides its cached percentages', () => {
   const { dom, cards } = fixture(), v = view(), calls: string[] = [];
   try {
-    const actions: Actions = { ...noop, enable: p => { calls.push(`enable:${p}`); }, refresh: p => { calls.push(`refresh:${p}`); }, disable: p => { calls.push(`disable:${p}`); }, revoke: p => { calls.push(`revoke:${p}`); } };
+    const actions: Actions = { ...noop, enable: p => { calls.push(`enable:${p}`); }, disable: p => { calls.push(`disable:${p}`); }, revoke: p => { calls.push(`revoke:${p}`); } };
     v.settings.enabled.gemini = false; v.permissions.gemini = false;
     renderCards(cards, v, actions, now);
     const disabled = cards.querySelector('[data-provider="gemini"]')!;
@@ -166,16 +173,16 @@ test('Gemini card controls affect only Gemini and a disabled card hides its cach
     v.snapshots.gemini.nextAttemptAt = 0;
     renderCards(cards, v, actions, now);
     const active = cards.querySelector('[data-provider="gemini"]')!;
-    for (const label of ['새로고침', '끄기', '권한 철회']) [...active.querySelectorAll('button')].find(button => button.textContent === label)!.click();
-    assert.deepEqual(calls, ['enable:gemini', 'refresh:gemini', 'disable:gemini', 'revoke:gemini']);
+    for (const label of ['끄기', '권한 철회']) [...active.querySelectorAll('button')].find(button => button.textContent === label)!.click();
+    assert.deepEqual(calls, ['enable:gemini', 'disable:gemini', 'revoke:gemini']);
   } finally { dom.window.close(); }
 });
 
-test('compact controls retain enabling, refreshing, disabling, and permission revocation without badge selection', () => {
+test('compact controls retain enabling, disabling, and permission revocation with site navigation in the title', () => {
   const { dom, cards } = fixture(), v = view(), calls: Array<[string, Provider, (string | null)?]> = [];
   const actions: Actions = {
     enable: p => { calls.push(['enable', p]); }, disable: p => { calls.push(['disable', p]); },
-    revoke: p => { calls.push(['revoke', p]); }, refresh: p => { calls.push(['refresh', p]); },
+    revoke: p => { calls.push(['revoke', p]); },
     select: (p, id) => { calls.push(['select', p, id]); }
   };
   try {
@@ -186,23 +193,21 @@ test('compact controls retain enabling, refreshing, disabling, and permission re
     v.snapshots.chatgpt.nextAttemptAt = 0;
     renderCards(cards, v, actions, now);
     const card = cards.querySelector('[data-provider="chatgpt"]')!;
-    for (const label of ['새로고침', '끄기', '권한 철회']) [...card.querySelectorAll('button')].find(button => button.textContent === label)!.click();
+    for (const label of ['끄기', '권한 철회']) [...card.querySelectorAll('button')].find(button => button.textContent === label)!.click();
     assert.equal(card.querySelector('select'), null);
-    assert.deepEqual(calls, [['enable', 'chatgpt'], ['refresh', 'chatgpt'], ['disable', 'chatgpt'], ['revoke', 'chatgpt']]);
-    assert.equal(card.querySelector('a')!.href, 'https://chatgpt.com/');
+    assert.deepEqual(calls, [['enable', 'chatgpt'], ['disable', 'chatgpt'], ['revoke', 'chatgpt']]);
+    assert.equal(card.querySelector<HTMLAnchorElement>('h2 a')!.href, 'https://chatgpt.com/');
   } finally { dom.window.close(); }
 });
 
-test('rate-limit error remains visible and blocks premature requests without showing retry timestamps', () => {
+test('rate-limit error remains visible without manual refresh controls or retry timestamps', () => {
   const { dom, cards } = fixture(), v = view();
-  let requests = 0;
   try {
     v.snapshots.chatgpt.state = 'rate_limited'; v.snapshots.chatgpt.errorCode = 'rate_limited';
     v.snapshots.chatgpt.nextAttemptAt = now + 60_000;
-    renderCards(cards, v, { ...noop, refresh() { requests++; } }, now);
+    renderCards(cards, v, noop, now);
     const card = cards.querySelector('[data-provider="chatgpt"]')!;
-    const refresh = [...card.querySelectorAll('button')].find(button => button.textContent === '새로고침')!;
-    assert.equal(refresh.disabled, true); refresh.click(); assert.equal(requests, 0);
+    assert.doesNotMatch(card.textContent!, /새로고침/);
     assert(card.textContent!.includes('잠시 후 다시 확인'));
     assert.equal(card.querySelector('.time'), null);
     assert.doesNotMatch(card.textContent!, /다음 갱신/);

@@ -33,7 +33,7 @@ function render() {
   const needsSetup = PROVIDERS.every(p => !view!.settings.enabled[p] && !view!.permissions[p]);
   onboarding.hidden = !needsSetup; cards.hidden = needsSetup; preferences.hidden = needsSetup;
   renderSetup();
-  renderCards(cards, view, { enable: p => { void enable(p); }, disable: p => { void run(() => request({ type: 'disable', provider: p })); }, revoke: p => { void run(async () => { await chrome.permissions.remove({ origins: [ORIGINS[p]] }); return request({ type: 'view' }); }); }, refresh: p => { void run(() => request({ type: 'refresh', provider: p, trigger: 'manual' })); } });
+  renderCards(cards, view, { enable: p => { void enable(p); }, disable: p => { void run(() => request({ type: 'disable', provider: p })); }, revoke: p => { void run(async () => { await chrome.permissions.remove({ origins: [ORIGINS[p]] }); return request({ type: 'view' }); }); } });
   if (!settingsDirty) {
     for (const p of PAGE_PROVIDERS) field(`strip-${p}`).checked = view.settings.strips[p];
   }

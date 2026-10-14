@@ -19,7 +19,7 @@ const view = (): View => ({
     plan: { label: labels[provider], checkedAt: now }
   }])) as View['snapshots']
 });
-const noop: Actions = { enable() {}, disable() {}, revoke() {}, refresh() {} };
+const noop: Actions = { enable() {}, disable() {}, revoke() {} };
 const fixture = () => {
   const dom = new JSDOM('<main id="cards"></main>');
   return { dom, cards: dom.window.document.getElementById('cards')! };
@@ -39,7 +39,7 @@ test('popup adds one compact plan badge next to each service title without creat
       assert.equal(planText(cards, provider), labels[provider]);
       assert.match(card.querySelector('.plan-badge')!.getAttribute('aria-label')!, /요금제:/);
       assert.equal(card.querySelector('progress')?.value, 25);
-      assert.equal(card.querySelectorAll('.actions button').length, 3);
+      assert.equal(card.querySelectorAll('.actions button').length, 2);
     }
     assert.equal(cards.querySelector('[data-provider="codex"]'), null);
     assert.deepEqual(v, original);

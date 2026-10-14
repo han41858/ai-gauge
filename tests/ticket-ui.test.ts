@@ -25,7 +25,7 @@ function view(): View {
     chatgpt: snapshot('chatgpt'), claude: snapshot('claude'), gemini: snapshot('gemini')
   } };
 }
-const noop: Actions = { enable() {}, disable() {}, revoke() {}, refresh() {} };
+const noop: Actions = { enable() {}, disable() {}, revoke() {} };
 const popup = () => {
   const dom = new JSDOM('<main id="cards"></main>');
   return { dom, cards: dom.window.document.getElementById('cards')! };
