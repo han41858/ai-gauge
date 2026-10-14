@@ -2,7 +2,7 @@
 
 ## 프로젝트 목적
 
-AI Gauge는 ChatGPT와 Claude의 사용량과 초기화 정보를 Chrome에서 보여주는 **로컬 전용 Manifest V3 확장 프로그램**입니다. 자세한 범위와 완료 조건은 `AI_GAUGE_SPEC.md`를 우선 참고하세요. 초기 배포는 GitHub 코드 기반 Chrome 개발자 모드 설치이며 Chrome Web Store 등록은 범위 밖입니다.
+AI Gauge는 ChatGPT, Claude, Gemini의 사용량과 초기화 정보를 Chrome에서 보여주는 **로컬 전용 Manifest V3 확장 프로그램**입니다. 자세한 범위와 완료 조건은 `AI_GAUGE_SPEC.md`를 우선 참고하세요. 초기 배포는 GitHub 코드 기반 Chrome 개발자 모드 설치이며 Chrome Web Store 등록은 범위 밖입니다.
 
 ## 의사소통과 작업 방식
 
@@ -17,7 +17,8 @@ AI Gauge는 ChatGPT와 Claude의 사용량과 초기화 정보를 Chrome에서 �
 - TypeScript strict, Manifest V3, 최소한의 빌드 의존성을 유지합니다.
 - 사용량 수집(서비스별 어댑터), 저장, 스케줄링, 배지, 팝업, Content Script를 역할별로 분리합니다.
 - Codex 화면은 ChatGPT와 동일한 사용량을 표시합니다. Codex용 별도 수집·집계·팝업 카드를 만들지 않고, 필요한 화면별 DOM 처리만 분리합니다.
-- Gemini는 v1.0에서 제외합니다. 비공개 RPC 구현을 추측해 추가하지 않습니다.
+- Gemini 지원은 `AI_GAUGE_SPEC.md`의 `jSf9Qc` 실제 관찰 응답을 기준으로 구현합니다. 비공개 RPC 모듈에 의존하지 않고 확장 프로그램 내 실제 호출 성공 여부는 별도로 검증합니다.
+- Gemini 입력창 하단에도 기존 공통 표시줄을 재사용합니다. ChatGPT와 Codex는 계속 동일한 사용량을 표시합니다.
 - 입력창 하단 표시줄은 높이 30px, 글자 12px, 아이콘 20px 기준입니다. 기존 `assets/logo-20x20.png`를 재사용하고 로고를 임의로 재생성하지 않습니다.
 - 파일 길이에 임의의 숫자 제한을 두지 않습니다. 책임이 혼재하거나 읽기 어려워지면 기능 단위로 분리합니다.
 - 장황한 주석·과거 AI 리뷰 로그·불필요한 중복 설명을 남기지 않습니다. 주석은 코드만으로 알기 어려운 이유와 외부 계약을 설명할 때만 사용합니다.
