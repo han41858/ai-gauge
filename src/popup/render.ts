@@ -17,13 +17,15 @@ export function renderCards(container: HTMLElement, view: View, actions: Actions
     const title = NAMES[p];
     card.setAttribute('aria-label', `${title} 사용량`);
     const heading = el('div', undefined, 'card-heading');
+    const identity = el('div', undefined, 'provider-name');
     const plan = enabled && view.permissions[p] ? currentPlanLabel(view.snapshots[p], now) : '확인 불가';
-    heading.append(el('h2', title));
+    identity.append(el('h2', title));
     if (plan !== '확인 불가') {
       const badge = el('span', plan, 'plan-badge');
       badge.setAttribute('aria-label', `${title} 요금제: ${plan}`);
-      heading.append(badge);
+      identity.append(badge);
     }
+    heading.append(identity);
     card.append(heading);
     if (!enabled || s.state !== 'ok') card.append(el('p', enabled ? statusText(s) : '꺼짐', 'status'));
     else if (!s.limits.length) card.append(el('p', '사용량 확인 불가', 'status'));
@@ -59,7 +61,7 @@ export function renderCards(container: HTMLElement, view: View, actions: Actions
     }
     if (view.permissions[p]) button(controls, '권한 철회', () => actions.revoke(p));
     const link = el('a', '사이트 열기'); link.href = HOME_URLS[p]; link.target = '_blank'; link.rel = 'noopener noreferrer'; controls.append(link);
-    card.append(controls); return card;
+    heading.append(controls); return card;
   });
   container.replaceChildren(...cards);
 }

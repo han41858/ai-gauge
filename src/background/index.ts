@@ -50,15 +50,19 @@ function changeSettings(change: (settings: Settings) => void | Promise<void>): P
     await writeSettings(parseSettings(settings));
   });
 }
-async function enableProvider(provider: Provider) {
-  let granted = false;
+async function enableProviders(providers: Provider[]) {
+  const granted: Provider[] = [];
   await changeSettings(async settings => {
-    granted = await chrome.permissions.contains({ origins: [ORIGINS[provider]] });
-    if (granted) settings.enabled[provider] = true;
+    for (const provider of providers) {
+      if (await chrome.permissions.contains({ origins: [ORIGINS[provider]] })) {
+        settings.enabled[provider] = true;
+        granted.push(provider);
+      }
+    }
   });
-  if (!granted) return;
+  if (!granted.length) return;
   await reconcile();
-  await refresh(provider, 'manual');
+  await Promise.all(granted.map(provider => refresh(provider, 'manual')));
 }
 async function initialize() {
   // Check retry/reset deadlines each minute; the scheduler keeps normal
@@ -89,7 +93,8 @@ chrome.runtime.onMessage.addListener((input: unknown, sender, sendResponse: (rep
       await Promise.all(PROVIDERS.filter(provider => !settings.enabled[provider]).map(provider => scheduler.invalidateTickets(provider)));
       await reconcile();
     }
-    if (message.type === 'enable') await enableProvider(message.provider);
+    if (message.type === 'enable') await enableProviders([message.provider]);
+    if (message.type === 'enable-many') await enableProviders(message.providers);
     if (message.type === 'context') await refresh(message.provider, 'event');
     if (message.type === 'refresh') await refresh(message.provider, message.trigger);
     if (message.type === 'view' && !sender.tab) void refreshAll('event').catch(() => undefined);
@@ -123,7 +128,7 @@ chrome.permissions.onAdded.addListener(added => {
   // the granted site's activation in the worker instead of relying on that UI.
   const providers = PROVIDERS.filter(provider => added.origins?.includes(ORIGINS[provider]));
   void (async () => {
-    await Promise.all(providers.map(enableProvider));
+    await enableProviders(providers);
     await reconcile();
     await publish();
   })().catch(() => undefined);

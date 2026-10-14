@@ -24,7 +24,7 @@ async function collectPage(options: Options = {}) {
   const location = new URL('https://gemini.google.com/app');
   const window = { WIZ_global_data: { SNlM0e: 'private-bootstrap-token' } };
   const sandbox = {
-    URL, URLSearchParams, AbortController, TextDecoder, location, window, clearTimeout,
+    URL, URLSearchParams, AbortController, AbortSignal, TextDecoder, location, window, clearTimeout,
     setTimeout(callback: () => void, milliseconds: number) {
       timers.push(milliseconds);
       return setTimeout(callback, options.policyTimeout && milliseconds === 3_000 ? 0 : milliseconds);

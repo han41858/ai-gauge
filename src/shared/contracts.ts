@@ -3,7 +3,7 @@ import { record } from './validation';
 import { isSettings } from '../storage/settings';
 import { parseSnapshot } from '../storage/snapshots';
 import { canRefreshFromPage } from './display-policy';
-export type Message = { type: 'view' } | { type: 'context'; provider: Provider } | { type: 'enable'; provider: Provider } | { type: 'disable'; provider: Provider } | { type: 'strips'; strips: Settings['strips'] } | { type: 'refresh'; provider: Provider; trigger: 'manual' | 'event' } | { type: 'settings'; settings: Settings };
+export type Message = { type: 'view' } | { type: 'context'; provider: Provider } | { type: 'enable'; provider: Provider } | { type: 'enable-many'; providers: Provider[] } | { type: 'disable'; provider: Provider } | { type: 'strips'; strips: Settings['strips'] } | { type: 'refresh'; provider: Provider; trigger: 'manual' | 'event' } | { type: 'settings'; settings: Settings };
 export type Reply = { ok: true; view: View } | { ok: false };
 export function parseMessage(input: unknown): Message | null {
   const r = record(input);
@@ -11,6 +11,11 @@ export function parseMessage(input: unknown): Message | null {
   const keys = Object.keys(r).sort().join(',');
   if (r.type === 'view' && keys === 'type') return { type: 'view' };
   if ((r.type === 'enable' || r.type === 'disable' || r.type === 'context') && keys === 'provider,type' && isProvider(r.provider)) return { type: r.type, provider: r.provider };
+  if (r.type === 'enable-many' && keys === 'providers,type' && Array.isArray(r.providers)
+    && r.providers.length > 0 && r.providers.length <= PROVIDERS.length
+    && r.providers.every(isProvider) && new Set(r.providers).size === r.providers.length) {
+    return { type: 'enable-many', providers: [...r.providers] };
+  }
   if (r.type === 'strips' && keys === 'strips,type') {
     const strips = record(r.strips);
     if (strips && Object.keys(strips).length === PAGE_PROVIDERS.length && PAGE_PROVIDERS.every(p => typeof strips[p] === 'boolean')) {

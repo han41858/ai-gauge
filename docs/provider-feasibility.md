@@ -6,9 +6,9 @@
 
 | 제공자 | 사용량 출처와 현재 구현 | 실제 계정 검증 |
 | --- | --- | --- |
-| ChatGPT | 열린 `chatgpt.com` 탭의 MAIN world에서 `/api/auth/session` → GET `/backend-api/wham/usage`. 기본·추가 플랜 제한을 하나의 `chatgpt` 스냅샷에 저장하고 일반 ChatGPT와 Codex 화면이 같은 결과를 읽음. 일반 채팅 모델별 한도 관찰기는 제거 | 사용자가 이전 빌드의 Work / Codex 플랜 사용량 수집을 확인. 개발 환경의 API 원문·계정별 reset 대조와 v1.2 실제 업그레이드는 미실시 |
-| Claude | GET `/api/organizations` → GET `/api/organizations/{uuid}/usage`. `five_hour`, `seven_day_*`, 모델별 `limits[]`를 정규화. 복수 조직은 임의 선택 없이 `ambiguous_account` | 사용자가 이전 빌드의 사용량·리셋 시각과 홈/채팅 표시 위치를 확인. 개발 환경의 원문·요금제/조직별 대조는 미실시 |
-| Gemini | `jSf9Qc` 읽기 전용 RPC. 사용자 제공 실제 관찰과 공개 프레임 자료로 독립 구현. 비공개 vendor·요금제 RPC·대화 이력·계정 조회 없음 | 202610142031 안내 후 사용자 실환경 수집 성공 확인. 웹앱 초기화 일치·입력창별 DOM은 별도 확인 필요 |
+| ChatGPT | `/api/auth/session` → GET `/backend-api/wham/usage`. 열린 탭 MAIN world를 우선하고 탭이 없을 때 같은 수집기를 워커에서 실행. 일반 ChatGPT와 Codex는 하나의 플랜 스냅샷 사용 | 사용자가 이전 빌드의 플랜 사용량 수집을 확인. 새 탭 없는 요청, 개발 환경의 API 원문·계정별 reset 대조는 미실시 |
+| Claude | GET `/api/organizations` → GET `/api/organizations/{uuid}/usage?cedar_ember=1`. 열린 탭 우선, 탭이 없으면 워커 조회. 기존 사용량 파서를 재사용하고 복수 조직은 `ambiguous_account` | 사용자가 기존 사용량·리셋 시각과 홈/채팅 표시를 확인. 새 탭 없는 요청, 원문·요금제/조직별 대조는 미실시 |
+| Gemini | `jSf9Qc` 읽기 전용 RPC와 선택적 `otAQ7b` 정책 조회. 열린 탭 우선, 탭이 없으면 `/app` bootstrap 후 같은 RPC·파서 사용. 비공개 vendor·대화 이력·계정 조회 없음 | 202610142031 안내 후 사용자 실환경 수집 성공 확인. 새 탭 없는 요청, 웹앱 초기화 일치·입력창별 DOM은 별도 확인 필요 |
 
 각 서비스의 정상 값, 미확인 값, 수집 실패, 신뢰할 수 없는 이전 수집값을 구분합니다. 정상 캐시의 시간 경과만으로 경고하지 않습니다. 실제로 받은 창만 표시하며 별도 백엔드 없이 브라우저 로컬에서 수집·저장·표시합니다.
 
@@ -24,12 +24,14 @@
 
 | 직접 확인한 공개 자료 | 확인 범위와 채택 여부 |
 | --- | --- |
-| [Claude Tuner `api-gemini.js`](https://github.com/chaehyun2/claudetuner/blob/9b94ac3c412732d88cc5a570f0dfe0603d1fc71c/bg/api-gemini.js), [`parse-gemini.js`](https://github.com/chaehyun2/claudetuner/blob/9b94ac3c412732d88cc5a570f0dfe0603d1fc71c/bg/parse-gemini.js), [`collect-gemini.js`](https://github.com/chaehyun2/claudetuner/blob/9b94ac3c412732d88cc5a570f0dfe0603d1fc71c/bg/collect-gemini.js) | 커밋 시각 `2026-10-12T17:10:33+09:00`. MAIN world의 `WIZ_global_data.SNlM0e`, `f.req`의 중첩 JSON 문자열, `jSf9Qc`와 창 배열 계약을 확인했습니다. 원본은 URL/프레임 처리에 비공개 vendor를 사용하지만 AI Gauge는 그 모듈을 가져오지 않습니다. 전체 HTML 조회·토큰 검색, 계정 정보 조회, 서버 전송 경로는 채택하지 않습니다. |
+| [Claude Tuner `api-gemini.js`](https://github.com/chaehyun2/claudetuner/blob/9b94ac3c412732d88cc5a570f0dfe0603d1fc71c/bg/api-gemini.js), [`parse-gemini.js`](https://github.com/chaehyun2/claudetuner/blob/9b94ac3c412732d88cc5a570f0dfe0603d1fc71c/bg/parse-gemini.js), [`collect-gemini.js`](https://github.com/chaehyun2/claudetuner/blob/9b94ac3c412732d88cc5a570f0dfe0603d1fc71c/bg/collect-gemini.js) | 커밋 시각 `2026-10-12T17:10:33+09:00`. MAIN world의 `WIZ_global_data.SNlM0e`, `/app` bootstrap, `f.req`의 중첩 JSON 문자열, `jSf9Qc`와 창 배열 계약을 확인했습니다. 원본은 URL/프레임 처리에 비공개 vendor를 사용하지만 AI Gauge는 그 모듈을 가져오지 않습니다. AI Gauge의 bootstrap은 실제 script의 JSON으로 범위를 제한하며 HTML 임의 위치의 토큰 검색·계정 정보 조회·서버 전송 경로를 채택하지 않습니다. |
 | [`gemini-usage` 내부 API 문서](https://github.com/EricAndrechek/gemini-usage/blob/ed68b31576fd4511b41b9413a079b38867ed61f1/_docs/GEMINI_API_INTERNALS.md) | 커밋 시각 `2026-04-08T07:17:48-04:00`, 문서 관찰 시점은 2026년 4월입니다. 공개 endpoint, form 필드, 선택적 XSSI와 UTF-16 코드 단위 길이 프레임·중첩 JSON 형식만 참고합니다. 이 문서는 `jSf9Qc`를 설명하지 않으며 대화 이력 집계·고정 모델 한도·쿠키 추출 방식은 채택하지 않습니다. “quota API 없음”이라는 당시 설명을 10월의 사용자 관찰보다 최신 근거로 취급하지 않습니다. |
 
 구현 계약은 `[remaining, utilizationRatio, windowType, [[resetSeconds, resetNanos]]]`입니다. 실제로 받은 type 1은 5시간, type 2는 7일로 표시하고 `utilizationRatio`의 유한한 0~1 값만 백분율로 변환합니다. 초기화는 Unix 초와 선택적 나노초를 UTC로 정규화합니다. 알려진 창의 비율·초기화가 모두 누락/null이면 항목은 유지하되 두 값 모두 확인 불가이며 0%로 바꾸지 않습니다. 제공된 잘못된 타입·범위, 중복 창은 오류입니다. `remaining`의 단위, plan ID, 기타 상태의 의미는 미확인이므로 사용량 메시지 수·요금제·무제한 상태를 추정하지 않습니다. 없는 창을 만들거나 서로 합산하지 않습니다.
 
-구현 전 결정과 적용: 승인된 `https://gemini.google.com/*` 탭의 MAIN world에서 고정된 절대 HTTPS URL의 사용량 RPC만 동일 출처로 요청하여 문서의 base URL이 바뀌어도 요청 대상이 달라지지 않게 합니다. 이미 페이지가 가진 CSRF 토큰은 해당 함수에서 요청에만 일시적으로 사용하고 반환·저장·로그하지 않습니다. 토큰을 구할 수 없으면 안전한 미지원 상태로 종료하며 HTML/대화/쿠키 조회로 우회하지 않습니다. `source-path=/usage`, `redirect: error`, 15초 요청 제한과 1MiB 스트림 읽기 상한을 사용하며 조기 종료에도 요청을 중단합니다. 응답 프레임을 페이지 안에서 검증하고 창 유형·사용률·초기화 필드만 worker에 반환하여 다시 검증합니다. HTTP 401·403·429·네트워크 오류를 구분하고 실패 응답 원문·예외 문자열을 넘기지 않습니다. 알려진 RPC 내부 제한 코드 1037/1060은 rate-limited로, 해석되지 않은 내부 상태는 unsupported로 처리합니다. HTTP 200 로그인 HTML을 성공 사용량이나 확정된 로그아웃으로 간주하지 않고 응답 형식 오류로 처리합니다. 별도 백엔드나 비공개 모듈은 필요하지 않습니다.
+현재 요청 경로: 승인된 `https://gemini.google.com/*` 탭의 MAIN world를 우선 사용하며 고정된 절대 HTTPS URL로 요청하여 문서의 base URL이 바뀌어도 요청 대상이 달라지지 않게 합니다. 페이지의 CSRF 토큰은 해당 수집 함수에서 요청에만 일시적으로 사용하고 저장·로그하지 않습니다. 페이지 토큰을 구하지 못하거나 요청이 실패하면 다른 계정이나 워커 경로로 전환하지 않습니다. 서비스 탭이 아예 없는 경우에만 공개 bootstrap 계약에 따라 고정 `/app`의 실제 script에서 `WIZ_global_data.SNlM0e`를 읽고 기존 RPC를 호출합니다. 이는 대화 이력·쿠키 직접 조회·원격 코드 실행을 포함하지 않으며 [background-collection.md](background-collection.md)에 범위와 실계정 미검증을 기록합니다.
+
+RPC에는 `source-path=/usage`, `redirect: error`, 15초 수집 제한과 1MiB 스트림 읽기 상한을 적용하며 조기 종료에도 요청을 중단합니다. 응답 프레임을 검증하고 사용량 필드와 확인된 요금제만 정규화하여 반환합니다. HTTP 401·403·429·네트워크 오류를 구분하고 실패 응답 원문·예외 문자열을 넘기지 않습니다. 알려진 RPC 내부 제한 코드 1037/1060은 rate-limited로, 해석되지 않은 내부 상태는 unsupported로 처리합니다. RPC의 HTTP 200 HTML은 성공 사용량이나 확정된 로그아웃으로 간주하지 않고 응답 형식 오류로 처리합니다. 별도 백엔드나 비공개 모듈은 필요하지 않습니다.
 
 여러 Google 계정의 RPC 대상 선택은 확인되지 않았습니다. `/u/1` 또는 `authuser=1` 등 명시적으로 기본 계정이 아닌 경로·쿼리는 다른 계정을 잘못 조회하지 않도록 요청 전에 unsupported로 종료합니다. 경로 `/u/0`과 쿼리 `authuser=0`은 기본 계정 경로로 허용하되 **실제 계정별 일치는 미검증**입니다. 경로와 쿼리가 충돌하거나 여러 `authuser` 값 중 기본값이 아닌 값이 있어도 요청하지 않습니다.
 
@@ -111,8 +113,8 @@ OpenAI의 [`openai/codex` 커밋 `95273b84fbff40f9df7d71d50f1ca52c6489b25d`](htt
 | 공개 파일 | 참고 범위 | 채택하지 않은 기능 |
 | --- | --- | --- |
 | `bg/api-chatgpt.js`, `bg/parse-chatgpt.js` | 페이지 세션 bearer와 사용량 창 계약 | 쿠키 추출·일반 채팅 사용량 추정 |
-| `bg/api.js`, `bg/parse-claude.js`, `bg/claude-usage-path.js` | 조직별 동일 출처 사용량 GET·응답 shape | 임의 조직 선택·추가 reset-pass·원격 flag |
-| `bg/api-gemini.js`, `bg/parse-gemini.js`, `bg/collect-gemini.js` | 공개 토큰 위치·RPC 요청·창 배열 계약 | 비공개 `vendor-ai/gemini-batch.js`·전체 HTML 토큰 검색·계정/요금제 추정 |
+| `bg/api.js`, `bg/parse-claude.js`, `bg/claude-usage-path.js` | 조직별 사용량 GET·응답 shape·읽기 전용 초기화 티켓 계약 | 임의 조직 선택·티켓 소비·원격 flag |
+| `bg/api-gemini.js`, `bg/parse-gemini.js`, `bg/collect-gemini.js` | 공개 토큰 위치·`/app` bootstrap·RPC 요청·창 배열 계약 | 비공개 `vendor-ai/gemini-batch.js`·HTML 임의 위치 토큰 검색·계정/요금제 추정 |
 | `bg/collect*.js`, `bg/storage.js` | 원본에 별도 서버 기능이 있음을 확인 | `/api/snapshots`, 계정 연결·팀 분석·이력·추천·동기화·원격 분석 |
 
 이 기능들은 로컬 사용량 조회에 필요한 의존성이 아닙니다. AI Gauge는 원본 전체를 포크하거나 원본 코드·파일을 복사하지 않고 공개 계약을 참고해 TypeScript로 독립 작성했습니다. 참고 프로젝트들의 MIT 저작권은 위에 기록했으며 향후 코드를 실제 재사용하면 MIT 원문과 저작권 고지를 포함해야 합니다.
@@ -120,11 +122,11 @@ OpenAI의 [`openai/codex` 커밋 `95273b84fbff40f9df7d71d50f1ca52c6489b25d`](htt
 ## 인증·CORS·MV3·프라이버시
 
 - 필수 권한은 `storage`, `alarms`, `scripting`; 선택 호스트는 `https://chatgpt.com/*`, `https://claude.ai/*`, `https://gemini.google.com/*`입니다.
-- 승인된 열린 서비스 탭의 MAIN world에서 고정된 동일 출처 요청을 수행합니다. ChatGPT·Claude는 GET, Gemini는 읽기 전용 usage RPC의 POST입니다. extension-origin cross-origin fetch/CORS에 의존하지 않습니다. 실제 CSP·SameSite·보호장치 호환은 서비스별 실계정 검증이 필요합니다.
-- ChatGPT bearer, Gemini CSRF 토큰, Claude 조직 UUID는 페이지 함수 안에서 해당 요청에만 일시적으로 쓰고 반환·영구 저장·로그하지 않습니다. 쿠키는 브라우저가 포함하며 직접 추출하거나 헤더를 구성하지 않습니다.
+- 승인된 열린 서비스 탭의 MAIN world를 우선 사용합니다. 해당 서비스 탭이 0개이면 기존 호스트 권한과 `credentials: include`를 사용하는 워커 요청을 수행합니다. ChatGPT·Claude는 기존 GET을, Gemini는 `/app` GET 후 기존 읽기 전용 RPC POST를 재사용합니다. 워커 경로의 실제 SameSite·쿠키·서비스 보호 정책 호환은 실계정 검증이 필요하며 Chrome 호스트 권한만으로 성공을 보장하지 않습니다.
+- ChatGPT bearer, Gemini CSRF 토큰, Claude 조직 UUID는 수집 함수 안에서 해당 요청에만 일시적으로 쓰고 정규화 결과·UI에 반환하거나 저장·로그하지 않습니다. 쿠키는 브라우저가 포함하며 직접 추출하거나 헤더를 구성하지 않습니다. Gemini bootstrap HTML도 저장하지 않습니다.
 - `cookies`, `tabs`, `webRequest`, 전체 사이트 권한, 임의 URL/메서드 요청, 대화·프롬프트·첨부·이력 조회가 없습니다.
-- MAIN world 반환은 허용한 usage 필드로 축소하고 worker에서 재검증합니다. 원본 응답·session·계정·이메일·예외 문자열을 기록하지 않습니다.
-- 수집 탭이 없으면 `open_tab`, 실행할 수 없으면 `tab_access_failed`입니다. 마지막 활성 창의 해당 서비스 탭을 우선하며 오류 후 다른 계정 탭을 순회하지 않습니다.
+- 수집 결과는 허용한 usage 필드로 축소하고 공통 파서에서 재검증합니다. 원본 응답·session·계정·이메일·예외 문자열을 기록하지 않습니다.
+- 정지·폐기된 서비스 탭만 있으면 `open_tab`, 선택한 탭에서 실행할 수 없으면 `tab_access_failed`입니다. 이때 기본 쿠키 계정으로 바꾸지 않습니다. 마지막 활성 창의 해당 서비스 탭을 우선하며 오류 후 다른 계정 탭을 순회하지 않습니다. 탭이 실제로 없는 경우의 워커 요청에서도 실패를 0%로 만들지 않습니다.
 - Content script는 편집기·중지 버튼·래퍼의 존재와 레이아웃만 검사합니다. 진단에 텍스트·원본 DOM·URL·계정 정보를 반환하지 않습니다.
 
 ## 실패 상태 검증
@@ -141,7 +143,8 @@ OpenAI의 [`openai/codex` 커밋 `95273b84fbff40f9df7d71d50f1ca52c6489b25d`](htt
 | 정상 캐시의 10분 경과 | 경고 없이 기존 값 유지, 공유 워커에서 자동 갱신 |
 | 실제 초기화 시각 경과 | reset_pending; 새 결과까지 현재 수치를 숨기며 0%나 다음 시각을 추정하지 않음 |
 | 손상·중복·비유효 응답 | invalid_response 또는 위 Gemini 고정 단계 코드; 없는 값은 null로 유지하고 0을 만들지 않음 |
-| Gemini token 없음 / 비기본 계정 / 해석되지 않은 RPC 상태 | unsupported; 요청 우회나 계정 fallback 없음 |
+| Gemini 페이지 token 없음 / 비기본 계정 / 해석되지 않은 RPC 상태 | unsupported; 요청 우회나 계정 fallback 없음 |
+| Gemini 워커 bootstrap token 확인 불가 / 정지·폐기된 탭만 존재 | open_tab; 로그인한 서비스 탭 확인 안내. 다른 계정으로 대체하지 않음 |
 | Gemini HTTP 200 HTML Content-Type | gemini_response_type; 정상 사용량·확정된 로그아웃으로 해석하지 않음 |
 | Claude 복수 조직 | ambiguous_account; 임의 조직 선택 없음 |
 

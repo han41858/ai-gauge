@@ -43,8 +43,9 @@ test('real background wiring: initialization, merged content refreshes, permissi
       }
     }
   };
-  const previous = globalThis.chrome;
+  const previous = globalThis.chrome, previousFetch = globalThis.fetch;
   globalThis.chrome = mock as unknown as typeof chrome;
+  globalThis.fetch = async () => { throw new Error('Synthetic network unavailable'); };
   const waitFor = async (condition: () => boolean) => { for (let i = 0; i < 100; i++) { if (condition()) return; await new Promise(r => setTimeout(r, 5)); } assert(condition(), 'Background operation did not complete'); };
   const popup = { id: 'ext', url: 'chrome-extension://ext/popup.html' };
   const content = { id: 'ext', url: tab.url!, tab, frameId: 0 };
@@ -78,7 +79,7 @@ test('real background wiring: initialization, merged content refreshes, permissi
     tab.url = 'https://claude.ai/new'; events.updated.emit(1, { status: 'complete' }, tab);
     await waitFor(() => (stored['snapshot:v2:claude'] as ReturnType<typeof emptySnapshot>)?.state === 'ok');
     assert.equal(requests, 2); assert.equal((stored['snapshot:v2:claude'] as ReturnType<typeof emptySnapshot>).limits[0]?.percent, 35);
-  } finally { globalThis.chrome = previous; }
+  } finally { globalThis.chrome = previous; globalThis.fetch = previousFetch; }
 });
 
 test('worker startup and periodic renewal publish one shared cache to ChatGPT and Codex tabs without activation', async () => {

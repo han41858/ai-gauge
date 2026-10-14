@@ -2,15 +2,16 @@ import type { TransportResult } from './tab-transport';
 
 // Chrome serializes this entire function into MAIN world: helpers must stay inside it.
 // Only quota and allowlisted policy signals leave the page; tokens and RPC envelopes never do.
-export async function collectGeminiInPage(): Promise<TransportResult> {
+export async function collectGeminiInPage(workerToken?: string, workerSignal?: AbortSignal): Promise<TransportResult> {
   const result = (status: number, code: string | null = null, wait: string | null = null, data: unknown = null): TransportResult =>
     ({ status, code, retryAfter: wait, data });
-  if (location.origin !== 'https://gemini.google.com') return result(0, 'open_tab');
-  const page = new URL(location.href);
-  const account = /^\/u\/([^/]+)(?:\/|$)/.exec(page.pathname)?.[1];
+  const page = workerToken === undefined ? new URL(location.href) : null;
+  if (page && page.origin !== 'https://gemini.google.com') return result(0, 'open_tab');
+  const account = page ? /^\/u\/([^/]+)(?:\/|$)/.exec(page.pathname)?.[1] : undefined;
   // A non-default account must not silently query the browser's default Google account.
-  if ((account !== undefined && account !== '0') || page.searchParams.getAll('authuser').some(value => value !== '0')) return result(200, 'unsupported');
+  if ((account !== undefined && account !== '0') || page?.searchParams.getAll('authuser').some(value => value !== '0')) return result(200, 'unsupported');
   const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 15_000);
+  const signal = workerSignal ? AbortSignal.any([controller.signal, workerSignal]) : controller.signal;
   const fail = (code = 'gemini_frame_invalid'): never => { throw new Error(code); };
   const sanitize = (payload: unknown): unknown => {
     const invalid = (): never => fail('gemini_quota_invalid');
@@ -154,14 +155,14 @@ export async function collectGeminiInPage(): Promise<TransportResult> {
     return [...policies];
   };
   try {
-    const token = (window as unknown as { WIZ_global_data?: { SNlM0e?: unknown } }).WIZ_global_data?.SNlM0e;
+    const token = workerToken ?? (window as unknown as { WIZ_global_data?: { SNlM0e?: unknown } }).WIZ_global_data?.SNlM0e;
     if (typeof token !== 'string' || !token || token.length > 16_384) return result(200, 'unsupported');
     const request = (rpc: 'jSf9Qc' | 'otAQ7b', signal: AbortSignal) => fetch(`https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=${rpc}&source-path=%2Fusage&rt=c`, {
       method: 'POST', credentials: 'include', cache: 'no-store', redirect: 'error', signal,
       headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8', 'X-Same-Domain': '1' },
       body: new URLSearchParams({ 'f.req': JSON.stringify([[[rpc, '[]', null, 'generic']]]), at: token }).toString()
     });
-    const response = await request('jSf9Qc', controller.signal);
+    const response = await request('jSf9Qc', signal);
     if (!response.ok) {
       const wait = response.headers.get('Retry-After');
       return result(response.status, null, wait !== null && wait.length <= 100 ? wait : null);
@@ -171,12 +172,12 @@ export async function collectGeminiInPage(): Promise<TransportResult> {
       let plan: { planId: number | null; policies: string[] } | null = null;
       const planController = new AbortController(), planTimeout = setTimeout(() => planController.abort(), 3_000);
       try {
-        const policyResponse = await request('otAQ7b', planController.signal);
+        const policyResponse = await request('otAQ7b', AbortSignal.any([signal, planController.signal]));
         if (policyResponse.ok) {
           const policies = policySignals(decode(await read(policyResponse), 'otAQ7b'));
           const planId: unknown = Array.isArray(raw) ? raw[0] : null;
-          if (policies && location.href === page.href
-            && (window as unknown as { WIZ_global_data?: { SNlM0e?: unknown } }).WIZ_global_data?.SNlM0e === token) {
+          if (policies && (!page || (location.href === page.href
+            && (window as unknown as { WIZ_global_data?: { SNlM0e?: unknown } }).WIZ_global_data?.SNlM0e === token))) {
             plan = { planId: typeof planId === 'number' && Number.isSafeInteger(planId) && planId >= 0 ? planId : null, policies };
           }
         }

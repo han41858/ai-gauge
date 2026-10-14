@@ -93,6 +93,14 @@ function popup(background: ReturnType<typeof worker>, grant: (permissions: chrom
   dom.window.eval(popupBundle);
   return dom;
 }
+function chooseServices(dom: JSDOM, providers: Provider[]) {
+  for (const provider of ['chatgpt', 'claude', 'gemini'] as const) {
+    (dom.window.document.getElementById(`choose-${provider}`) as HTMLInputElement).checked = providers.includes(provider);
+  }
+  dom.window.document.getElementById('onboarding-form')!.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+}
+const setupReady = (dom: JSDOM) => !dom.window.document.getElementById('onboarding')!.hidden
+  && !(dom.window.document.getElementById('onboarding-submit') as HTMLButtonElement).disabled;
 
 test('activation message accepts only a provider and remains restricted to the extension popup', () => {
   const message = parseMessage({ type: 'enable', provider: 'claude' });
@@ -101,6 +109,80 @@ test('activation message accepts only a provider and remains restricted to the e
   assert.equal(parseMessage({ type: 'enable', provider: 'claude', force: true }), null);
   assert.equal(authorized(message, { ...popupSender, id: 'other' }, popupSender.id), false);
   assert.equal(authorized(message, { id: popupSender.id, url: 'https://claude.ai/new', frameId: 0, tab: { id: 2, url: 'https://claude.ai/new' } } as chrome.runtime.MessageSender, popupSender.id), false);
+});
+
+test('batch activation rejects empty, duplicate, unknown or injected providers and content senders', () => {
+  const message = parseMessage({ type: 'enable-many', providers: ['chatgpt', 'gemini'] });
+  assert(message); assert(authorized(message, popupSender, popupSender.id));
+  for (const raw of [
+    { type: 'enable-many', providers: [] }, { type: 'enable-many', providers: ['claude', 'claude'] },
+    { type: 'enable-many', providers: ['chatgpt', 'unknown'] }, { type: 'enable-many', providers: 'chatgpt' },
+    { type: 'enable-many', providers: ['chatgpt'], origins: ['https://unrelated.invalid/*'] }
+  ]) assert.equal(parseMessage(raw), null);
+  assert.equal(authorized(message, { id: popupSender.id, url: 'https://chatgpt.com/', frameId: 0,
+    tab: { id: 1, url: 'https://chatgpt.com/' } } as chrome.runtime.MessageSender, popupSender.id), false);
+});
+
+test('first run selects three services and grants them in one user gesture and permission request', async () => {
+  const background = worker(); await background.ready();
+  let calls = 0, insideClick = false;
+  const dom = popup(background, async permissions => {
+    calls++; assert(insideClick, 'permission request must happen synchronously inside the click gesture');
+    assert.deepEqual([...permissions.origins!], [ORIGINS.chatgpt, ORIGINS.claude, ORIGINS.gemini]);
+    background.grant(permissions.origins!); return true;
+  });
+  try {
+    await waitFor(() => setupReady(dom));
+    assert.equal(dom.window.document.querySelectorAll('#provider-choices input:checked').length, 3);
+    assert.equal(dom.window.document.getElementById('cards')!.hidden, true);
+    insideClick = true; dom.window.document.getElementById('onboarding-submit')!.click(); insideClick = false;
+    await waitFor(() => dom.window.document.getElementById('onboarding')!.hidden);
+    assert.equal(calls, 1);
+    assert.deepEqual(background.settings().enabled, { chatgpt: true, claude: true, gemini: true });
+    assert.deepEqual([...background.requests].sort(), ['chatgpt', 'claude', 'gemini']);
+    assert.equal(background.messages.filter(message => (message as { type: string }).type === 'enable-many').length, 1);
+    assert.equal(dom.window.document.getElementById('cards')!.hidden, false);
+  } finally { dom.window.close(); }
+});
+
+test('selected services activate after permission dialog closes the first-run popup without enabling unchecked services', async () => {
+  const background = worker(); await background.ready();
+  let requested: string[] = [], calls = 0;
+  const dom = popup(background, permissions => {
+    calls++; requested = [...permissions.origins!]; background.grant(requested);
+    return new Promise<boolean>(() => {});
+  });
+  await waitFor(() => setupReady(dom));
+  chooseServices(dom, ['chatgpt', 'gemini']);
+  dom.window.document.getElementById('onboarding-submit')!.click(); dom.window.close();
+  await waitFor(() => background.snapshot('chatgpt')?.state === 'ok' && background.snapshot('gemini')?.state === 'ok');
+  assert.equal(calls, 1); assert.deepEqual(requested, [ORIGINS.chatgpt, ORIGINS.gemini]);
+  assert.deepEqual(background.settings().enabled, { chatgpt: true, claude: false, gemini: true });
+  assert.deepEqual([...background.requests].sort(), ['chatgpt', 'gemini']);
+});
+
+test('empty selection and canceled batch permission request leave first run unchanged', async () => {
+  const background = worker(); await background.ready(); let calls = 0;
+  const dom = popup(background, async () => { calls++; return false; });
+  try {
+    await waitFor(() => setupReady(dom));
+    chooseServices(dom, []);
+    const button = dom.window.document.getElementById('onboarding-submit') as HTMLButtonElement;
+    assert(button.disabled); button.click(); assert.equal(calls, 0);
+    chooseServices(dom, ['chatgpt', 'claude']); button.click();
+    await waitFor(() => dom.window.document.getElementById('feedback')!.textContent!.includes('취소'));
+    assert.equal(calls, 1); assert.equal(dom.window.document.getElementById('onboarding')!.hidden, false);
+    assert.deepEqual(background.settings(), defaults()); assert.deepEqual(background.requests, []);
+  } finally { dom.window.close(); }
+});
+
+test('batch activation enables only hosts with actual permission and preserves unrelated settings', async () => {
+  const background = worker([ORIGINS.chatgpt]); await background.ready();
+  const reply = await background.send({ type: 'enable-many', providers: ['chatgpt', 'claude'] });
+  assert(reply.ok);
+  assert.deepEqual(structuredClone(reply.view.settings.enabled), { chatgpt: true, claude: false, gemini: false });
+  assert.deepEqual(structuredClone(reply.view.settings.strips), defaults().strips);
+  assert.deepEqual(background.requests, ['chatgpt']);
 });
 
 test('visibility and disable patches accept only their exact fields and cannot be sent by site content', () => {
@@ -127,9 +209,10 @@ test('a single permission click activates and collects in the worker even if the
     background.grant(permissions.origins!);
     return new Promise<boolean>(() => {});
   });
-  await waitFor(() => dom.window.document.querySelectorAll('.grant').length === 3);
+  await waitFor(() => setupReady(dom));
+  chooseServices(dom, ['chatgpt']);
   insideClick = true;
-  dom.window.document.querySelector<HTMLButtonElement>('[data-provider="chatgpt"] .grant')!.click();
+  dom.window.document.getElementById('onboarding-submit')!.click();
   insideClick = false; dom.window.close();
   await waitFor(() => background.snapshot('chatgpt')?.state === 'ok');
   assert.equal(requestedDuringClick, true, 'permission request must retain the direct user gesture');
@@ -151,8 +234,9 @@ for (const provider of ['claude', 'gemini'] as const) test(`denying ${provider} 
   const background = worker(); await background.ready();
   const dom = popup(background, async () => false);
   try {
-    await waitFor(() => dom.window.document.querySelectorAll('.grant').length === 3);
-    dom.window.document.querySelector<HTMLButtonElement>(`[data-provider="${provider}"] .grant`)!.click();
+    await waitFor(() => setupReady(dom));
+    chooseServices(dom, [provider]);
+    dom.window.document.getElementById('onboarding-submit')!.click();
     await waitFor(() => dom.window.document.getElementById('feedback')!.textContent!.includes('취소'));
     assert.equal(background.settings().enabled[provider], false);
     assert.deepEqual(background.requests, []);
@@ -269,8 +353,9 @@ test('one Gemini permission click activates only Gemini after the popup closes',
   const background = worker(); await background.ready();
   let requested: string[] = [];
   const dom = popup(background, permissions => { requested = permissions.origins!; background.grant(requested); return new Promise<boolean>(() => {}); });
-  await waitFor(() => dom.window.document.querySelectorAll('.grant').length === 3);
-  dom.window.document.querySelector<HTMLButtonElement>('[data-provider="gemini"] .grant')!.click(); dom.window.close();
+  await waitFor(() => setupReady(dom));
+  chooseServices(dom, ['gemini']);
+  dom.window.document.getElementById('onboarding-submit')!.click(); dom.window.close();
   await waitFor(() => background.snapshot('gemini')?.state === 'ok');
   assert.deepEqual([...requested], [ORIGINS.gemini]); assert.deepEqual(background.requests, ['gemini']);
   assert.deepEqual(background.settings().enabled, { chatgpt: false, claude: false, gemini: true });

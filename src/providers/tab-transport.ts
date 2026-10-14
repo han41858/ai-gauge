@@ -2,13 +2,14 @@ import { GEMINI_RESPONSE_ERRORS, ORIGINS, type Provider } from '../shared/types'
 import { CollectionError, httpError, retryAfter } from '../shared/errors';
 import { record } from '../shared/validation';
 import { collectGeminiInPage } from './gemini-transport';
+import { collectGeminiInWorker } from './gemini-bootstrap';
 export interface TransportResult { status: number; code: string | null; retryAfter: string | null; data: unknown }
 
 // Chrome serializes this function. It must contain its helpers and must never return credentials,
 // account identifiers, error bodies, arbitrary API fields, or the raw session response.
-export async function collectInPage(provider: 'chatgpt' | 'claude', scopeSalt = ''): Promise<TransportResult> {
+export async function collectInPage(provider: 'chatgpt' | 'claude', scopeSalt = '', mode: 'page' | 'worker' = 'page'): Promise<TransportResult> {
   const origin = provider === 'chatgpt' ? 'https://chatgpt.com' : 'https://claude.ai';
-  if (location.origin !== origin) return { status: 0, code: 'open_tab', retryAfter: null, data: null };
+  if (mode === 'page' && location.origin !== origin) return { status: 0, code: 'open_tab', retryAfter: null, data: null };
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
   const result = (status: number, code: string | null = null, wait: string | null = null, data: unknown = null): TransportResult => ({ status, code, retryAfter: wait, data });
@@ -189,8 +190,11 @@ export function unwrapTransport(value: unknown): unknown {
   return r.data;
 }
 async function collectionTab(provider: Provider): Promise<chrome.tabs.Tab | undefined> {
-  const eligible = (await chrome.tabs.query({ url: ORIGINS[provider] })).filter(tab =>
-    !tab.discarded && !tab.frozen && typeof tab.id === 'number');
+  const tabs = await chrome.tabs.query({ url: ORIGINS[provider] });
+  const eligible = tabs.filter(tab => !tab.discarded && !tab.frozen && typeof tab.id === 'number');
+  // An unavailable existing tab may represent a different account. Never silently
+  // replace that context with the browser's default cookie session.
+  if (tabs.length && !eligible.length) throw new CollectionError('open_tab');
   if (eligible.length <= 1) return eligible[0];
   // Every window can have an active tab. Prefer the tab the user is actually
   // looking at, and select only once rather than trying another account on error.
@@ -201,7 +205,11 @@ async function collectionTab(provider: Provider): Promise<chrome.tabs.Tab | unde
 export async function collectFromTab(provider: Provider): Promise<unknown> {
   if (!await chrome.permissions.contains({ origins: [ORIGINS[provider]] })) throw new CollectionError('permission_required', 'permission_required');
   const tab = await collectionTab(provider);
-  if (typeof tab?.id !== 'number') throw new CollectionError('open_tab');
+  if (typeof tab?.id !== 'number') {
+    return unwrapTransport(provider === 'gemini'
+      ? await collectGeminiInWorker()
+      : await collectInPage(provider, ticketScopeSalt(), 'worker'));
+  }
   let results: chrome.scripting.InjectionResult<TransportResult>[];
   try { results = provider === 'gemini'
     ? await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: collectGeminiInPage })
