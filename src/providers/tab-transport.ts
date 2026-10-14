@@ -1,20 +1,22 @@
-import { ORIGINS, providerFromUrl, type Provider } from '../shared/types';
+import { ORIGINS, type Provider } from '../shared/types';
 import { CollectionError, httpError, retryAfter } from '../shared/errors';
 import { record } from '../shared/validation';
-import { readChatGPTObservation } from './chatgpt-observer';
+import { collectGeminiInPage } from './gemini-transport';
 export interface TransportResult { status: number; code: string | null; retryAfter: string | null; data: unknown }
 
 // Chrome serializes this function. It must contain its helpers and must never return credentials,
 // account metadata, error bodies, arbitrary API fields, or the raw session response.
-export async function collectInPage(provider: 'work_codex' | 'claude'): Promise<TransportResult> {
-  if (location.origin !== (provider === 'work_codex' ? 'https://chatgpt.com' : 'https://claude.ai')) return { status: 0, code: 'open_tab', retryAfter: null, data: null };
+export async function collectInPage(provider: 'chatgpt' | 'claude'): Promise<TransportResult> {
+  const origin = provider === 'chatgpt' ? 'https://chatgpt.com' : 'https://claude.ai';
+  if (location.origin !== origin) return { status: 0, code: 'open_tab', retryAfter: null, data: null };
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
   const result = (status: number, code: string | null = null, wait: string | null = null, data: unknown = null): TransportResult => ({ status, code, retryAfter: wait, data });
   const object = (v: unknown): Record<string, unknown> | null => v !== null && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : null;
   const numeric = (v: unknown): number | null => typeof v === 'number' && Number.isFinite(v) ? v : null;
   const text = (v: unknown): string | null => typeof v === 'string' && v.length <= 120 ? v : null;
-  const get = (path: string, headers: Record<string, string> = {}) => fetch(path, { method: 'GET', credentials: 'include', cache: 'no-store', redirect: 'error', signal: controller.signal, headers: { Accept: 'application/json', ...headers } });
+  // Absolute URLs prevent a page's <base> from redirecting credentialed reads.
+  const get = (path: string, headers: Record<string, string> = {}) => fetch(`${origin}${path}`, { method: 'GET', credentials: 'include', cache: 'no-store', redirect: 'error', signal: controller.signal, headers: { Accept: 'application/json', ...headers } });
   const errorResult = (r: Response) => result(r.status, null, r.headers.get('Retry-After'));
   const read = async (r: Response): Promise<unknown> => {
     if (!r.headers.get('content-type')?.includes('application/json')) throw new Error('invalid_response');
@@ -29,7 +31,7 @@ export async function collectInPage(provider: 'work_codex' | 'claude'): Promise<
     return out;
   };
   try {
-    if (provider === 'work_codex') {
+    if (provider === 'chatgpt') {
       const sessionResp = await get('/api/auth/session');
       if (!sessionResp.ok) return errorResult(sessionResp);
       const session = object(await read(sessionResp));
@@ -67,6 +69,7 @@ export function unwrapTransport(value: unknown): unknown {
   const r = record(value);
   if (!r || typeof r.status !== 'number' || !Number.isInteger(r.status) || r.status < 0 || r.status > 599) throw new CollectionError('invalid_response');
   if (r.code !== null) {
+    if (r.code === 'unsupported') throw new CollectionError('unsupported', 'unsupported');
     if (r.code === 'network' || r.code === 'invalid_response' || r.code === 'open_tab' || r.code === 'ambiguous_account') throw new CollectionError(r.code);
     throw new CollectionError('invalid_response');
   }
@@ -75,7 +78,7 @@ export function unwrapTransport(value: unknown): unknown {
 }
 async function collectionTab(provider: Provider): Promise<chrome.tabs.Tab | undefined> {
   const eligible = (await chrome.tabs.query({ url: ORIGINS[provider] })).filter(tab =>
-    !tab.discarded && !tab.frozen && typeof tab.id === 'number' && (provider !== 'chatgpt' || providerFromUrl(tab.url) === 'chatgpt'));
+    !tab.discarded && !tab.frozen && typeof tab.id === 'number');
   if (eligible.length <= 1) return eligible[0];
   // Every window can have an active tab. Prefer the tab the user is actually
   // looking at, and select only once rather than trying another account on error.
@@ -83,22 +86,14 @@ async function collectionTab(provider: Provider): Promise<chrome.tabs.Tab | unde
   return eligible.find(tab => focused.some(candidate => candidate.id === tab.id && candidate.active))
     ?? eligible.sort((a, b) => Number(b.active) - Number(a.active))[0];
 }
-export async function collectFromTab(provider: Exclude<Provider, 'chatgpt'>): Promise<unknown> {
+export async function collectFromTab(provider: Provider): Promise<unknown> {
   if (!await chrome.permissions.contains({ origins: [ORIGINS[provider]] })) throw new CollectionError('permission_required', 'permission_required');
   const tab = await collectionTab(provider);
   if (typeof tab?.id !== 'number') throw new CollectionError('open_tab');
   let results: chrome.scripting.InjectionResult<TransportResult>[];
-  try { results = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: collectInPage, args: [provider] }); }
+  try { results = provider === 'gemini'
+    ? await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: collectGeminiInPage })
+    : await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: collectInPage, args: [provider] }); }
   catch { throw new CollectionError('tab_access_failed'); }
   return unwrapTransport(results[0]?.result);
-}
-export async function collectChatGPTFromTab(): Promise<unknown> {
-  if (!await chrome.permissions.contains({ origins: [ORIGINS.chatgpt] })) throw new CollectionError('permission_required', 'permission_required');
-  const tab = await collectionTab('chatgpt');
-  if (typeof tab?.id !== 'number') throw new CollectionError('open_tab');
-  try {
-    const results = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: readChatGPTObservation });
-    if (!results.length) throw new Error('missing_result');
-    return results[0]?.result ?? null;
-  } catch { throw new CollectionError('tab_access_failed'); }
 }

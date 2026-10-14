@@ -12,12 +12,12 @@ assert(Number(stamp.slice(0, 4)) >= 1000 && Number(stamp.slice(4, 6)) >= 1 && Nu
 assert(Number(stamp.slice(6, 8)) >= 1 && Number(stamp.slice(6, 8)) <= 31);
 assert(Number(stamp.slice(8, 10)) <= 23 && Number(stamp.slice(10, 12)) <= 59);
 assert.deepEqual(manifest.permissions, ['storage', 'alarms', 'scripting']);
-assert.deepEqual(manifest.optional_host_permissions, ['https://chatgpt.com/*', 'https://claude.ai/*']);
+assert.deepEqual(manifest.optional_host_permissions, ['https://chatgpt.com/*', 'https://claude.ai/*', 'https://gemini.google.com/*']);
 assert.equal(manifest.host_permissions, undefined);
 assert.equal(manifest.externally_connectable, undefined);
 assert.equal(manifest.web_accessible_resources, undefined);
 assert.equal(manifest.content_scripts, undefined, 'Site scripts must be registered only after optional permission');
-for (const file of ['manifest.json', 'background.js', 'content.js', 'chatgpt-observer.js', 'popup.js', 'popup.html', 'popup.css', 'assets/icon128.png']) assert((await stat(`dist/${file}`)).size > 0);
+for (const file of ['manifest.json', 'background.js', 'content.js', 'popup.js', 'popup.html', 'popup.css', 'assets/icon128.png']) assert((await stat(`dist/${file}`)).size > 0);
 assert.deepEqual(manifest.icons, { 16: 'assets/icon16.png', 32: 'assets/icon32.png', 48: 'assets/icon48.png', 128: 'assets/icon128.png' });
 assert.deepEqual(manifest.action.default_icon, manifest.icons);
 for (const size of [16, 32, 48, 128]) {
@@ -28,10 +28,12 @@ for (const size of [16, 32, 48, 128]) {
 const inlineLogo = await readFile('assets/logo-20x20.png');
 assert.equal(inlineLogo.readUInt32BE(16), 20); assert.equal(inlineLogo.readUInt32BE(20), 20);
 assert((await readFile('dist/content.js', 'utf8')).includes(`data:image/png;base64,${inlineLogo.toString('base64')}`), 'Inline icon must use the supplied 20px image unchanged');
-const source = (await Promise.all(['background.js', 'content.js', 'chatgpt-observer.js', 'popup.js', 'popup.html'].map(file => readFile(`dist/${file}`, 'utf8')))).join('\n');
+const source = (await Promise.all(['background.js', 'content.js', 'popup.js', 'popup.html'].map(file => readFile(`dist/${file}`, 'utf8')))).join('\n');
 const urls = source.match(/https?:\/\/[^\s"'`<>]+/g) ?? [];
-for (const url of urls) assert(['chatgpt.com', 'claude.ai'].includes(new URL(url).hostname), `Unexpected external destination: ${url}`);
-for (const pattern of [/vendor-ai\//, /gemini\.google\.com/, /\/api\/snapshots/, /googletagmanager|google-analytics|telemetry|posthog|sentry/i, /chrome\.cookies/, /chrome\.storage\.sync/, /\beval\s*\(/, /new Function\s*\(/, /innerHTML/]) assert(!pattern.test(source), `Unexpected built capability: ${pattern}`);
+for (const url of urls) assert(['chatgpt.com', 'claude.ai', 'gemini.google.com'].includes(new URL(url).hostname), `Unexpected external destination: ${url}`);
+for (const pattern of [/vendor-ai\//, /\/api\/snapshots/, /googletagmanager|google-analytics|telemetry|posthog|sentry/i, /chrome\.cookies/, /chrome\.storage\.sync/, /\beval\s*\(/, /new Function\s*\(/, /innerHTML/]) assert(!pattern.test(source), `Unexpected built capability: ${pattern}`);
 assert(source.includes('/backend-api/wham/usage'));
+assert(source.includes('/_/BardChatUi/data/batchexecute') && source.includes('jSf9Qc'));
+assert(!source.includes('/backend-api/conversation/init'), 'No independent ordinary-chat quota observer');
 assert(!/https?:\/\//.test((await readFile('dist/popup.html', 'utf8')).match(/<script[^>]*src="([^"]+)/)?.[1] ?? ''));
-console.log('PASS built MV3: build-minute version mapping, local assets/CSP, two optional hosts, no Gemini/private imports/cookie API/sync/remote scripts/telemetry/backend destinations. Static audit complements code review, not live provider verification.');
+console.log('PASS built MV3: build-minute version mapping, local assets/CSP, three optional hosts, shared ChatGPT/Codex collection, independent Gemini RPC, no private imports/cookie API/sync/remote scripts/telemetry/backend destinations. Static audit complements code review, not live provider verification.');

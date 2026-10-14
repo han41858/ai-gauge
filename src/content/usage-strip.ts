@@ -1,5 +1,5 @@
 import { selectedLimit } from '../background/badge';
-import { type Provider, type View } from '../shared/types';
+import { type PageProvider, type View } from '../shared/types';
 import { displayProvider, shouldShowStrip } from '../shared/display-policy';
 import { usageParts } from './usage-label';
 import { findComposerTarget, type ComposerTarget } from './selectors';
@@ -10,7 +10,7 @@ export class UsageStrip {
   private view: View | null = null;
   private target: ComposerTarget | null = null;
   private footerLayout: { element: HTMLElement; value: string; priority: string; appliedPriority: string; owned: boolean } | null = null;
-  constructor(private provider: Provider, private doc: Document) {}
+  constructor(private provider: PageProvider, private doc: Document) {}
   update(view: View) { this.view = view; this.mount(); }
   mount() {
     const view = this.view, p = this.provider;
@@ -32,7 +32,21 @@ export class UsageStrip {
       this.host.dataset.aiGaugeOwned = 'usage-strip';
       const root = this.host.attachShadow({ mode: 'closed' });
       const style = this.doc.createElement('style');
-      style.textContent = ':host{display:block;position:static;box-sizing:border-box;width:100%;min-width:0;max-width:100%;flex:0 0 auto;align-self:stretch;grid-column:1/-1;margin:6px 0;border:0;background:transparent;font:12px/1.5 system-ui;color:inherit;}.usage{display:flex;align-items:center;flex-wrap:wrap;gap:4px 14px;box-sizing:border-box;padding:6px 10px;border:0;background:transparent;overflow-wrap:anywhere}.current{display:inline-flex;align-items:center;flex-wrap:wrap;gap:6px;min-width:0;max-width:100%}.current>span,.reset,.status{color:inherit;opacity:.8}.reset,.status{min-width:0;max-width:100%}progress{appearance:none;-webkit-appearance:none;width:80px;max-width:100%;height:6px;flex:0 0 80px;box-sizing:border-box;border:0;border-radius:999px;overflow:hidden;background:#8893a033;color:inherit;accent-color:currentColor}progress::-webkit-progress-bar{background:#8893a033;border-radius:999px}progress::-webkit-progress-value{background:currentColor;border-radius:999px}progress::-moz-progress-bar{background:currentColor;border-radius:999px}[hidden]{display:none!important}';
+      style.textContent = `
+:host{display:block;position:static;box-sizing:border-box;width:100%;min-width:0;max-width:100%;height:30px;flex:0 0 auto;align-self:stretch;grid-column:1/-1;margin:0;border:0;background:transparent;font:12px/1.5 system-ui;color:inherit;container:ai-gauge/inline-size}
+.usage{display:flex;align-items:center;gap:14px;box-sizing:border-box;height:30px;padding:0 10px;border:0;background:transparent;overflow:hidden}
+.current{display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;min-width:0;max-width:100%;overflow:hidden}
+.current>span,.reset,.status{color:inherit;opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.reset,.status{min-width:0;max-width:100%}
+.usage:has(.status:not([hidden])) .reset{display:none}
+progress{appearance:none;-webkit-appearance:none;width:80px;max-width:100%;height:6px;flex:0 0 80px;box-sizing:border-box;border:0;border-radius:999px;overflow:hidden;background:#8893a033;color:inherit;accent-color:currentColor}
+progress::-webkit-progress-bar{background:#8893a033;border-radius:999px}
+progress::-webkit-progress-value{background:currentColor;border-radius:999px}
+progress::-moz-progress-bar{background:currentColor;border-radius:999px}
+@container ai-gauge (max-width:520px){.reset{display:none}}
+@container ai-gauge (max-width:280px){progress{display:none}}
+@container ai-gauge (max-width:180px){.brand-icon{display:none}}
+[hidden]{display:none!important}`;
       const row = this.doc.createElement('div');
       row.className = 'usage';
       row.setAttribute('role', 'status');
@@ -77,7 +91,7 @@ export class UsageStrip {
   }
   private prepareFooterLayout(target: ComposerTarget) {
     const style = this.doc.defaultView?.getComputedStyle(target.anchor);
-    const row = this.provider === 'work_codex' && target.placement === 'append'
+    const row = this.provider === 'codex' && target.placement === 'append'
       && (style?.display === 'flex' || style?.display === 'inline-flex')
       && !style.flexDirection.startsWith('column');
     if (this.footerLayout && (this.footerLayout.element !== target.anchor || !row)) this.restoreFooterLayout();

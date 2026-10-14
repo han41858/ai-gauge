@@ -13,21 +13,17 @@ const limit = (id: string, label: string, percent: number): UsageLimit => ({
 const enabledView = (): View => {
   const settings = defaults();
   settings.enabled.chatgpt = true;
-  settings.enabled.work_codex = true;
   const now = Date.now();
   return {
     settings,
-    permissions: { chatgpt: true, work_codex: true, claude: true },
+    permissions: { chatgpt: true, claude: true, gemini: true },
     snapshots: {
       chatgpt: {
         ...emptySnapshot('chatgpt'), state: 'ok', collectedAt: now, checkedAt: now,
-        errorCode: null, limits: [{ ...limit('chat-feature', '채팅 기능', 0), percent: null, remaining: 78 }]
-      },
-      work_codex: {
-        ...emptySnapshot('work_codex'), state: 'ok', collectedAt: now, checkedAt: now,
         errorCode: null, limits: [limit('weekly', '7일', 15)]
       },
-      claude: emptySnapshot('claude')
+      claude: emptySnapshot('claude'),
+      gemini: emptySnapshot('gemini')
     }
   };
 };
@@ -47,30 +43,39 @@ test('ChatGPT composer shows the plan pool with only the requested usage title a
     assert.equal(doc.getElementById('composer')!.nextElementSibling, host);
     const text = stripLabel(doc);
     assert.match(text, /^사용량: 15%  🕒 사용량 초기화:/);
-    assert.doesNotMatch(text, /Chat|GPT|Work|Codex|공유|AI Gauge|78 남음|15% 남음/);
+    assert.doesNotMatch(text, /Chat|GPT|Work|Codex|공유|AI Gauge|15% 남음/);
   } finally { dom.window.close(); }
 });
 
-test('disabling the experimental ChatGPT collector does not hide an enabled plan pool', () => {
+test('disabling other providers does not hide the enabled ChatGPT usage', () => {
   const dom = fixture();
   try {
     const view = enabledView();
-    view.settings.enabled.chatgpt = false;
-    new UsageStrip('chatgpt', dom.window.document).update(view);
+    view.settings.enabled.claude = true;
+    view.settings.enabled.gemini = true;
+    const strip = new UsageStrip('chatgpt', dom.window.document);
+    strip.update(view);
+    const host = dom.window.document.getElementById('ai-gauge-usage-strip');
+    assert(host);
+    view.settings.enabled.claude = false;
+    view.settings.enabled.gemini = false;
+    strip.update(view);
+    assert.equal(dom.window.document.getElementById('ai-gauge-usage-strip'), host);
     assert.match(stripLabel(dom.window.document), /사용량: 15%/);
   } finally { dom.window.close(); }
 });
 
-test('disabling the plan collector removes the general chat strip without falling back to chat quotas', () => {
-  const dom = fixture();
+test('disabling the ChatGPT collector removes both ChatGPT and Codex strips', () => {
+  const chat = fixture(), codex = fixture('/codex');
   try {
-    const view = enabledView(), strip = new UsageStrip('chatgpt', dom.window.document);
-    strip.update(view);
-    assert(dom.window.document.getElementById('ai-gauge-usage-strip'));
-    view.settings.enabled.work_codex = false;
-    strip.update(view);
-    assert.equal(dom.window.document.getElementById('ai-gauge-usage-strip'), null);
-  } finally { dom.window.close(); }
+    const view = enabledView();
+    const strips = [new UsageStrip('chatgpt', chat.window.document), new UsageStrip('codex', codex.window.document)];
+    for (const strip of strips) strip.update(view);
+    for (const dom of [chat, codex]) assert(dom.window.document.getElementById('ai-gauge-usage-strip'));
+    view.settings.enabled.chatgpt = false;
+    for (const strip of strips) strip.update(view);
+    for (const dom of [chat, codex]) assert.equal(dom.window.document.getElementById('ai-gauge-usage-strip'), null);
+  } finally { chat.window.close(); codex.window.close(); }
 });
 
 test('general chat placement obeys its own strip preference independently of the Codex placement', () => {
@@ -81,7 +86,7 @@ test('general chat placement obeys its own strip preference independently of the
     strip.update(view);
     assert.equal(dom.window.document.getElementById('ai-gauge-usage-strip'), null);
     view.settings.strips.chatgpt = true;
-    view.settings.strips.work_codex = false;
+    view.settings.strips.codex = false;
     strip.update(view);
     assert.match(stripLabel(dom.window.document), /사용량: 15%/);
   } finally { dom.window.close(); }
@@ -91,12 +96,11 @@ test('the general chat strip uses the highest actual usage even if an old prefer
   const dom = fixture();
   try {
     const view = enabledView();
-    view.snapshots.work_codex.limits.push(limit('other-window', '다른 기간', 32));
-    view.settings.selectedLimit.work_codex = 'weekly';
-    view.settings.selectedLimit.chatgpt = 'chat-feature';
+    view.snapshots.chatgpt.limits.push(limit('other-window', '다른 기간', 32));
+    view.settings.selectedLimit.chatgpt = 'weekly';
     new UsageStrip('chatgpt', dom.window.document).update(view);
     assert.match(stripLabel(dom.window.document), /사용량: 32%/);
-    assert.doesNotMatch(stripLabel(dom.window.document), /15%|78 남음/);
+    assert.doesNotMatch(stripLabel(dom.window.document), /15%/);
   } finally { dom.window.close(); }
 });
 
@@ -105,26 +109,28 @@ test('showing one plan snapshot in ChatGPT and Codex neither changes nor adds th
   try {
     const view = enabledView(), original = structuredClone(view);
     const chatStrip = new UsageStrip('chatgpt', chat.window.document);
-    const codexStrip = new UsageStrip('work_codex', codex.window.document);
+    const codexStrip = new UsageStrip('codex', codex.window.document);
     chatStrip.update(view);
     codexStrip.update(view);
     for (let i = 0; i < 3; i++) { chatStrip.mount(); codexStrip.mount(); }
     assert.match(stripLabel(chat.window.document), /사용량: 15%/);
     assert.equal(stripLabel(chat.window.document), stripLabel(codex.window.document));
-    assert.doesNotMatch(stripLabel(chat.window.document), /30%|78 남음|93%/);
-    assert.deepEqual(view, original, 'displaying the shared snapshot must not rewrite either stored dataset');
+    assert.doesNotMatch(stripLabel(chat.window.document), /30%/);
+    assert.deepEqual(view, original, 'displaying the same ChatGPT snapshot must not rewrite or duplicate stored usage');
   } finally { chat.window.close(); codex.window.close(); }
 });
 
-test('a missing plan snapshot cannot be replaced with a successful chat quota or fabricated zero', () => {
+test('a missing ChatGPT snapshot cannot be replaced with another provider or fabricated zero', () => {
   const dom = fixture();
   try {
     const view = enabledView();
-    view.snapshots.work_codex = emptySnapshot('work_codex');
+    view.snapshots.claude = { ...view.snapshots.chatgpt, provider: 'claude' };
+    view.snapshots.gemini = { ...view.snapshots.chatgpt, provider: 'gemini' };
+    view.snapshots.chatgpt = emptySnapshot('chatgpt');
     new UsageStrip('chatgpt', dom.window.document).update(view);
     assert(dom.window.document.getElementById('ai-gauge-usage-strip'));
     assert.match(stripLabel(dom.window.document), /^사용량: 확인 불가  🕒 사용량 초기화: 확인 불가/);
-    assert.doesNotMatch(stripLabel(dom.window.document), /78 남음|0%|최근 수집 성공/);
+    assert.doesNotMatch(stripLabel(dom.window.document), /15%|0%|최근 수집 성공/);
   } finally { dom.window.close(); }
 });
 
@@ -134,7 +140,7 @@ test('removing the plan data permission removes the general chat display', () =>
     const view = enabledView(), strip = new UsageStrip('chatgpt', dom.window.document);
     strip.update(view);
     assert(dom.window.document.getElementById('ai-gauge-usage-strip'));
-    view.permissions.work_codex = false;
+    view.permissions.chatgpt = false;
     strip.update(view);
     assert.equal(dom.window.document.getElementById('ai-gauge-usage-strip'), null);
   } finally { dom.window.close(); }

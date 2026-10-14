@@ -14,9 +14,9 @@ const snapshot = (provider: Snapshot['provider'], percent: number): Snapshot => 
 });
 const view = (): View => {
   const settings = defaults();
-  settings.enabled.work_codex = true; settings.enabled.claude = true;
-  return { settings, permissions: { chatgpt: true, work_codex: true, claude: true },
-    snapshots: { chatgpt: emptySnapshot('chatgpt'), work_codex: snapshot('work_codex', 15), claude: snapshot('claude', 63) } };
+  settings.enabled.chatgpt = true; settings.enabled.claude = true; settings.enabled.gemini = true;
+  return { settings, permissions: { chatgpt: true, claude: true, gemini: true },
+    snapshots: { chatgpt: snapshot('chatgpt', 15), claude: snapshot('claude', 63), gemini: snapshot('gemini', 42) } };
 };
 function browser(initial: Tab[]) {
   const tabs = new Map(initial.map(tab => [tab.id, { ...tab }]));
@@ -57,7 +57,8 @@ function browser(initial: Tab[]) {
 test('every tab receives only its own service badge while global and unrelated tabs stay blank', async () => {
   const mock = browser([
     { id: 1, url: 'https://chatgpt.com/' }, { id: 2, url: 'https://chatgpt.com/codex' },
-    { id: 3, url: 'https://claude.ai/new' }, { id: 4, url: 'https://unrelated.invalid/' }, { id: 5 }
+    { id: 3, url: 'https://claude.ai/new' }, { id: 4, url: 'https://unrelated.invalid/' }, { id: 5 },
+    { id: 7, url: 'https://gemini.google.com/app' }
   ]);
   const previous = globalThis.chrome;
   globalThis.chrome = mock.api as unknown as typeof chrome;
@@ -66,23 +67,44 @@ test('every tab receives only its own service badge while global and unrelated t
     await updateBadge(current);
     assert.equal(mock.current(1), '15%'); assert.equal(mock.current(2), '15%');
     assert.equal(mock.current(3), '63%'); assert.equal(mock.current(4), ''); assert.equal(mock.current(5), '');
-    assert.match(mock.titles.get(1)!, /Work \/ Codex/);
+    assert.equal(mock.current(7), '42%'); assert.match(mock.titles.get(7)!, /Gemini/);
+    assert.match(mock.titles.get(1)!, /ChatGPT/);
     assert.match(mock.titles.get(3)!, /Claude/);
     assert.equal(mock.titles.get(4), 'AI Gauge');
     assert.equal(mock.colors.get(1), '#0D8669'); assert.equal(mock.colors.get(2), '#0D8669');
     assert.equal(mock.colors.get(3), '#B16046');
+    assert.equal(mock.colors.get(7), '#3569C8'); assert.equal(mock.textColors.get(7), '#FFFFFF');
     assert.equal(mock.textColors.get(1), '#FFFFFF'); assert.equal(mock.textColors.get(3), '#FFFFFF');
-    current.snapshots.work_codex.limits[0]!.percent = 100;
+    current.snapshots.chatgpt.limits[0]!.percent = 100;
     current.snapshots.claude.limits[0]!.percent = 100;
+    current.snapshots.gemini.limits[0]!.percent = 100;
     current.settings.warning = 0; current.settings.danger = 1;
     await updateBadge(current);
     assert.equal(mock.current(1), '100%'); assert.equal(mock.current(3), '100%');
     assert.equal(mock.colors.get(1), '#0D8669', 'legacy thresholds and exhausted usage must not replace the ChatGPT color');
     assert.equal(mock.colors.get(3), '#B16046', 'legacy thresholds and exhausted usage must not replace the Claude color');
+    assert.equal(mock.current(7), '100%'); assert.equal(mock.colors.get(7), '#3569C8');
     assert.deepEqual(mock.global(), { text: '', title: 'AI Gauge' });
     assert(mock.writes.every(write => write.tabId !== undefined || write.text === ''), 'provider usage must never be written globally');
     mock.tabs.set(6, { id: 6, url: 'https://another.invalid/' });
     assert.equal(mock.current(6), '', 'new tabs inherit only the empty global default');
+  } finally { globalThis.chrome = previous; }
+});
+
+test('Gemini navigation, permission loss and collection failure clear only its own badge', async () => {
+  const mock = browser([{ id: 1, url: 'https://chatgpt.com/' }, { id: 2, url: 'https://gemini.google.com/app' }]);
+  const previous = globalThis.chrome;
+  globalThis.chrome = mock.api as unknown as typeof chrome;
+  try {
+    const current = view(); await updateBadge(current);
+    assert.equal(mock.current(1), '15%'); assert.equal(mock.current(2), '42%');
+    current.permissions.gemini = false; await updateBadge(current);
+    assert.equal(mock.current(2), '—'); assert.equal(mock.colors.get(2), '#697386');
+    assert.equal(mock.current(1), '15%');
+    current.permissions.gemini = true; current.snapshots.gemini.state = 'error'; current.snapshots.gemini.errorCode = 'network';
+    await updateBadge(current); assert.equal(mock.current(2), '—');
+    mock.tabs.set(2, { id: 2, url: 'https://another.invalid/' });
+    await updateBadge(current); assert.equal(mock.current(2), ''); assert.equal(mock.titles.get(2), 'AI Gauge');
   } finally { globalThis.chrome = previous; }
 });
 
@@ -107,7 +129,7 @@ test('revoked permissions and redacted URLs clear stale tab numbers without new 
     const current = view();
     await updateBadge(current);
     assert.equal(mock.current(1), '15%');
-    current.permissions.chatgpt = false; current.permissions.work_codex = false;
+    current.permissions.chatgpt = false;
     mock.tabs.set(1, { id: 1 });
     await updateBadge(current);
     assert.equal(mock.current(1), ''); assert.equal(mock.titles.get(1), 'AI Gauge');

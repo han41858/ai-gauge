@@ -1,9 +1,9 @@
 import { findComposerTarget } from './selectors';
-import type { Provider } from '../shared/types';
+import type { PageProvider } from '../shared/types';
 
 export interface ReadyDisplayDiagnostic {
   status: 'ready';
-  provider: Provider;
+  provider: PageProvider;
   contentReady: true;
   editableCount: number;
   iframeCount: number;
@@ -13,7 +13,7 @@ export interface ReadyDisplayDiagnostic {
 }
 export type DisplayDiagnostic = ReadyDisplayDiagnostic | {
   status: 'no_site' | 'permission_required' | 'content_unavailable';
-  provider?: Provider;
+  provider?: PageProvider;
 };
 
 export function authorizedDisplayRequest(message: unknown, sender: chrome.runtime.MessageSender, extensionId: string): boolean {
@@ -35,7 +35,7 @@ function visible(element: HTMLElement): boolean {
     && box.right > 0 && box.bottom > 0 && box.left < win.innerWidth && box.top < win.innerHeight);
 }
 
-export function createDisplayDiagnostic(doc: Document, provider: Provider): ReadyDisplayDiagnostic {
+export function createDisplayDiagnostic(doc: Document, provider: PageProvider): ReadyDisplayDiagnostic {
   const strips = [...doc.querySelectorAll<HTMLElement>('#ai-gauge-usage-strip')];
   return {
     status: 'ready', provider, contentReady: true,

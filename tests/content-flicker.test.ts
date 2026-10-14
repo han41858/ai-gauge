@@ -10,12 +10,11 @@ import type { View } from '../src/shared/types';
 const enabledView = (): View => {
   const settings = defaults();
   settings.enabled.chatgpt = true;
-  settings.enabled.work_codex = true;
   return {
     settings,
-    permissions: { chatgpt: true, work_codex: true, claude: true },
+    permissions: { chatgpt: true, claude: true, gemini: false },
     snapshots: {
-      chatgpt: emptySnapshot('chatgpt'), work_codex: emptySnapshot('work_codex'), claude: emptySnapshot('claude')
+      chatgpt: emptySnapshot('chatgpt'), claude: emptySnapshot('claude'), gemini: emptySnapshot('gemini')
     }
   };
 };
@@ -135,7 +134,7 @@ test('bundled content keeps its strip through a transient runtime failure and la
     assert.equal(runtimeListeners.size, 1);
     assert.equal(storageListeners.size, 1);
     const callsAfterFailure = calls;
-    view.snapshots.work_codex = { ...emptySnapshot('work_codex'), errorCode: 'network' };
+    view.snapshots.chatgpt = { ...emptySnapshot('chatgpt'), errorCode: 'network' };
     invalidate();
     await flush();
     assert(calls > callsAfterFailure, 'subsequent invalidation requests a current view');
@@ -152,14 +151,16 @@ test('bundled content keeps its strip through a transient runtime failure and la
     await flush();
     assert(dom.window.document.getElementById('ai-gauge-usage-strip'));
     view.permissions.chatgpt = false;
-    view.permissions.work_codex = false;
     invalidate();
     await flush();
     assert.equal(dom.window.document.getElementById('ai-gauge-usage-strip'), null, 'revoked permission still removes the display');
     assert.equal(dom.window.__aiGaugeMounted, false);
     assert.equal(runtimeListeners.size, 0);
     assert.equal(storageListeners.size, 0);
-  } finally { dom.window.close(); }
+  } finally {
+    for (const listener of [...runtimeListeners]) listener({ type: 'permissions-revoked', origins: ['https://chatgpt.com/*'] }, { id: 'fixture' });
+    dom.window.close();
+  }
 });
 
 test('trusted host revocation stops bundled content even when further view requests are denied', async () => {
@@ -168,7 +169,7 @@ test('trusted host revocation stops bundled content even when further view reque
   });
   const runtimeListeners = new Set<(message: unknown, sender: { id: string }) => void>();
   const storageListeners = new Set<() => void>();
-  let denyViews = false, calls = 0, observerStops = 0;
+  let denyViews = false, calls = 0;
   Object.assign(dom.window, { chrome: {
     runtime: {
       id: 'fixture', getManifest: () => ({ version: '0.1.2' }),
@@ -183,7 +184,6 @@ test('trusted host revocation stops bundled content even when further view reque
   const notify = (message: unknown, senderId = 'fixture') => {
     for (const listener of runtimeListeners) listener(message, { id: senderId });
   };
-  dom.window.document.addEventListener('ai-gauge-chatgpt-stop', () => observerStops++);
   try {
     dom.window.eval(contentBundle());
     await flush();
@@ -199,7 +199,6 @@ test('trusted host revocation stops bundled content even when further view reque
     assert.equal(dom.window.document.getElementById('ai-gauge-usage-strip'), original, 'revoking Claude does not remove an OpenAI strip');
     notify({ type: 'permissions-revoked', origins: ['https://chatgpt.com/*'] }, 'untrusted-extension');
     assert.equal(dom.window.document.getElementById('ai-gauge-usage-strip'), original, 'an unrelated extension cannot shut down this bridge');
-    assert.equal(observerStops, 0);
     const callsBeforeRevocation = calls;
     notify({ type: 'permissions-revoked', origins: ['https://chatgpt.com/*'] });
     await flush();
@@ -207,9 +206,11 @@ test('trusted host revocation stops bundled content even when further view reque
     assert.equal(dom.window.__aiGaugeMounted, false);
     assert.equal(runtimeListeners.size, 0);
     assert.equal(storageListeners.size, 0);
-    assert.equal(observerStops, 1, 'the MAIN-world observer is stopped through its isolated bridge');
     assert.equal(calls, callsBeforeRevocation, 'cleanup does not require another denied view request');
-  } finally { dom.window.close(); }
+  } finally {
+    for (const listener of [...runtimeListeners]) listener({ type: 'permissions-revoked', origins: ['https://chatgpt.com/*'] }, { id: 'fixture' });
+    dom.window.close();
+  }
 });
 
 test('a late successful view cannot remount content after its host permission was revoked', async () => {
@@ -245,7 +246,10 @@ test('a late successful view cannot remount content after its host permission wa
     assert.equal(dom.window.document.getElementById('ai-gauge-usage-strip'), null, 'the old authorized reply cannot resurrect a stopped content instance');
     assert.equal(dom.window.__aiGaugeMounted, false);
     assert.equal(runtimeListeners.size, 0);
-  } finally { dom.window.close(); }
+  } finally {
+    for (const listener of [...runtimeListeners]) listener({ type: 'permissions-revoked', origins: ['https://chatgpt.com/*'] }, { id: 'fixture' });
+    dom.window.close();
+  }
 });
 
 test('bundled content follows a focused Codex composer without unrelated DOM changes', async () => {
@@ -253,7 +257,7 @@ test('bundled content follows a focused Codex composer without unrelated DOM cha
     url: 'https://chatgpt.com/codex', runScripts: 'outside-only'
   });
   const view = enabledView();
-  view.settings.enabled.work_codex = true;
+  view.settings.enabled.chatgpt = true;
   const runtimeListeners = new Set<(message: unknown, sender: { id: string }) => void>();
   let calls = 0;
   Object.assign(dom.window, { chrome: {
@@ -286,7 +290,10 @@ test('bundled content follows a focused Codex composer without unrelated DOM cha
     await new Promise(resolve => setTimeout(resolve, 350));
     assert.equal(dom.window.document.getElementById('ai-gauge-usage-strip'), null, 'focusing after cleanup cannot revive the strip');
     assert.equal(calls, callsWhenStopped);
-  } finally { dom.window.close(); }
+  } finally {
+    for (const listener of [...runtimeListeners]) listener({ type: 'permissions-revoked', origins: ['https://chatgpt.com/*'] }, { id: 'fixture' });
+    dom.window.close();
+  }
 });
 
 test('a strip is removed when its former composer no longer contains the input', () => {

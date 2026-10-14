@@ -40,10 +40,10 @@ function chatWindows(raw: unknown, prefix: string, title: string, category: Usag
   }
   return result;
 }
-export function parseWorkCodex(input: unknown): UsageLimit[] {
+export function parseChatGPT(input: unknown): UsageLimit[] {
   const data = record(input);
   if (!data) throw new InvalidResponse();
-  const items = chatWindows(data.rate_limit, 'shared', 'Work / Codex 공유', 'product');
+  const items = chatWindows(data.rate_limit, 'shared', 'ChatGPT', 'product');
   if (Array.isArray(data.additional_rate_limits)) {
     for (const raw of data.additional_rate_limits.slice(0, 50)) {
       const bucket = record(raw);

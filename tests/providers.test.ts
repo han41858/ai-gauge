@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { parseWorkCodex, parseClaude } from '../src/providers/parsers';
+import { parseChatGPT, parseClaude } from '../src/providers/parsers';
 import { collectInPage, unwrapTransport } from '../src/providers/tab-transport';
 import { collectChatGPT } from '../src/providers/chatgpt';
 import { CollectionError, httpError, retryAfter } from '../src/shared/errors';
@@ -14,12 +14,12 @@ test('Claude synthetic fixture preserves zero, timezone, model limits and strips
   assert.equal(items[2]?.percent, null); assert.equal(items[3]?.category, 'model'); assert(validLimits(items)); assert(!JSON.stringify(items).includes('email'));
 });
 test('Work / Codex fixture labels shared pool, respects actual window length, retains product and zero', () => {
-  const items = parseWorkCodex(fixture('chatgpt'));
-  assert.equal(items.length, 3); assert.match(items[0]!.label, /Work \/ Codex 공유/); assert.equal(items[2]?.windowSeconds, 2592000); assert.equal(items[2]?.percent, 0); assert(validLimits(items));
+  const items = parseChatGPT(fixture('chatgpt'));
+  assert.equal(items.length, 3); assert.match(items[0]!.label, /ChatGPT/); assert.equal(items[2]?.windowSeconds, 2592000); assert.equal(items[2]?.percent, 0); assert(validLimits(items));
 });
 for (const [name, parser, input] of [
   ['Claude', parseClaude, { five_hour: { utilization: 101, resets_at: '2026-10-14T12:00:00' } }],
-  ['Work / Codex', parseWorkCodex, { rate_limit: { primary_window: { used_percent: -1, reset_at: '1791964800' } } }],
+  ['Work / Codex', parseChatGPT, { rate_limit: { primary_window: { used_percent: -1, reset_at: '1791964800' } } }],
 ] as const) {
   test(`${name}: invalid values become unknown, never clamped or inferred`, () => { const l = parser(input)[0]!; assert.equal(l.percent, null); assert.equal(l.resetsAt, null); });
   test(`${name}: missing/unrecognized structure rejects`, () => { for (const v of [null, {}, 'bad', 0]) assert.throws(() => parser(v)); });
@@ -35,9 +35,10 @@ test('MAIN-world Work / Codex fetch is same-origin GET and credentials never cro
   Object.defineProperty(globalThis, 'location', { value: { origin: 'https://chatgpt.com' }, configurable: true });
   globalThis.fetch = async (url, init) => { calls.push({ url: String(url), init }); return new Response(JSON.stringify(calls.length === 1 ? { accessToken: 'synthetic-token', email: 'private' } : fixture('chatgpt')), { headers: { 'content-type': 'application/json' } }); };
   try {
-    const result = await collectInPage('work_codex'); assert.equal(result.status, 200); assert.equal(calls.length, 2);
-    assert.equal(calls[1]?.url, '/backend-api/wham/usage'); assert.equal(calls[1]?.init?.method, 'GET'); assert.equal(calls[1]?.init?.credentials, 'include');
-    assert(!JSON.stringify(result).includes('synthetic-token')); assert(!JSON.stringify(result).includes('email')); assert(validLimits(parseWorkCodex(result.data)));
+    const result = await collectInPage('chatgpt'); assert.equal(result.status, 200); assert.equal(calls.length, 2);
+    assert.equal(calls[0]?.url, 'https://chatgpt.com/api/auth/session');
+    assert.equal(calls[1]?.url, 'https://chatgpt.com/backend-api/wham/usage'); assert.equal(calls[1]?.init?.method, 'GET'); assert.equal(calls[1]?.init?.credentials, 'include');
+    assert(!JSON.stringify(result).includes('synthetic-token')); assert(!JSON.stringify(result).includes('email')); assert(validLimits(parseChatGPT(result.data)));
   } finally { globalThis.fetch = oldFetch; if (oldLocation) Object.defineProperty(globalThis, 'location', oldLocation); else Reflect.deleteProperty(globalThis, 'location'); }
 });
 test('MAIN-world Claude refuses ambiguous organizations without requesting usage', async () => {
@@ -53,25 +54,25 @@ test('transport maps network failure without leaking exception details', async (
   try { const r = await collectInPage('claude'); assert.equal(r.code, 'network'); assert(!JSON.stringify(r).includes('private')); }
   finally { globalThis.fetch = oldFetch; Reflect.deleteProperty(globalThis, 'location'); }
 });
-test('ordinary ChatGPT waits for a site response and never substitutes the Work/Codex API', async () => {
-  const old = globalThis.fetch, oldChrome = globalThis.chrome; let calls = 0; globalThis.fetch = async () => { calls++; throw new Error('must not fetch'); };
-  globalThis.chrome = { permissions: { contains: async () => true }, tabs: { query: async () => [{ id: 1, url: 'https://chatgpt.com/' }] }, scripting: { executeScript: async () => [{ result: null }] } } as unknown as typeof chrome;
-  try { await assert.rejects(collectChatGPT, (e: unknown) => e instanceof CollectionError && e.code === 'chatgpt_usage_pending'); assert.equal(calls, 0); }
-  finally { globalThis.fetch = old; globalThis.chrome = oldChrome; }
+test('ChatGPT uses one shared pool collector from an ordinary chat tab', async () => {
+  const oldChrome = globalThis.chrome;
+  globalThis.chrome = { permissions: { contains: async () => true }, tabs: { query: async () => [{ id: 1, url: 'https://chatgpt.com/' }] }, scripting: { executeScript: async (details: { args: string[] }) => { assert.deepEqual(details.args, ['chatgpt']); return [{ result: { status: 200, code: null, retryAfter: null, data: fixture('chatgpt') } }]; } } } as unknown as typeof chrome;
+  try { assert.deepEqual(await collectChatGPT(), parseChatGPT(fixture('chatgpt'))); }
+  finally { globalThis.chrome = oldChrome; }
 });
 test('Pro plan names do not create or suppress hardcoded usage windows', () => {
   for (const plan_type of ['prolite', 'pro', 'promax', 'unknown_future_plan']) {
-    const items = parseWorkCodex({ plan_type, rate_limit: { primary_window: { used_percent: 45, limit_window_seconds: 604800, reset_at: 1792483200 } } });
+    const items = parseChatGPT({ plan_type, rate_limit: { primary_window: { used_percent: 45, limit_window_seconds: 604800, reset_at: 1792483200 } } });
     assert.equal(items.length, 1); assert.equal(items[0]?.windowSeconds, 604800); assert(!items.some(i => i.windowSeconds === 18000)); assert.match(items[0]!.label, /7일/);
   }
 });
 test('availability and credit-unlock flags are never converted into ordinary-chat usage percentages', () => {
-  assert.throws(() => parseWorkCodex({ model_usage: { 'synthetic-model': { available: true, available_at: null, credits_would_enable: false } } }));
+  assert.throws(() => parseChatGPT({ model_usage: { 'synthetic-model': { available: true, available_at: null, credits_would_enable: false } } }));
 });
 test('MAIN-world Claude normalizes a single-organization usage response without account data', async () => {
   const old = globalThis.fetch; let count = 0;
   Object.defineProperty(globalThis, 'location', { value: { origin: 'https://claude.ai' }, configurable: true });
-  globalThis.fetch = async (url) => { count++; if (count === 2) assert.equal(String(url), '/api/organizations/00000000-0000-0000-0000-000000000001/usage'); return new Response(JSON.stringify(count === 1 ? [{ uuid: '00000000-0000-0000-0000-000000000001', name: 'private-org' }] : fixture('claude')), { headers: { 'content-type': 'application/json' } }); };
+  globalThis.fetch = async (url) => { count++; if (count === 2) assert.equal(String(url), 'https://claude.ai/api/organizations/00000000-0000-0000-0000-000000000001/usage'); return new Response(JSON.stringify(count === 1 ? [{ uuid: '00000000-0000-0000-0000-000000000001', name: 'private-org' }] : fixture('claude')), { headers: { 'content-type': 'application/json' } }); };
   try { const r = await collectInPage('claude'); assert.equal(r.status, 200); assert(validLimits(parseClaude(r.data))); assert(!JSON.stringify(r).includes('private-org')); assert(!JSON.stringify(r).includes('email')); }
   finally { globalThis.fetch = old; Reflect.deleteProperty(globalThis, 'location'); }
 });
@@ -79,9 +80,9 @@ test('MAIN-world HTTP failures preserve 429 Retry-After and missing session maps
   const old = globalThis.fetch; Object.defineProperty(globalThis, 'location', { value: { origin: 'https://chatgpt.com' }, configurable: true });
   try {
     globalThis.fetch = async () => new Response('', { status: 429, headers: { 'Retry-After': '180' } });
-    const r = await collectInPage('work_codex'); assert.equal(r.status, 429); assert.equal(r.retryAfter, '180'); assert.throws(() => unwrapTransport(r), (e: unknown) => e instanceof CollectionError && e.state === 'rate_limited' && e.retryAfterMs === 180000);
+    const r = await collectInPage('chatgpt'); assert.equal(r.status, 429); assert.equal(r.retryAfter, '180'); assert.throws(() => unwrapTransport(r), (e: unknown) => e instanceof CollectionError && e.state === 'rate_limited' && e.retryAfterMs === 180000);
     globalThis.fetch = async () => new Response('{}', { headers: { 'content-type': 'application/json' } });
-    assert.equal((await collectInPage('work_codex')).status, 401);
+    assert.equal((await collectInPage('chatgpt')).status, 401);
   } finally { globalThis.fetch = old; Reflect.deleteProperty(globalThis, 'location'); }
 });
 test('invalid calendar dates and overflowing Retry-After values stay unknown', () => {

@@ -1,202 +1,82 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { JSDOM } from 'jsdom';
 import { collectChatGPT } from '../src/providers/chatgpt';
-import { collectChatGPTFromTab } from '../src/providers/tab-transport';
-import { readChatGPTObservation } from '../src/providers/chatgpt-observer';
-import { parseChatGPT } from '../src/providers/chatgpt-parser';
+import { collectFromTab, collectInPage } from '../src/providers/tab-transport';
+import { parseChatGPT } from '../src/providers/parsers';
 import { Scheduler, success } from '../src/background/scheduler';
-import { badge } from '../src/background/badge';
-import { renderCards } from '../src/popup/render';
 import { CollectionError } from '../src/shared/errors';
-import { emptySnapshot, FRESH_MS } from '../src/storage/snapshots';
-import { defaults } from '../src/storage/settings';
-import type { CollectionResult, Provider, View } from '../src/shared/types';
+import { emptySnapshot } from '../src/storage/snapshots';
+import { displayProvider } from '../src/shared/display-policy';
+import { authorized, parseMessage } from '../src/shared/contracts';
+import { ORIGINS, PROVIDERS, providerFromUrl } from '../src/shared/types';
 
-const observedAt = 1_000_000;
-const metadata = { limits_progress: [{ feature_name: 'synthetic-feature', remaining: 0, reset_after: '2026-10-15T00:00:00Z' }] };
-const observation = { version: 1, observedAt, data: metadata };
-const limits = () => parseChatGPT(metadata);
+const raw = { rate_limit: { primary_window: { used_percent: 15, reset_at: 1792472727, limit_window_seconds: 604800 } } };
+const result = { status: 200, code: null, retryAfter: null, data: raw };
 type Tab = { id: number; url: string; active?: boolean; discarded?: boolean; frozen?: boolean };
-type Injection = { target: { tabId: number }; world: string; func: unknown };
-
-async function withTransport(
-  options: { permission?: boolean; tabs?: Tab[]; observation?: unknown },
-  run: (calls: { queries: number; fetches: number; injections: Injection[] }) => Promise<void>,
-) {
-  const previousChrome = globalThis.chrome, previousFetch = globalThis.fetch;
-  const calls = { queries: 0, fetches: 0, injections: [] as Injection[] };
+type Injection = { target: { tabId: number }; world: string; func: unknown; args?: string[] };
+async function transport(options: { permission?: boolean; tabs?: Tab[]; result?: unknown; reject?: boolean }, run: (calls: { queries: number; injections: Injection[] }) => Promise<void>) {
+  const previous = globalThis.chrome, calls = { queries: 0, injections: [] as Injection[] };
   globalThis.chrome = {
     permissions: { contains: async () => options.permission ?? true },
     tabs: { query: async () => { calls.queries++; return options.tabs ?? [{ id: 1, url: 'https://chatgpt.com/' }]; } },
-    scripting: { executeScript: async (injection: Injection) => { calls.injections.push(injection); return [{ result: options.observation ?? null }]; } },
+    scripting: { executeScript: async (injection: Injection) => { calls.injections.push(injection); if (options.reject) throw new Error('private tab details'); return [{ result: options.result ?? result }]; } }
   } as unknown as typeof chrome;
-  globalThis.fetch = async () => { calls.fetches++; throw new Error('ChatGPT collection must not initiate a request'); };
-  try { await run(calls); }
-  finally { globalThis.chrome = previousChrome; globalThis.fetch = previousFetch; }
+  try { await run(calls); } finally { globalThis.chrome = previous; }
 }
-
-test('ChatGPT adapter reads passive metadata and preserves remaining zero without requesting an API', async () => {
-  await withTransport({ observation }, async calls => {
-    const result = await collectChatGPT();
-    assert.equal(result.observedAt, observedAt);
-    assert.equal(result.limits[0]?.remaining, 0);
-    assert.equal(result.limits[0]?.percent, null);
-    assert.equal(result.limits[0]?.resetsAt, '2026-10-15T00:00:00.000Z');
-    assert.equal(calls.fetches, 0);
-    assert.equal(calls.injections.length, 1);
-    assert.equal(calls.injections[0]?.func, readChatGPTObservation);
-    assert.equal(calls.injections[0]?.world, 'MAIN');
+for (const url of ['https://chatgpt.com/', 'https://chatgpt.com/codex', 'https://chatgpt.com/codex/tasks/synthetic']) {
+  test(`the same shared ChatGPT collection runs from ${new URL(url).pathname}`, async () => transport({ tabs: [{ id: 7, url }] }, async calls => {
+    assert.deepEqual(await collectChatGPT(), parseChatGPT(raw));
+    assert.equal(calls.injections.length, 1); assert.equal(calls.injections[0]?.target.tabId, 7);
+    assert.equal(calls.injections[0]?.world, 'MAIN'); assert.equal(calls.injections[0]?.func, collectInPage);
+    assert.deepEqual(calls.injections[0]?.args, ['chatgpt']);
+  }));
+}
+test('unavailable tabs are skipped and collection never tries another tab after failure', async () => transport({ tabs: [
+  { id: 1, url: 'https://chatgpt.com/', discarded: true, active: true },
+  { id: 2, url: 'https://chatgpt.com/codex', frozen: true, active: true },
+  { id: 3, url: 'https://chatgpt.com/codex', active: true },
+  { id: 4, url: 'https://chatgpt.com/' }
+], reject: true }, async calls => {
+  await assert.rejects(collectChatGPT, (error: unknown) => error instanceof CollectionError && error.code === 'tab_access_failed' && !error.message.includes('private'));
+  assert.deepEqual(calls.injections.map(value => value.target.tabId), [3]);
+}));
+test('no permission stops before tab access; no eligible tab is a separate condition', async () => {
+  await transport({ permission: false }, async calls => {
+    await assert.rejects(collectChatGPT, (error: unknown) => error instanceof CollectionError && error.code === 'permission_required');
+    assert.equal(calls.queries, 0); assert.equal(calls.injections.length, 0);
   });
-});
-
-test('ChatGPT adapter treats an unobserved response as pending rather than zero usage', async () => {
-  await withTransport({}, async calls => {
-    await assert.rejects(collectChatGPT, (error: unknown) => error instanceof CollectionError && error.code === 'chatgpt_usage_pending');
-    assert.equal(calls.fetches, 0);
-  });
-});
-
-test('ChatGPT transport skips active Codex and inactive or unavailable ordinary tabs', async () => {
-  await withTransport({ observation, tabs: [
-    { id: 9, url: 'https://chatgpt.com/codex', active: true },
-    { id: 8, url: 'https://chatgpt.com/work', active: true },
-    { id: 7, url: 'https://chatgpt.com/c/discarded', active: true, discarded: true },
-    { id: 6, url: 'https://chatgpt.com/c/frozen', active: true, frozen: true },
-    { id: 5, url: 'https://chatgpt.com/c/inactive', active: false },
-    { id: 4, url: 'https://chatgpt.com/c/active', active: true },
-  ] }, async calls => {
-    assert.deepEqual(await collectChatGPTFromTab(), observation);
-    assert.equal(calls.injections.length, 1);
-    assert.equal(calls.injections[0]?.target.tabId, 4);
-  });
-});
-
-test('ChatGPT transport refuses a Codex-only session without injecting into its shared pool', async () => {
-  await withTransport({ tabs: [{ id: 9, url: 'https://chatgpt.com/codex/tasks/synthetic', active: true }] }, async calls => {
-    await assert.rejects(collectChatGPTFromTab, (error: unknown) => error instanceof CollectionError && error.code === 'open_tab');
+  await transport({ tabs: [] }, async calls => {
+    await assert.rejects(collectChatGPT, (error: unknown) => error instanceof CollectionError && error.code === 'open_tab');
     assert.equal(calls.injections.length, 0);
   });
 });
-
-test('ChatGPT collection without permission never queries tabs or injects into a page', async () => {
-  await withTransport({ permission: false }, async calls => {
-    await assert.rejects(collectChatGPT, (error: unknown) => error instanceof CollectionError && error.state === 'permission_required');
-    assert.equal(calls.queries, 0);
-    assert.equal(calls.injections.length, 0);
-    assert.equal(calls.fetches, 0);
-  });
+test('retired experimental observations are not accepted as shared usage responses', async () => transport({ result: { version: 1, observedAt: 1_000_000, data: { limits_progress: [] } } }, async () => {
+  await assert.rejects(collectChatGPT, (error: unknown) => error instanceof CollectionError && error.code === 'invalid_response');
+}));
+test('simultaneous ordinary-chat and Codex refreshes merge into a single ChatGPT collection', async () => {
+  let snapshot = emptySnapshot('chatgpt'), calls = 0;
+  const scheduler = new Scheduler({ read: async () => snapshot, write: async value => { snapshot = value; }, collect: async () => { calls++; return parseChatGPT(raw); }, enabled: async () => true, now: () => 1_000_000 });
+  const pages = ['https://chatgpt.com/', 'https://chatgpt.com/codex', 'https://chatgpt.com/work'];
+  await Promise.all(pages.map(url => {
+    const source = displayProvider(providerFromUrl(url)!);
+    const message = parseMessage({ type: 'refresh', provider: source, trigger: 'event' })!;
+    assert(authorized(message, { id: 'ext', url, frameId: 0, tab: { id: 1, url } } as chrome.runtime.MessageSender, 'ext'));
+    return scheduler.refresh(source, 'event');
+  }));
+  assert.equal(calls, 1); assert.equal(snapshot.provider, 'chatgpt'); assert.equal(snapshot.limits[0]?.percent, 15);
+  assert.deepEqual(PROVIDERS, ['chatgpt', 'claude', 'gemini']);
 });
-
-test('reading a cached ChatGPT response does not refresh its observation time or prevent staleness', async () => {
-  let now = observedAt + 60_000, snapshot = emptySnapshot('chatgpt');
-  const scheduler = new Scheduler({
-    read: async () => snapshot,
-    write: async value => { snapshot = value; },
-    collect: async (): Promise<CollectionResult> => ({ limits: limits(), observedAt }),
-    enabled: async () => true,
-    now: () => now,
-  });
-  await scheduler.refresh('chatgpt', 'manual');
-  assert.equal(snapshot.state, 'ok');
-  assert.equal(snapshot.collectedAt, observedAt);
-  assert.equal(snapshot.checkedAt, now);
-  now = observedAt + FRESH_MS;
-  await scheduler.refresh('chatgpt', 'manual');
-  assert.equal(snapshot.state, 'stale');
-  assert.equal(snapshot.collectedAt, observedAt);
-  assert.equal(snapshot.checkedAt, now);
-  assert.equal(snapshot.limits[0]?.remaining, 0);
-});
-
-test('an explicit empty ChatGPT response clears old quotas without reporting zero usage', async () => {
-  const now = observedAt + FRESH_MS;
-  let snapshot = success(emptySnapshot('chatgpt'), limits(), observedAt);
-  const scheduler = new Scheduler({
-    read: async () => snapshot,
-    write: async value => { snapshot = value; },
-    collect: async () => ({ limits: [], observedAt: now - 1_000 }),
-    enabled: async () => true,
-    now: () => now,
-  });
-  await scheduler.refresh('chatgpt', 'manual');
-  assert.deepEqual(snapshot.limits, []);
-  assert.equal(snapshot.state, 'error');
-  assert.equal(snapshot.errorCode, 'chatgpt_quota_absent');
-  assert.equal(snapshot.collectedAt, observedAt, 'an empty observation does not become the last successful usage collection');
-  assert.equal(snapshot.failures, 0);
-});
-
-test('a first empty ChatGPT observation does not create a successful collection timestamp', async () => {
-  let snapshot = emptySnapshot('chatgpt');
-  await new Scheduler({ read: async () => snapshot, write: async value => { snapshot = value; }, collect: async () => ({ limits: [], observedAt }), enabled: async () => true, now: () => observedAt + 1000 }).refresh('chatgpt', 'manual');
-  assert.equal(snapshot.errorCode, 'chatgpt_quota_absent'); assert.equal(snapshot.collectedAt, null);
-  assert.equal(snapshot.checkedAt, observedAt + 1000); assert.deepEqual(snapshot.limits, []);
-});
-
-test('waiting for passive ChatGPT metadata uses a fixed minute retry even after repeated failures', async () => {
-  let now = observedAt, snapshot = { ...emptySnapshot('chatgpt'), failures: 8 }, collections = 0;
-  const scheduler = new Scheduler({
-    read: async () => snapshot,
-    write: async value => { snapshot = value; },
-    collect: async () => { collections++; throw new CollectionError('chatgpt_usage_pending'); },
-    enabled: async () => true,
-    now: () => now,
-  });
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    await scheduler.refresh('chatgpt', 'manual');
-    assert.equal(collections, attempt);
-    assert.equal(snapshot.errorCode, 'chatgpt_usage_pending');
-    assert.equal(snapshot.failures, 0);
-    assert.equal(snapshot.nextAttemptAt, now + 60_000);
-    await scheduler.refresh('chatgpt', 'event');
-    assert.equal(collections, attempt);
-    now += 60_000;
+test('empty or malformed collection results preserve the prior successful snapshot', async () => {
+  for (const invalid of [[], [{ percent: 999 }]]) {
+    let snapshot = success(emptySnapshot('chatgpt'), parseChatGPT(raw), 1_000_000);
+    await new Scheduler({ read: async () => snapshot, write: async value => { snapshot = value; }, collect: async () => invalid as ReturnType<typeof parseChatGPT>, enabled: async () => true, now: () => 1_100_000 }).refresh('chatgpt', 'manual');
+    assert.equal(snapshot.errorCode, 'invalid_response'); assert.equal(snapshot.collectedAt, 1_000_000);
+    assert.equal(snapshot.limits[0]?.percent, 15); assert.equal(snapshot.checkedAt, 1_100_000);
   }
 });
-
-function popupView(now: number): View {
-  const settings = defaults();
-  settings.enabled.chatgpt = true;
-  settings.defaultProvider = 'chatgpt';
-  return {
-    settings,
-    permissions: { chatgpt: true, work_codex: true, claude: true },
-    snapshots: { chatgpt: success(emptySnapshot('chatgpt'), limits(), now), work_codex: emptySnapshot('work_codex'), claude: emptySnapshot('claude') },
-  };
-}
-
-test('experimental ChatGPT quotas are omitted from the compact popup and retain a neutral badge', () => {
-  const now = observedAt, view = popupView(now);
-  const dom = new JSDOM('<main id="cards"></main>'), document = dom.window.document;
-  try {
-    renderCards(document.getElementById('cards')!, view, { enable() {}, disable() {}, revoke() {}, refresh() {}, select() {} }, now);
-    assert.equal(document.querySelector('[data-provider="chatgpt"]'), null);
-    assert.equal(document.querySelectorAll('.card').length, 2);
-    assert.doesNotMatch(document.body.textContent!, /0 남음|0%/);
-    assert.equal(badge(view, 'https://chatgpt.com/', now).text, '—');
-  } finally { dom.window.close(); }
-});
-
-test('the visible plan popup refresh respects its own permission and cooldown', () => {
-  const now = observedAt, view = popupView(now), refreshed: Provider[] = [];
-  view.settings.enabled.work_codex = true;
-  view.snapshots.work_codex = success(emptySnapshot('work_codex'), [], now);
-  const dom = new JSDOM('<main id="cards"></main>'), document = dom.window.document;
-  const render = () => {
-    renderCards(document.getElementById('cards')!, view, { enable() {}, disable() {}, revoke() {}, refresh(provider) { refreshed.push(provider); }, select() {} }, now);
-    const refresh = [...document.querySelectorAll<HTMLButtonElement>('.card:first-child button')].find(button => button.textContent === '새로고침');
-    assert(refresh);
-    return refresh;
-  };
-  try {
-    assert.equal(render().disabled, true);
-    view.snapshots.work_codex.nextAttemptAt = now;
-    const refresh = render();
-    assert.equal(refresh.disabled, false);
-    refresh.click();
-    assert.deepEqual(refreshed, ['work_codex']);
-    view.permissions.work_codex = false;
-    assert.equal(render().disabled, true);
-  } finally { dom.window.close(); }
+test('Gemini host access is independent and cannot use a ChatGPT permission', async () => {
+  const previous = globalThis.chrome; let queries = 0;
+  globalThis.chrome = { permissions: { contains: async ({ origins }: { origins: string[] }) => origins.every(origin => origin === ORIGINS.chatgpt) }, tabs: { query: async () => { queries++; return []; } } } as unknown as typeof chrome;
+  try { await assert.rejects(() => collectFromTab('gemini'), (error: unknown) => error instanceof CollectionError && error.state === 'permission_required'); assert.equal(queries, 0); }
+  finally { globalThis.chrome = previous; }
 });

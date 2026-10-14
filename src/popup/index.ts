@@ -1,4 +1,4 @@
-import { ORIGINS, PROVIDERS, type Provider, type Settings, type View } from '../shared/types';
+import { ORIGINS, PAGE_PROVIDERS, type PageProvider, type Provider, type Settings, type View } from '../shared/types';
 import { request } from '../shared/contracts';
 import { renderCards } from './render';
 import { bindDiagnostics } from './diagnostics';
@@ -10,8 +10,8 @@ document.getElementById('extension-version')!.textContent = `AI Gauge ${extensio
 if (DEVELOPMENT) bindDiagnostics(document, () => view, extensionVersion);
 const cards = document.getElementById('cards')!, feedback = document.getElementById('feedback')!;
 const field = (id: string) => document.getElementById(id) as HTMLInputElement;
-const displayNames: Record<Provider, string> = { chatgpt: 'ChatGPT', work_codex: 'Codex', claude: 'Claude' };
-for (const p of PROVIDERS) {
+const displayNames: Record<PageProvider, string> = { chatgpt: 'ChatGPT', codex: 'Codex', claude: 'Claude', gemini: 'Gemini' };
+for (const p of PAGE_PROVIDERS) {
   const label = document.createElement('label'); label.className = 'toggle';
   const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.id = `strip-${p}`;
   label.append(checkbox, document.createTextNode(`${displayNames[p]} 입력창에 표시`)); document.getElementById('strip-settings')!.append(label);
@@ -20,7 +20,7 @@ function render() {
   if (!view) return;
   renderCards(cards, view, { enable: p => { void enable(p); }, disable: p => { void run(() => request({ type: 'disable', provider: p })); }, revoke: p => { void run(async () => { await chrome.permissions.remove({ origins: [ORIGINS[p]] }); return request({ type: 'view' }); }); }, refresh: p => { void run(() => request({ type: 'refresh', provider: p, trigger: 'manual' })); } });
   if (!settingsDirty) {
-    for (const p of PROVIDERS) field(`strip-${p}`).checked = view.settings.strips[p];
+    for (const p of PAGE_PROVIDERS) field(`strip-${p}`).checked = view.settings.strips[p];
   }
 }
 async function run(action: () => Promise<View>) {
@@ -43,7 +43,7 @@ async function enable(p: Provider) {
 document.getElementById('settings-form')!.addEventListener('input', () => { settingsDirty = true; });
 document.getElementById('settings-form')!.addEventListener('submit', event => {
   event.preventDefault();
-  const strips = Object.fromEntries(PROVIDERS.map(p => [p, field(`strip-${p}`).checked])) as Settings['strips'];
+  const strips = Object.fromEntries(PAGE_PROVIDERS.map(p => [p, field(`strip-${p}`).checked])) as Settings['strips'];
   settingsDirty = false;
   void run(() => request({ type: 'strips', strips }));
 });

@@ -4,7 +4,7 @@ import { usageLabel, usageParts } from '../src/content/usage-label';
 import { emptySnapshot } from '../src/storage/snapshots';
 import type { Snapshot, UsageLimit } from '../src/shared/types';
 
-const snapshot = (): Snapshot => ({ ...emptySnapshot('work_codex'), state: 'ok', errorCode: null });
+const snapshot = (): Snapshot => ({ ...emptySnapshot('chatgpt'), state: 'ok', errorCode: null });
 const limit = (overrides: Partial<UsageLimit> = {}): UsageLimit => ({
   id: 'weekly', label: '7일', category: 'window', percent: 15,
   resetsAt: new Date(2026, 9, 16, 9, 5).toISOString(), windowSeconds: 604800,

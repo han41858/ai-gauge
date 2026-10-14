@@ -1,4 +1,5 @@
-import type { Provider } from '../shared/types';
+import type { PageProvider } from '../shared/types';
+import { GEMINI_INPUT, GEMINI_STOP, geminiBoundary } from './gemini';
 
 const EDITABLE = '[contenteditable],textarea';
 const COMPOSER = 'form[data-chatgpt-composer],form[data-type="unified-composer"],[data-testid="codex-composer"],[data-testid="composer"]';
@@ -10,10 +11,11 @@ const UNRELATED_REGION = 'main,[role="main"],[role="application"],article,aside,
 const STOP = 'button[data-testid="stop-button"],button[aria-label="Stop response" i],button[aria-label="응답 중지"]';
 const CLAUDE_STOP = `${STOP},button[data-testid="stop-response-button"],button[aria-label="Stop generating" i],button[aria-label="Stop generation" i],button[aria-label="생성 중지"]`;
 
-export const SELECTORS: Record<Provider, { input: string; stop: string }> = {
+export const SELECTORS: Record<PageProvider, { input: string; stop: string }> = {
   chatgpt: { input: '#prompt-textarea', stop: STOP },
-  work_codex: { input: EDITABLE, stop: STOP },
-  claude: { input: EDITABLE, stop: CLAUDE_STOP }
+  codex: { input: EDITABLE, stop: STOP },
+  claude: { input: EDITABLE, stop: CLAUDE_STOP },
+  gemini: { input: GEMINI_INPUT, stop: GEMINI_STOP }
 };
 
 function visible(element: HTMLElement): boolean {
@@ -26,8 +28,9 @@ function visible(element: HTMLElement): boolean {
   return true;
 }
 
-export function hasStreamingControl(doc: Document, provider: Provider): boolean {
-  return [...doc.querySelectorAll<HTMLElement>(SELECTORS[provider].stop)].some(visible);
+export function hasStreamingControl(doc: Document, provider: PageProvider): boolean {
+  return [...doc.querySelectorAll<HTMLElement>(SELECTORS[provider].stop)].some(control =>
+    visible(control) && (provider !== 'gemini' || (!control.closest('[contenteditable]') && geminiBoundary(control) !== null)));
 }
 
 function editingHost(element: Element): boolean {
@@ -87,7 +90,11 @@ function claudeInnerAnchor(input: HTMLElement): HTMLElement | null {
   return null;
 }
 
-function composerBoundary(input: HTMLElement, provider: Provider): HTMLElement | null {
+function composerBoundary(input: HTMLElement, provider: PageProvider): HTMLElement | null {
+  if (provider === 'gemini') {
+    const boundary = geminiBoundary(input);
+    return boundary && bounded(boundary, input) ? boundary : null;
+  }
   for (const declared of [input.closest<HTMLElement>(COMPOSER), input.closest<HTMLElement>('form'), input.closest<HTMLElement>('fieldset')]) {
     if (declared && bounded(declared, input)) return declared;
   }
@@ -199,8 +206,8 @@ function preferredCodexFooter(targets: ComposerTarget[], doc: Document): Compose
   return associated.length === 1 ? associated[0]! : null;
 }
 
-export function findComposerTarget(doc: Document, provider: Provider): ComposerTarget | null {
-  if (provider === 'work_codex') {
+export function findComposerTarget(doc: Document, provider: PageProvider): ComposerTarget | null {
+  if (provider === 'codex') {
     const footers = codexFooterTargets(doc);
     if (footers.length) return preferredCodexFooter(footers, doc);
   }
@@ -220,6 +227,6 @@ export function findComposerTarget(doc: Document, provider: Provider): ComposerT
   return explicit.length === 1 ? explicit[0]! : null;
 }
 
-export function findComposer(doc: Document, provider: Provider): HTMLElement | null {
+export function findComposer(doc: Document, provider: PageProvider): HTMLElement | null {
   return findComposerTarget(doc, provider)?.anchor ?? null;
 }

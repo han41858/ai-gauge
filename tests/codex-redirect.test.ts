@@ -15,9 +15,9 @@ const codex = `<main><form><textarea></textarea>${footer}</form></main>`;
 const ordinary = '<main><form id="chat-composer"><div id="prompt-textarea" contenteditable="true"></div><button>Send</button></form></main>';
 const popup = { id: 'fixture', url: 'chrome-extension://fixture/popup.html' };
 const view = (): View => {
-  const settings = defaults(); settings.enabled.work_codex = true;
-  return { settings, permissions: { chatgpt: true, work_codex: true, claude: true }, snapshots: {
-    chatgpt: emptySnapshot('chatgpt'), work_codex: emptySnapshot('work_codex'), claude: emptySnapshot('claude')
+  const settings = defaults(); settings.enabled.chatgpt = true;
+  return { settings, permissions: { chatgpt: true, claude: true, gemini: false }, snapshots: {
+    chatgpt: emptySnapshot('chatgpt'), claude: emptySnapshot('claude'), gemini: emptySnapshot('gemini')
   } };
 };
 const flush = () => new Promise(resolve => setTimeout(resolve, 0));
@@ -30,12 +30,12 @@ test('Codex cloud redirected to the ChatGPT root uses its explicit footer while 
   const dom = new JSDOM(codex, { url: rootUrl });
   try {
     assert.equal(providerFromUrl(rootUrl), 'chatgpt');
-    assert.equal(resolvePageProvider(dom.window.document, rootUrl), 'work_codex');
+    assert.equal(resolvePageProvider(dom.window.document, rootUrl), 'codex');
     dom.window.document.getElementById('codex-footer')!.className = 'ComposerLayoutFooter-nextHash';
-    assert.equal(resolvePageProvider(dom.window.document, rootUrl), 'work_codex');
+    assert.equal(resolvePageProvider(dom.window.document, rootUrl), 'codex');
     dom.window.document.getElementById('codex-footer')!.remove();
     assert.equal(resolvePageProvider(dom.window.document, rootUrl), 'chatgpt');
-    assert.equal(resolvePageProvider(dom.window.document, 'https://chatgpt.com/codex/cloud'), 'work_codex');
+    assert.equal(resolvePageProvider(dom.window.document, 'https://chatgpt.com/codex/cloud'), 'codex');
   } finally { dom.window.close(); }
 });
 
@@ -70,7 +70,7 @@ test('page context detection reads no prompt value or text and does not cross if
     for (const key of ['value', 'textContent', 'innerText', 'innerHTML']) {
       Object.defineProperty(input, key, { get() { throw new Error(`Private input accessed: ${key}`); } });
     }
-    assert.equal(resolvePageProvider(doc, rootUrl), 'work_codex');
+    assert.equal(resolvePageProvider(doc, rootUrl), 'codex');
     doc.getElementById('codex-footer')!.remove();
     const frame = doc.createElement('iframe'); doc.body.append(frame);
     frame.contentDocument!.body.innerHTML = footer;
@@ -96,7 +96,14 @@ function runningContent(html: string, currentView: View) {
     for (const listener of listeners) listener({ type: 'display-diagnostics' }, popup, reply => { result = reply as ReadyDisplayDiagnostic; });
     return result;
   };
-  return { dom, requests, diagnostic, invalidate() { for (const listener of storageListeners) listener(); } };
+  return {
+    dom, requests, diagnostic,
+    invalidate() { for (const listener of storageListeners) listener(); },
+    close() {
+      for (const listener of [...listeners]) listener({ type: 'permissions-revoked', origins: ['https://chatgpt.com/*'] }, { id: 'fixture' });
+      dom.window.close();
+    }
+  };
 }
 
 test('production content recognizes a late Codex footer and return to ordinary chat without any URL change', async () => {
@@ -108,15 +115,15 @@ test('production content recognizes a late Codex footer and return to ordinary c
     dom.window.document.body.innerHTML = codex;
     await waitFor(() => dom.window.document.getElementById('codex-footer')?.lastElementChild?.id === 'ai-gauge-usage-strip');
     assert.equal(dom.window.location.href, rootUrl);
-    assert.equal(diagnostic()?.provider, 'work_codex');
+    assert.equal(diagnostic()?.provider, 'codex');
     assert.equal(diagnostic()?.targetFound, true);
-    assert(requests.some(message => message.type === 'refresh' && message.provider === 'work_codex'));
+    assert(requests.some(message => message.type === 'refresh' && message.provider === 'chatgpt'));
     dom.window.document.body.innerHTML = ordinary;
     await waitFor(() => dom.window.document.getElementById('chat-composer')?.nextElementSibling?.id === 'ai-gauge-usage-strip');
     assert.equal(diagnostic()?.provider, 'chatgpt');
     assert.equal(dom.window.document.querySelectorAll('#ai-gauge-usage-strip').length, 1);
     assert.equal(dom.window.location.href, rootUrl);
-  } finally { dom.window.close(); }
+  } finally { running.close(); }
 });
 
 test('root-URL Codex and ordinary chat obey their own strip toggles while sharing the same enabled collector', async () => {
@@ -128,20 +135,20 @@ test('root-URL Codex and ordinary chat obey their own strip toggles while sharin
     await waitFor(() => running.diagnostic()?.provider === 'chatgpt');
     await new Promise(resolve => setTimeout(resolve, 350));
     assert.equal(dom.window.document.getElementById('ai-gauge-usage-strip'), null);
-    current.settings.strips.chatgpt = true; current.settings.strips.work_codex = false;
+    current.settings.strips.chatgpt = true; current.settings.strips.codex = false;
     running.invalidate();
     await waitFor(() => dom.window.document.getElementById('chat-composer')?.nextElementSibling?.id === 'ai-gauge-usage-strip');
     dom.window.document.body.innerHTML = codex;
     await new Promise(resolve => setTimeout(resolve, 350));
-    assert.equal(running.diagnostic()?.provider, 'work_codex');
+    assert.equal(running.diagnostic()?.provider, 'codex');
     assert.equal(dom.window.document.getElementById('ai-gauge-usage-strip'), null);
-    assert.equal(current.settings.enabled.work_codex, true);
-  } finally { dom.window.close(); }
+    assert.equal(current.settings.enabled.chatgpt, true);
+  } finally { running.close(); }
 });
 
 test('root-URL Codex refresh retains URL host, frame and sender restrictions', () => {
   const sender = { id: 'fixture', frameId: 0, url: rootUrl, tab: { id: 1, url: rootUrl } } as chrome.runtime.MessageSender;
-  const sharedRefresh = { type: 'refresh', provider: 'work_codex', trigger: 'event' } as const;
+  const sharedRefresh = { type: 'refresh', provider: 'chatgpt', trigger: 'event' } as const;
   assert(authorized(sharedRefresh, sender, 'fixture'));
   assert(!authorized(sharedRefresh, { ...sender, id: 'other' }, 'fixture'));
   assert(!authorized(sharedRefresh, { ...sender, frameId: 1 }, 'fixture'));

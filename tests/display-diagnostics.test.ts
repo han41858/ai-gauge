@@ -10,12 +10,12 @@ import { emptySnapshot } from '../src/storage/snapshots';
 import type { View } from '../src/shared/types';
 
 const view = (): View => {
-  const settings = defaults(); settings.enabled.work_codex = true;
-  return { settings, permissions: { chatgpt: true, work_codex: true, claude: true }, snapshots: {
-    chatgpt: emptySnapshot('chatgpt'), work_codex: emptySnapshot('work_codex'), claude: emptySnapshot('claude')
+  const settings = defaults(); settings.enabled.chatgpt = true;
+  return { settings, permissions: { chatgpt: true, claude: true, gemini: false }, snapshots: {
+    chatgpt: emptySnapshot('chatgpt'), claude: emptySnapshot('claude'), gemini: emptySnapshot('gemini')
   } };
 };
-const ready = (): ReadyDisplayDiagnostic => ({ status: 'ready', provider: 'work_codex', contentReady: true,
+const ready = (): ReadyDisplayDiagnostic => ({ status: 'ready', provider: 'codex', contentReady: true,
   editableCount: 1, iframeCount: 0, targetFound: true, stripCount: 1, stripVisible: true });
 const popupHtml = readFileSync(new URL('../src/popup/popup.html', import.meta.url), 'utf8');
 const flush = () => new Promise(resolve => setTimeout(resolve, 0));
@@ -30,12 +30,12 @@ test('display diagnostics return only structural counts and booleans without acc
         Object.defineProperty(node, key, { get() { throw new Error(`Private value accessed: ${key}`); } });
       }
     }
-    const result = createDisplayDiagnostic(doc, 'work_codex');
-    assert.deepEqual(result, { status: 'ready', provider: 'work_codex', contentReady: true, editableCount: 1,
+    const result = createDisplayDiagnostic(doc, 'codex');
+    assert.deepEqual(result, { status: 'ready', provider: 'codex', contentReady: true, editableCount: 1,
       iframeCount: 1, targetFound: true, stripCount: 1, stripVisible: false });
     assert.doesNotMatch(JSON.stringify(result), /private|class|src|html|coordinate|token|account|url|prompt/i);
     doc.getElementById('input')!.remove();
-    assert.equal(createDisplayDiagnostic(doc, 'work_codex').targetFound, false);
+    assert.equal(createDisplayDiagnostic(doc, 'codex').targetFound, false);
   } finally { dom.window.close(); }
 });
 
@@ -45,14 +45,14 @@ test('diagnostics distinguish a rendered strip from an existing hidden or offscr
     const doc = dom.window.document, host = doc.getElementById('ai-gauge-usage-strip')!;
     let left = 10;
     Object.defineProperty(host, 'getClientRects', { value: () => [{ width: 200, height: 20, left, top: 10, right: left + 200, bottom: 30 }] });
-    assert.equal(createDisplayDiagnostic(doc, 'work_codex').stripVisible, true);
+    assert.equal(createDisplayDiagnostic(doc, 'codex').stripVisible, true);
     host.hidden = true;
-    assert.equal(createDisplayDiagnostic(doc, 'work_codex').stripVisible, false);
+    assert.equal(createDisplayDiagnostic(doc, 'codex').stripVisible, false);
     host.hidden = false; host.style.opacity = '0';
-    assert.equal(createDisplayDiagnostic(doc, 'work_codex').stripVisible, false);
+    assert.equal(createDisplayDiagnostic(doc, 'codex').stripVisible, false);
     host.style.opacity = '1'; left = -1000;
-    assert.equal(createDisplayDiagnostic(doc, 'work_codex').stripVisible, false);
-    assert.equal(createDisplayDiagnostic(doc, 'work_codex').stripCount, 1);
+    assert.equal(createDisplayDiagnostic(doc, 'codex').stripVisible, false);
+    assert.equal(createDisplayDiagnostic(doc, 'codex').stripCount, 1);
   } finally { dom.window.close(); }
 });
 
@@ -91,10 +91,10 @@ test('popup accepts trusted Codex display context at the ChatGPT root but reject
   const redirected = apiFixture({ url: 'https://chatgpt.com/', reply: ready() });
   assert.deepEqual(await readActiveDisplayDiagnostic(view(), redirected.api), ready());
   for (const [url, provider] of [
-    ['https://chatgpt.com/', 'claude'], ['https://chatgpt.com/codex', 'chatgpt'], ['https://claude.ai/', 'work_codex']
+    ['https://chatgpt.com/', 'claude'], ['https://chatgpt.com/codex', 'chatgpt'], ['https://claude.ai/', 'codex']
   ] as const) {
     const fixture = apiFixture({ url, reply: { ...ready(), provider } });
-    const expectedProvider = url.includes('claude.ai') ? 'claude' : url.includes('/codex') ? 'work_codex' : 'chatgpt';
+    const expectedProvider = url.includes('claude.ai') ? 'claude' : url.includes('/codex') ? 'codex' : 'chatgpt';
     assert.deepEqual(await readActiveDisplayDiagnostic(view(), fixture.api), { status: 'content_unavailable', provider: expectedProvider });
   }
 });
@@ -104,10 +104,10 @@ test('unsupported sites and revoked host permission cannot trigger a content dia
   assert.deepEqual(await readActiveDisplayDiagnostic(view(), unrelated.api), { status: 'no_site' });
   assert.equal(unrelated.calls.length, 1);
   const denied = apiFixture({ permission: false });
-  assert.deepEqual(await readActiveDisplayDiagnostic(view(), denied.api), { status: 'permission_required', provider: 'work_codex' });
+  assert.deepEqual(await readActiveDisplayDiagnostic(view(), denied.api), { status: 'permission_required', provider: 'codex' });
   assert.equal(denied.calls.length, 2);
-  const disabledPermission = apiFixture(), v = view(); v.permissions.work_codex = false;
-  assert.deepEqual(await readActiveDisplayDiagnostic(v, disabledPermission.api), { status: 'permission_required', provider: 'work_codex' });
+  const disabledPermission = apiFixture(), v = view(); v.permissions.chatgpt = false;
+  assert.deepEqual(await readActiveDisplayDiagnostic(v, disabledPermission.api), { status: 'permission_required', provider: 'codex' });
   assert.equal(disabledPermission.calls.length, 1);
 });
 
@@ -119,7 +119,7 @@ test('missing content listener and malformed or wrong-route replies are reported
     { reply: { ...ready(), targetFound: 'yes' } }, { reply: { ...ready(), stripVisible: null } }
   ]) {
     const { api } = apiFixture(options);
-    assert.deepEqual(await readActiveDisplayDiagnostic(view(), api), { status: 'content_unavailable', provider: 'work_codex' });
+    assert.deepEqual(await readActiveDisplayDiagnostic(view(), api), { status: 'content_unavailable', provider: 'codex' });
   }
 });
 
@@ -134,7 +134,7 @@ test('display diagnosis runs only on an explicit action and copy waits for its c
     await flush(); await flush();
     const result = JSON.parse(copied);
     assert.deepEqual(result.display, ready());
-    assert.equal(result.providers.work_codex.enabled, true);
+    assert.equal(result.providers.chatgpt.enabled, true);
     assert.equal(result.extensionVersion, '0.1.4');
   } finally { dom.window.close(); }
 });
@@ -169,10 +169,13 @@ test('production content listener responds only to a trusted popup and leaves us
     assert.equal(replies.length, 0);
     listeners[0]!({ type: 'display-diagnostics' }, sender(), value => replies.push(value));
     assert.equal(replies.length, 1);
-    assert.equal((replies[0] as ReadyDisplayDiagnostic).provider, 'work_codex');
+    assert.equal((replies[0] as ReadyDisplayDiagnostic).provider, 'codex');
     assert.equal((replies[0] as ReadyDisplayDiagnostic).targetFound, true);
     assert.equal((replies[0] as ReadyDisplayDiagnostic).stripCount, 1);
     assert.equal(viewReads, beforeReads);
-    assert.equal(current.snapshots.work_codex.collectedAt, null);
-  } finally { dom.window.close(); }
+    assert.equal(current.snapshots.chatgpt.collectedAt, null);
+  } finally {
+    for (const listener of listeners) listener({ type: 'permissions-revoked', origins: ['https://chatgpt.com/*'] }, { id: 'fixture' }, () => undefined);
+    dom.window.close();
+  }
 });

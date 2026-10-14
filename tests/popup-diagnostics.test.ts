@@ -12,9 +12,9 @@ import { emptySnapshot } from '../src/storage/snapshots';
 
 const popupHtml = readFileSync(new URL('../src/popup/popup.html', import.meta.url), 'utf8');
 const view = (): View => ({
-  settings: { ...defaults(), enabled: { chatgpt: true, work_codex: true, claude: true } },
-  permissions: { chatgpt: true, work_codex: true, claude: true },
-  snapshots: { chatgpt: emptySnapshot('chatgpt'), work_codex: emptySnapshot('work_codex'), claude: emptySnapshot('claude') }
+  settings: { ...defaults(), enabled: { chatgpt: true, claude: true, gemini: true } },
+  permissions: { chatgpt: true, claude: true, gemini: true },
+  snapshots: { chatgpt: emptySnapshot('chatgpt'), claude: emptySnapshot('claude'), gemini: emptySnapshot('gemini') }
 });
 const actions = { enable() {}, disable() {}, revoke() {}, refresh() {}, select() {} };
 const flush = () => new Promise(resolve => setTimeout(resolve, 0));
@@ -23,15 +23,17 @@ test('diagnostic report includes only version and allowlisted provider status fi
   const v = view();
   v.snapshots.claude.errorCode = 'tab_access_failed';
   v.snapshots.claude.checkedAt = 1700000000000;
-  v.snapshots.work_codex.errorCode = 'open_tab';
+  v.settings.strips.codex = false;
+  v.snapshots.chatgpt.errorCode = 'open_tab';
   v.snapshots.claude.limits = [{ id: 'private-limit', label: 'private-label', category: 'model', percent: 17, remaining: 20, unit: 'private-unit', windowSeconds: null, resetsAt: null, source: 'api' }];
   Object.assign(v, { url: 'https://private.invalid/account', account: 'private-account', token: 'private-token', dom: 'private-prompt' });
   const report = createDiagnosticReport(v, '0.1.3');
-  assert.deepEqual(Object.keys(report), ['extensionVersion', 'providers']);
+  assert.deepEqual(Object.keys(report), ['extensionVersion', 'providers', 'strips']);
   assert.deepEqual(Object.keys(report.providers), [...PROVIDERS]);
-  for (const p of PROVIDERS) assert.deepEqual(Object.keys(report.providers[p]).sort(), ['enabled', 'permission', 'strip', 'state', 'errorCode', 'checkedAt', 'collectedAt', 'nextAttemptAt'].sort());
+  for (const p of PROVIDERS) assert.deepEqual(Object.keys(report.providers[p]).sort(), ['enabled', 'permission', 'state', 'errorCode', 'checkedAt', 'collectedAt', 'nextAttemptAt'].sort());
+  assert.deepEqual(report.strips, { chatgpt: true, codex: false, claude: true, gemini: true });
   assert.equal(report.providers.claude.errorCode, 'tab_access_failed');
-  assert.equal(report.providers.work_codex.errorCode, 'open_tab');
+  assert.equal(report.providers.chatgpt.errorCode, 'open_tab');
   assert.equal(report.providers.claude.checkedAt, 1700000000000);
   assert.doesNotMatch(JSON.stringify(report), /private|limits|label|token|account|url|dom|percent|remaining/i);
 });
@@ -121,7 +123,7 @@ test(`popup bundle uses installed display version ${manifest.version_name ?? man
     dom.window.eval(bundle);
     await flush();
     assert.equal(doc.getElementById('extension-version')!.textContent, `AI Gauge ${installedVersion}`);
-    assert.equal(doc.querySelectorAll('.card').length, 2);
+    assert.equal(doc.querySelectorAll('.card').length, 3);
     doc.getElementById('diagnostics-show')!.click();
     assert.equal(JSON.parse((doc.getElementById('diagnostics-output') as HTMLTextAreaElement).value).extensionVersion, installedVersion);
   } finally { dom.window.close(); }

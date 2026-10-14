@@ -14,10 +14,12 @@ const flush = async () => { for (let i = 0; i < 15; i++) await Promise.resolve()
 const base = Date.UTC(2026, 9, 14, 12);
 const limits = (percent: number) => parseClaude({ five_hour: { utilization: percent, resets_at: '2026-10-15T12:00:00Z' } });
 
-async function harness() {
-  const dom = new JSDOM('<main><form><div class="ProseMirror" contenteditable="true">private prompt</div><button id="send" aria-label="Send message">Send</button></form></main>', {
-    url: 'https://claude.ai/new', runScripts: 'outside-only'
-  });
+async function harness(provider: 'claude' | 'gemini' = 'claude') {
+  const markup = provider === 'claude'
+    ? '<form><div class="ProseMirror" contenteditable="true">private prompt</div><button id="send" aria-label="Send message">Send</button></form>'
+    : '<input-area-v2><rich-textarea><div class="ql-editor" contenteditable="true">private prompt</div></rich-textarea><button id="send" aria-label="Send message">Send</button></input-area-v2>';
+  const origin = provider === 'claude' ? 'https://claude.ai/*' : 'https://gemini.google.com/*';
+  const dom = new JSDOM(`<main>${markup}</main>`, { url: origin.replace('*', 'new'), runScripts: 'outside-only' });
   const doc = dom.window.document, roots = new Map<HTMLElement, ShadowRoot>();
   const originalShadow = dom.window.HTMLElement.prototype.attachShadow;
   dom.window.HTMLElement.prototype.attachShadow = function(this: HTMLElement, options: ShadowRootInit) {
@@ -44,10 +46,14 @@ async function harness() {
     }
     now = until; await flush();
   };
-  const settings = defaults(); settings.enabled.claude = true;
-  const view: View = { settings, permissions: { chatgpt: true, work_codex: true, claude: true }, snapshots: {
-    chatgpt: emptySnapshot('chatgpt'), work_codex: emptySnapshot('work_codex'),
-    claude: success(emptySnapshot('claude'), limits(17), base - 10_000)
+  const collectedLimits = (percent: number) => provider === 'claude' ? limits(percent) : [{
+    id: 'weekly', label: '주간', category: 'window' as const, percent,
+    resetsAt: '2026-10-15T12:00:00.000Z', windowSeconds: 604800, remaining: 12096, unit: null, source: 'api' as const
+  }];
+  const settings = defaults(); settings.enabled[provider] = true;
+  const view: View = { settings, permissions: { chatgpt: true, gemini: true, claude: true }, snapshots: {
+    chatgpt: emptySnapshot('chatgpt'), gemini: emptySnapshot('gemini'), claude: emptySnapshot('claude'),
+    [provider]: success(emptySnapshot(provider), collectedLimits(17), base - 10_000)
   } };
   const storageListeners = new Set<() => void>();
   const runtimeListeners = new Set<(message: unknown, sender: { id: string }) => void>();
@@ -57,11 +63,11 @@ async function harness() {
     now: () => now, read: async provider => view.snapshots[provider],
     write: async snapshot => { view.snapshots[snapshot.provider] = snapshot; notifyStorage(); },
     enabled: async provider => view.settings.enabled[provider] && view.permissions[provider],
-    collect: async provider => { assert.equal(provider, 'claude'); collections.push(now); return limits(servedPercent); }
+    collect: async requested => { assert.equal(requested, provider); collections.push(now); return collectedLimits(servedPercent); }
   });
   Object.assign(dom.window, { chrome: {
     runtime: { id: 'fixture', sendMessage: async (message: Message) => {
-      requests.push({ at: now, message });
+      requests.push({ at: now, message: structuredClone(message) });
       if (message.type === 'refresh') await scheduler.refresh(message.provider, message.trigger);
       return { ok: true, view: structuredClone(view) };
     }, onMessage: { addListener(fn: typeof runtimeListeners extends Set<infer T> ? T : never) { runtimeListeners.add(fn); }, removeListener(fn: typeof runtimeListeners extends Set<infer T> ? T : never) { runtimeListeners.delete(fn); } } },
@@ -78,9 +84,9 @@ async function harness() {
   const invalidate = () => { for (const fn of runtimeListeners) fn({ type: 'invalidate' }, { id: 'fixture' }); };
   return { dom, doc, view, host, progress, advance, finishResponse, notifyStorage, invalidate, collections, requests,
     setServedPercent(value: number) { servedPercent = value; },
-    revoke() { for (const fn of runtimeListeners) fn({ type: 'permissions-revoked', origins: ['https://claude.ai/*'] }, { id: 'fixture' }); },
+    revoke(origins = [origin], id = 'fixture') { for (const fn of runtimeListeners) fn({ type: 'permissions-revoked', origins }, { id }); },
     close() {
-      for (const fn of runtimeListeners) fn({ type: 'permissions-revoked', origins: ['https://claude.ai/*'] }, { id: 'fixture' });
+      for (const fn of runtimeListeners) fn({ type: 'permissions-revoked', origins: [origin] }, { id: 'fixture' });
       timers.clear(); dom.window.close();
     }
   };
@@ -100,6 +106,27 @@ test('stored usage and runtime invalidations update the same native progress ele
     assert.equal(page.host(), host); assert.equal(page.progress(), progress); assert.equal(progress.value, 63);
     assert.match(page.host().getAttribute('aria-label')!, /사용량: 63%/);
     assert.equal(page.collections.length, 0, 'displaying a stored snapshot must not itself collect usage');
+  } finally { page.close(); }
+});
+
+test('Gemini completion uses its own source, respects scheduler cooldown and updates its existing progress', async () => {
+  const page = await harness('gemini');
+  try {
+    const host = page.host(), progress = page.progress();
+    assert.equal(progress.value, 17);
+    await page.finishResponse();
+    assert.equal(page.collections.length, 0);
+    page.revoke(['https://claude.ai/*']); page.revoke(undefined, 'other-extension');
+    assert.equal(page.host(), host);
+    await page.advance(49_801);
+    assert.deepEqual(page.collections, [base + 50_100]);
+    const requests = page.requests.filter(item => item.message.type === 'refresh');
+    assert.equal(requests.length, 1);
+    assert.deepEqual(requests[0]!.message, { type: 'refresh', provider: 'gemini', trigger: 'event' });
+    assert.equal(page.host(), host); assert.equal(page.progress(), progress); assert.equal(progress.value, 63);
+    await page.finishResponse(); page.revoke(); await page.advance(120_000);
+    assert.equal(page.doc.getElementById('ai-gauge-usage-strip'), null);
+    assert.equal(page.collections.length, 1);
   } finally { page.close(); }
 });
 

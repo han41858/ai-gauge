@@ -1,9 +1,3 @@
-import { CollectionError } from '../shared/errors';
-import { collectChatGPTFromTab } from './tab-transport';
-import { parseChatGPTObservation } from './chatgpt-parser';
-// Read only quota metadata the site has already received, without initiating a chat.
-export async function collectChatGPT() {
-  const observation = await collectChatGPTFromTab();
-  if (observation === null) throw new CollectionError('chatgpt_usage_pending');
-  return parseChatGPTObservation(observation);
-}
+import { collectFromTab } from './tab-transport';
+import { parseChatGPT } from './parsers';
+export async function collectChatGPT() { return parseChatGPT(await collectFromTab('chatgpt')); }

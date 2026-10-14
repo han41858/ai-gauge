@@ -22,7 +22,7 @@ test('real background wiring: initialization, merged content refreshes, permissi
   const pushedMessages: unknown[] = [];
   const mock = {
     runtime: { id: 'ext', onMessage: events.message, onInstalled: events.installed, onStartup: events.startup },
-    storage: { local: { get: async (key: string) => ({ [key]: stored[key] }), set: async (value: Record<string, unknown>) => { Object.assign(stored, value); } } },
+    storage: { local: { get: async (key: string | string[]) => Object.fromEntries((Array.isArray(key) ? key : [key]).map(name => [name, stored[name]])), set: async (value: Record<string, unknown>) => { Object.assign(stored, value); } } },
     permissions: { contains: async () => permission, onAdded: events.added, onRemoved: events.removed },
     alarms: { get: async () => alarm, create: async (_name: string, a: unknown) => { alarm = a; }, onAlarm: events.alarm },
     tabs: { query: async (q: { url?: string }) => !q.url || tab.url!.startsWith(q.url.slice(0, -1)) ? [tab] : [], get: async () => tab, sendMessage: async (_id: number, message: unknown) => { pushes++; pushedMessages.push(message); }, onActivated: events.activated, onUpdated: events.updated },
@@ -49,11 +49,11 @@ test('real background wiring: initialization, merged content refreshes, permissi
     await import('../src/background/index');
     await waitFor(() => alarm !== null && badge === '—');
     assert.deepEqual(alarm, { periodInMinutes: 10 }); assert.equal(requests, 0);
-    const settings = defaults(); settings.enabled.work_codex = true; settings.defaultProvider = 'work_codex';
+    const settings = defaults(); settings.enabled.chatgpt = true; settings.defaultProvider = 'chatgpt';
     const saved = await send({ type: 'settings', settings }); assert(saved.ok); assert.equal(registrations[0]?.id, 'ai-gauge-openai');
     const pushesBefore = pushes;
     const cached = await send({ type: 'view' }, content); assert(cached.ok); assert.equal(pushes, pushesBefore, 'Reading cached content view must not cause invalidation loop');
-    const results = await Promise.all([send({ type: 'refresh', provider: 'work_codex', trigger: 'event' }, content), send({ type: 'refresh', provider: 'work_codex', trigger: 'event' }, content), send({ type: 'refresh', provider: 'work_codex', trigger: 'event' }, content)]);
+    const results = await Promise.all([send({ type: 'refresh', provider: 'chatgpt', trigger: 'event' }, content), send({ type: 'refresh', provider: 'chatgpt', trigger: 'event' }, content), send({ type: 'refresh', provider: 'chatgpt', trigger: 'event' }, content)]);
     assert(results.every(r => r.ok)); assert.equal(requests, 1); assert.equal(badge, '21%');
     const rejected = await send({ type: 'settings', settings }, content); assert.equal(rejected.ok, false);
     const beforeNavigation = pushes; tab.url = 'https://chatgpt.com/c/synthetic'; events.updated.emit(1, { url: tab.url }, tab);
@@ -61,14 +61,14 @@ test('real background wiring: initialization, merged content refreshes, permissi
     permission = false; events.removed.emit({ origins: ['https://chatgpt.com/*'] });
     await waitFor(() => registrations.length === 0 && badge === '—');
     assert(pushedMessages.some(message => JSON.stringify(message) === JSON.stringify({ type: 'permissions-revoked', origins: ['https://chatgpt.com/*'] })));
-    const revoked = await send({ type: 'view' }); assert(revoked.ok); assert.equal(revoked.view.snapshots.work_codex.state, 'permission_required');
-    await send({ type: 'refresh', provider: 'work_codex', trigger: 'manual' }); assert.equal(requests, 1);
+    const revoked = await send({ type: 'view' }); assert(revoked.ok); assert.equal(revoked.view.snapshots.chatgpt.state, 'permission_required');
+    await send({ type: 'refresh', provider: 'chatgpt', trigger: 'manual' }); assert.equal(requests, 1);
     // Simulate a restarted worker reading only persisted settings/snapshot/attempt cooldown.
-    const raw = stored['snapshot:v2:work_codex'] as ReturnType<typeof emptySnapshot>;
+    const raw = stored['snapshot:v4:chatgpt'] as ReturnType<typeof emptySnapshot>;
     assert.equal(raw.limits[0]?.percent, 21); assert(raw.nextAttemptAt > raw.checkedAt!);
     // A real browser tab event must recover from the old persisted missing-tab
     // backoff; opening the popup alone must not create a refresh/invalidation loop.
-    permission = true; settings.enabled.claude = true; settings.enabled.work_codex = false;
+    permission = true; settings.enabled.claude = true; settings.enabled.chatgpt = false;
     await send({ type: 'settings', settings });
     stored['snapshot:v2:claude'] = { ...emptySnapshot('claude'), errorCode: 'open_tab', checkedAt: Date.now(), nextAttemptAt: Date.now() + 3_600_000, failures: 8 };
     tab.url = 'https://claude.ai/new'; events.updated.emit(1, { status: 'complete' }, tab);

@@ -16,11 +16,11 @@ const usage = (id: string, label: string, percent: number | null): UsageLimit =>
   category: 'window', resetsAt: new Date(now + 3_600_000).toISOString(), windowSeconds: 604800,
   remaining: null, unit: null, source: 'api' });
 const view = (): View => ({
-  settings: { ...defaults(), enabled: { chatgpt: true, work_codex: true, claude: true } },
-  permissions: { chatgpt: true, work_codex: true, claude: true },
+  settings: { ...defaults(), enabled: { chatgpt: true, claude: true, gemini: true } },
+  permissions: { chatgpt: true, claude: true, gemini: true },
   snapshots: {
-    chatgpt: emptySnapshot('chatgpt'),
-    work_codex: success(emptySnapshot('work_codex'), [usage('week', 'Work / Codex 공유 · 7일', 15)], now),
+    gemini: success(emptySnapshot('gemini'), [usage('gemini-week', '주간', 42)], now),
+    chatgpt: success(emptySnapshot('chatgpt'), [usage('week', 'Work / Codex 공유 · 7일', 15)], now),
     claude: success(emptySnapshot('claude'), [usage('claude-week', '7일', 30)], now)
   }
 });
@@ -30,14 +30,14 @@ const fixture = () => {
   return { dom, cards: dom.window.document.getElementById('cards')! };
 };
 
-test('compact popup labels its plan and Claude cards without exposing the experimental ChatGPT snapshot', () => {
+test('compact popup shows exactly ChatGPT, Claude and Gemini without a separate Codex card', () => {
   const { dom, cards } = fixture(), v = view(), original = structuredClone(v);
   try {
     renderCards(cards, v, noop, now);
-    assert.deepEqual([...cards.querySelectorAll<HTMLElement>('.card')].map(card => card.dataset.provider), ['work_codex', 'claude']);
-    const plan = cards.querySelector('[data-provider="work_codex"]')!;
+    assert.deepEqual([...cards.querySelectorAll<HTMLElement>('.card')].map(card => card.dataset.provider), ['chatgpt', 'claude', 'gemini']);
+    const plan = cards.querySelector('[data-provider="chatgpt"]')!;
     assert.equal(plan.getAttribute('aria-label'), 'ChatGPT 사용량');
-    assert.deepEqual([...cards.querySelectorAll('h2')].map(title => title.textContent), ['ChatGPT', 'Claude']);
+    assert.deepEqual([...cards.querySelectorAll('h2')].map(title => title.textContent), ['ChatGPT', 'Claude', 'Gemini']);
     assert.equal(plan.querySelector('.limit-line')!.textContent, '7일사용량: 15%');
     assert(plan.querySelector('.reset')!.textContent!.length > 0);
     assert.doesNotMatch(cards.textContent!, /Work \/ Codex|공유 풀|최근 수집 성공/);
@@ -45,18 +45,18 @@ test('compact popup labels its plan and Claude cards without exposing the experi
     assert.equal(cards.querySelector('.status'), null);
     assert.equal(cards.querySelector('details,select,.time'), null);
     assert.doesNotMatch(cards.textContent!, /상세|배지 항목|마지막 정상 수집|마지막 확인 시도|다음 갱신/);
-    assert.deepEqual(v, original, 'hiding a card must not mutate collection settings or snapshots');
+    assert.deepEqual(v, original, 'rendering cards must not mutate collection settings or snapshots');
   } finally { dom.window.close(); }
 });
 
 test('compact popup preserves real window and model distinctions while stripping only the known shared prefix', () => {
   const { dom, cards } = fixture(), v = view();
   try {
-    v.snapshots.work_codex.limits = [usage('week', 'Work / Codex 공유 · 7일', 15), usage('model', 'Work / Codex 공유 · 모델 A · 1일', 45)];
+    v.snapshots.chatgpt.limits = [usage('week', 'Work / Codex 공유 · 7일', 15), usage('model', 'Work / Codex 공유 · 모델 A · 1일', 45)];
     renderCards(cards, v, noop, now);
-    const names = [...cards.querySelectorAll('[data-provider="work_codex"] .limit-line > :first-child')].map(node => node.textContent);
+    const names = [...cards.querySelectorAll('[data-provider="chatgpt"] .limit-line > :first-child')].map(node => node.textContent);
     assert.deepEqual(names, ['7일', '모델 A · 1일']);
-    assert.equal(cards.querySelectorAll('[data-provider="work_codex"] progress').length, 2);
+    assert.equal(cards.querySelectorAll('[data-provider="chatgpt"] progress').length, 2);
   } finally { dom.window.close(); }
 });
 
@@ -66,10 +66,10 @@ test('popup and input strip use the same validated usage and local reset text fo
     for (const percent of [0, 17.25, null, Number.NaN, -1, 101]) {
       for (const resetsAt of [new Date(now + 49 * 3_600_000).toISOString(), new Date(now + 2 * 3_600_000).toISOString(), null, '2026-10-14T18:00:00']) {
         const item = { ...usage('week', 'Work / Codex 공유 · 7일', percent), resetsAt };
-        v.snapshots.work_codex.limits = [item];
+        v.snapshots.chatgpt.limits = [item];
         renderCards(cards, v, noop, now);
-        const card = cards.querySelector('[data-provider="work_codex"]')!;
-        const parts = usageParts(v.snapshots.work_codex, item, now);
+        const card = cards.querySelector('[data-provider="chatgpt"]')!;
+        const parts = usageParts(v.snapshots.chatgpt, item, now);
         assert.equal(card.querySelector('.percent')!.textContent, parts.current);
         assert.equal(card.querySelector('.reset')!.textContent, parts.reset);
         assert.equal(card.querySelectorAll('progress').length, parts.percent === null ? 0 : 1);
@@ -83,28 +83,28 @@ test('cached quota rerenders keep card titles and updated values without restori
   const { dom, cards } = fixture(), v = view();
   try {
     renderCards(cards, v, noop, now);
-    v.snapshots.work_codex.limits[0]!.percent = 16;
+    v.snapshots.chatgpt.limits[0]!.percent = 16;
     renderCards(cards, v, noop, now + 1);
     assert.equal(cards.querySelector('details,select,.time'), null);
-    assert.deepEqual([...cards.querySelectorAll('h2')].map(title => title.textContent), ['ChatGPT', 'Claude']);
-    assert.equal(cards.querySelector('[data-provider="work_codex"] .percent')!.textContent, '사용량: 16%');
+    assert.deepEqual([...cards.querySelectorAll('h2')].map(title => title.textContent), ['ChatGPT', 'Claude', 'Gemini']);
+    assert.equal(cards.querySelector('[data-provider="chatgpt"] .percent')!.textContent, '사용량: 16%');
   } finally { dom.window.close(); }
 });
 
 test('missing and failed quota stays visible without a fabricated zero or successful timestamp', () => {
   const { dom, cards } = fixture(), v = view();
   try {
-    v.snapshots.work_codex = { ...emptySnapshot('work_codex'), errorCode: 'tab_access_failed', checkedAt: now };
+    v.snapshots.chatgpt = { ...emptySnapshot('chatgpt'), errorCode: 'tab_access_failed', checkedAt: now };
     renderCards(cards, v, noop, now);
-    const card = cards.querySelector('[data-provider="work_codex"]')!;
+    const card = cards.querySelector('[data-provider="chatgpt"]')!;
     assert.equal(card.querySelector('.status')!.textContent, ERROR_TEXT.tab_access_failed);
     assert.equal(card.querySelector('.status')!.closest('details'), null);
     assert.equal(card.querySelector('progress'), null);
     assert.doesNotMatch(card.textContent!, /0%|최근 수집 성공/);
     assert.doesNotMatch(card.textContent!, /정상 수집 기록 없음|마지막 확인 시도|다음 갱신/);
-    v.snapshots.work_codex.state = 'ok'; v.snapshots.work_codex.collectedAt = now; v.snapshots.work_codex.errorCode = null;
+    v.snapshots.chatgpt.state = 'ok'; v.snapshots.chatgpt.collectedAt = now; v.snapshots.chatgpt.errorCode = null;
     renderCards(cards, v, noop, now);
-    assert.equal(cards.querySelector('[data-provider="work_codex"] .status')!.textContent, '사용량 확인 불가');
+    assert.equal(cards.querySelector('[data-provider="chatgpt"] .status')!.textContent, '사용량 확인 불가');
   } finally { dom.window.close(); }
 });
 
@@ -124,6 +124,50 @@ test('old quota remains explicitly marked and an actual zero is retained', () =>
   } finally { dom.window.close(); }
 });
 
+test('Gemini card displays all reported windows and actual zero without inventing remaining units', () => {
+  const { dom, cards } = fixture(), v = view();
+  try {
+    v.snapshots.gemini.limits = [
+      { ...usage('gemini-short', '5시간', 0), remaining: 600, windowSeconds: 18000 },
+      { ...usage('gemini-week', '주간', 62.5), remaining: 12096 },
+      { ...usage('gemini-unknown', '알 수 없는 기간', null), remaining: 12 }
+    ];
+    renderCards(cards, v, noop, now);
+    const card = cards.querySelector('[data-provider="gemini"]')!;
+    assert.deepEqual([...card.querySelectorAll('.limit-line')].map(row => row.textContent), [
+      '5시간사용량: 0%', '주간사용량: 63%', '알 수 없는 기간사용량: 확인 불가'
+    ]);
+    assert.equal(card.querySelectorAll('progress').length, 2);
+    assert.equal(card.querySelectorAll('.reset').length, 3);
+    assert.doesNotMatch(card.textContent!, /600|12096|메시지|회 남음|마지막 수집/);
+    assert.equal(card.querySelector('a')!.href, 'https://gemini.google.com/');
+    v.snapshots.gemini.state = 'error'; v.snapshots.gemini.errorCode = 'network';
+    renderCards(cards, v, noop, now);
+    const failed = cards.querySelector('[data-provider="gemini"]')!;
+    assert.match(failed.textContent!, /오래된 데이터/);
+    assert(failed.textContent!.includes(ERROR_TEXT.network));
+    assert.equal(failed.querySelectorAll('.old').length, 3);
+  } finally { dom.window.close(); }
+});
+
+test('Gemini card controls affect only Gemini and a disabled card hides its cached percentages', () => {
+  const { dom, cards } = fixture(), v = view(), calls: string[] = [];
+  try {
+    const actions: Actions = { ...noop, enable: p => { calls.push(`enable:${p}`); }, refresh: p => { calls.push(`refresh:${p}`); }, disable: p => { calls.push(`disable:${p}`); }, revoke: p => { calls.push(`revoke:${p}`); } };
+    v.settings.enabled.gemini = false; v.permissions.gemini = false;
+    renderCards(cards, v, actions, now);
+    const disabled = cards.querySelector('[data-provider="gemini"]')!;
+    assert.equal(disabled.querySelector('progress'), null);
+    disabled.querySelector<HTMLButtonElement>('.grant')!.click();
+    v.settings.enabled.gemini = true; v.permissions.gemini = true;
+    v.snapshots.gemini.nextAttemptAt = 0;
+    renderCards(cards, v, actions, now);
+    const active = cards.querySelector('[data-provider="gemini"]')!;
+    for (const label of ['새로고침', '끄기', '권한 철회']) [...active.querySelectorAll('button')].find(button => button.textContent === label)!.click();
+    assert.deepEqual(calls, ['enable:gemini', 'refresh:gemini', 'disable:gemini', 'revoke:gemini']);
+  } finally { dom.window.close(); }
+});
+
 test('compact controls retain enabling, refreshing, disabling, and permission revocation without badge selection', () => {
   const { dom, cards } = fixture(), v = view(), calls: Array<[string, Provider, (string | null)?]> = [];
   const actions: Actions = {
@@ -132,16 +176,16 @@ test('compact controls retain enabling, refreshing, disabling, and permission re
     select: (p, id) => { calls.push(['select', p, id]); }
   };
   try {
-    v.settings.enabled.work_codex = false; v.permissions.work_codex = false;
+    v.settings.enabled.chatgpt = false; v.permissions.chatgpt = false;
     renderCards(cards, v, actions, now);
-    cards.querySelector<HTMLButtonElement>('[data-provider="work_codex"] .grant')!.click();
-    v.settings.enabled.work_codex = true; v.permissions.work_codex = true;
-    v.snapshots.work_codex.nextAttemptAt = 0;
+    cards.querySelector<HTMLButtonElement>('[data-provider="chatgpt"] .grant')!.click();
+    v.settings.enabled.chatgpt = true; v.permissions.chatgpt = true;
+    v.snapshots.chatgpt.nextAttemptAt = 0;
     renderCards(cards, v, actions, now);
-    const card = cards.querySelector('[data-provider="work_codex"]')!;
+    const card = cards.querySelector('[data-provider="chatgpt"]')!;
     for (const label of ['새로고침', '끄기', '권한 철회']) [...card.querySelectorAll('button')].find(button => button.textContent === label)!.click();
     assert.equal(card.querySelector('select'), null);
-    assert.deepEqual(calls, [['enable', 'work_codex'], ['refresh', 'work_codex'], ['disable', 'work_codex'], ['revoke', 'work_codex']]);
+    assert.deepEqual(calls, [['enable', 'chatgpt'], ['refresh', 'chatgpt'], ['disable', 'chatgpt'], ['revoke', 'chatgpt']]);
     assert.equal(card.querySelector('a')!.href, 'https://chatgpt.com/');
   } finally { dom.window.close(); }
 });
@@ -150,10 +194,10 @@ test('rate-limit error remains visible and blocks premature requests without sho
   const { dom, cards } = fixture(), v = view();
   let requests = 0;
   try {
-    v.snapshots.work_codex.state = 'rate_limited'; v.snapshots.work_codex.errorCode = 'rate_limited';
-    v.snapshots.work_codex.nextAttemptAt = now + 60_000;
+    v.snapshots.chatgpt.state = 'rate_limited'; v.snapshots.chatgpt.errorCode = 'rate_limited';
+    v.snapshots.chatgpt.nextAttemptAt = now + 60_000;
     renderCards(cards, v, { ...noop, refresh() { requests++; } }, now);
-    const card = cards.querySelector('[data-provider="work_codex"]')!;
+    const card = cards.querySelector('[data-provider="chatgpt"]')!;
     const refresh = [...card.querySelectorAll('button')].find(button => button.textContent === '새로고침')!;
     assert.equal(refresh.disabled, true); refresh.click(); assert.equal(requests, 0);
     assert(card.textContent!.includes(ERROR_TEXT.rate_limited));
@@ -176,11 +220,11 @@ test('popup keeps settings and diagnostics collapsed while removing persistent e
   } finally { dom.window.close(); }
 });
 
-test('display-only settings expose the exact three labels and preserve all stored badge preferences on save', async () => {
+test('display-only settings expose four page labels and preserve all stored badge preferences on save', async () => {
   const dom = new JSDOM(readFileSync(new URL('../src/popup/popup.html', import.meta.url), 'utf8'), { runScripts: 'outside-only' });
   const doc = dom.window.document, v = view();
   v.settings.defaultProvider = 'claude'; v.settings.followTab = true;
-  v.settings.warning = 41; v.settings.danger = 82; v.settings.selectedLimit.work_codex = 'week';
+  v.settings.warning = 41; v.settings.danger = 82; v.settings.selectedLimit.chatgpt = 'week';
   const before = structuredClone(v.settings);
   let saved: View['settings'] | null = null;
   const flush = () => new Promise(resolve => setTimeout(resolve, 0));
@@ -195,7 +239,7 @@ test('display-only settings expose the exact three labels and preserve all store
     } });
     const bundle = buildSync({ entryPoints: ['src/popup/index.ts'], bundle: true, write: false, format: 'iife', target: 'chrome120' }).outputFiles[0]!.text;
     dom.window.eval(bundle); await flush();
-    assert.deepEqual([...doc.querySelectorAll('#strip-settings label')].map(label => label.textContent), ['ChatGPT 입력창에 표시', 'Codex 입력창에 표시', 'Claude 입력창에 표시']);
+    assert.deepEqual([...doc.querySelectorAll('#strip-settings label')].map(label => label.textContent), ['ChatGPT 입력창에 표시', 'Codex 입력창에 표시', 'Claude 입력창에 표시', 'Gemini 입력창에 표시']);
     assert.equal(doc.querySelector('#default-provider,#follow-tab,#warning,#danger'), null);
     const checkbox = doc.getElementById('strip-chatgpt') as HTMLInputElement;
     checkbox.checked = false; checkbox.dispatchEvent(new dom.window.Event('input', { bubbles: true }));

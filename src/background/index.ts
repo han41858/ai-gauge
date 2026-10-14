@@ -1,6 +1,6 @@
 import { ORIGINS, PROVIDERS, SITE_GROUPS, providerFromUrl, type Provider, type Settings, type View } from '../shared/types';
 import { authorized, parseMessage, type Reply } from '../shared/contracts';
-import { readSettings, readSnapshot, writeSnapshot, readView } from '../storage/snapshots';
+import { readSettings, writeSettings, migrateStorage, readSnapshot, writeSnapshot, readView } from '../storage/snapshots';
 import { parseSettings } from '../storage/settings';
 import { collect } from '../providers';
 import { Scheduler, type Trigger } from './scheduler';
@@ -25,7 +25,7 @@ async function publish(): Promise<View> {
   await updateBadge(view);
   // Push only an invalidation signal, not usage payloads into tabs.
   await Promise.all(SITE_GROUPS.map(async site => {
-    if (!site.providers.some(p => view.permissions[p])) return;
+    if (!site.providers.some(p => view.permissions[displayProvider(p)])) return;
     const tabs = await chrome.tabs.query({ url: site.origin });
     await Promise.all(tabs.filter(t => typeof t.id === 'number' && !t.discarded).map(t => chrome.tabs.sendMessage(t.id!, { type: 'invalidate' }).catch(() => undefined)));
   }));
@@ -43,7 +43,7 @@ function changeSettings(change: (settings: Settings) => void | Promise<void>): P
   return queueSettingsWrite(async () => {
     const settings = await readSettings();
     await change(settings);
-    await chrome.storage.local.set({ settings: parseSettings(settings) });
+    await writeSettings(parseSettings(settings));
   });
 }
 async function enableProvider(provider: Provider) {
@@ -59,8 +59,7 @@ async function enableProvider(provider: Provider) {
 async function initialize() {
   if (!await chrome.alarms.get(ALARM)) await chrome.alarms.create(ALARM, { periodInMinutes: 10 });
   await queueSettingsWrite(async () => {
-    const stored = await chrome.storage.local.get('settings');
-    if (!stored.settings) await chrome.storage.local.set({ settings: parseSettings(null) });
+    await migrateStorage();
   });
   await reconcile();
   await publish();
@@ -71,7 +70,7 @@ chrome.runtime.onMessage.addListener((input: unknown, sender, sendResponse: (rep
   void (async () => {
     if (sender.tab) {
       const p = providerFromUrl(sender.url)!;
-      if (!await chrome.permissions.contains({ origins: [ORIGINS[p]] })) return { ok: false } as Reply;
+      if (!await chrome.permissions.contains({ origins: [ORIGINS[displayProvider(p)]] })) return { ok: false } as Reply;
     }
     if (message.type === 'settings' || message.type === 'strips' || message.type === 'disable') {
       await changeSettings(settings => {
@@ -103,7 +102,7 @@ async function updateBadgeFromFocus() { const tabs = await chrome.tabs.query({ a
 chrome.permissions.onAdded.addListener(added => {
   // Chrome may close the popup while showing its permission dialog. Complete
   // the granted site's activation in the worker instead of relying on that UI.
-  const providers = (['work_codex', 'claude'] as const).filter(provider => added.origins?.includes(ORIGINS[provider]));
+  const providers = PROVIDERS.filter(provider => added.origins?.includes(ORIGINS[provider]));
   void (async () => {
     await Promise.all(providers.map(enableProvider));
     await reconcile();

@@ -1,6 +1,6 @@
 import type { CollectionResult, Provider, Snapshot, UsageLimit } from '../shared/types';
 import { CollectionError } from '../shared/errors';
-import { FRESH_MS, effectiveSnapshot, validLimits } from '../storage/snapshots';
+import { FRESH_MS, validLimits } from '../storage/snapshots';
 export type Trigger = 'manual' | 'event' | 'periodic' | 'tab';
 export interface SchedulerIO { read(p: Provider): Promise<Snapshot>; write(s: Snapshot): Promise<void>; collect(p: Provider): Promise<CollectionResult>; enabled(p: Provider): Promise<boolean>; now(): number }
 export function backoff(failures: number): number { return Math.min(60 * 60_000, 60_000 * 2 ** Math.min(6, Math.max(0, failures - 1))); }
@@ -18,7 +18,7 @@ export function success(previous: Snapshot, limits: UsageLimit[], now: number): 
 }
 export function failure(previous: Snapshot, error: unknown, now: number): Snapshot {
   const e = error instanceof CollectionError ? error : new CollectionError('invalid_response');
-  if (e.code === 'chatgpt_usage_pending' || e.code === 'open_tab') return { ...previous, state: 'error', checkedAt: now, nextAttemptAt: now + 60_000, failures: 0, errorCode: e.code };
+  if (e.code === 'open_tab') return { ...previous, state: 'error', checkedAt: now, nextAttemptAt: now + 60_000, failures: 0, errorCode: e.code };
   const failures = previous.failures + 1;
   return { ...previous, state: e.state, checkedAt: now, failures, nextAttemptAt: now + Math.max(backoff(failures), e.retryAfterMs), errorCode: e.code };
 }
@@ -40,14 +40,8 @@ export class Scheduler {
     let after: Snapshot;
     try {
       const result = await this.io.collect(p), now = this.io.now();
-      if (Array.isArray(result)) after = success(before, result, now);
-      else {
-        if (p !== 'chatgpt' || !Number.isFinite(result.observedAt) || result.observedAt <= 0 || result.observedAt > now + 60_000 || !validLimits(result.limits)) throw new CollectionError('invalid_response');
-        // Reading the page cache does not make an older API response fresh again.
-        after = effectiveSnapshot({ ...success(before, result.limits, now), collectedAt: result.observedAt }, now);
-        // An explicit empty response replaces old quotas; it does not mean zero usage.
-        if (!result.limits.length) after = { ...after, state: 'error', collectedAt: before.collectedAt, errorCode: 'chatgpt_quota_absent' };
-      }
+      if (!validLimits(result) || !result.length) throw new CollectionError('invalid_response');
+      after = success(before, result, now);
     }
     catch (e) { after = failure(before, e, this.io.now()); }
     // Disabling a provider or revoking permission while a request is pending must not publish it.

@@ -25,9 +25,9 @@ test('release build omits diagnostic UI and responses, and ZIP contains only roo
     const inlineLogo = await readFile('assets/logo-20x20.png');
     const html = await readFile(join(dist, 'popup.html'), 'utf8');
     assert.doesNotMatch(html, /id="diagnostics|진단 정보/);
-    const settings = defaults(); settings.enabled.work_codex = true;
-    const view = { settings, permissions: { chatgpt: true, work_codex: true, claude: true }, snapshots: {
-      chatgpt: emptySnapshot('chatgpt'), work_codex: emptySnapshot('work_codex'), claude: emptySnapshot('claude')
+    const settings = defaults(); settings.enabled.chatgpt = true;
+    const view = { settings, permissions: { chatgpt: true, claude: true, gemini: true }, snapshots: {
+      chatgpt: emptySnapshot('chatgpt'), claude: emptySnapshot('claude'), gemini: emptySnapshot('gemini')
     } };
     const listeners: Array<(message: unknown, sender: unknown, reply: (value: unknown) => void) => void> = [];
     const api = { runtime: { id: 'fixture', getManifest: () => manifest, sendMessage: async () => ({ ok: true, view }),
@@ -37,7 +37,7 @@ test('release build omits diagnostic UI and responses, and ZIP contains only roo
     Object.assign(popup.window, { chrome: api });
     popup.window.eval(await readFile(join(dist, 'popup.js'), 'utf8'));
     await new Promise(resolve => setTimeout(resolve, 0));
-    assert.equal(popup.window.document.querySelectorAll('.card').length, 2);
+    assert.equal(popup.window.document.querySelectorAll('.card').length, 3);
     assert.equal(popup.window.document.getElementById('diagnostics'), null);
     page = new JSDOM('<main><textarea></textarea><div class="ComposerLayoutFooter-hash"><button>Send</button></div></main>',
       { url: 'https://chatgpt.com/', runScripts: 'outside-only' });
@@ -60,7 +60,7 @@ test('release build omits diagnostic UI and responses, and ZIP contains only roo
     execFileSync(process.execPath, ['scripts/package.mjs', '--build-dir', dist, '--output-dir', output], { stdio: 'pipe' });
     const archive = join(output, `ai-gauge-${manifest.version_name}.zip`);
     const entries = execFileSync('unzip', ['-Z1', archive], { encoding: 'utf8' }).trim().split('\n').sort();
-    assert.deepEqual(entries, ['assets/icon128.png', 'assets/icon16.png', 'assets/icon32.png', 'assets/icon48.png', 'background.js', 'chatgpt-observer.js', 'content.js', 'manifest.json', 'popup.css', 'popup.html', 'popup.js']);
+    assert.deepEqual(entries, ['assets/icon128.png', 'assets/icon16.png', 'assets/icon32.png', 'assets/icon48.png', 'background.js', 'content.js', 'manifest.json', 'popup.css', 'popup.html', 'popup.js']);
     assert.deepEqual(JSON.parse(execFileSync('unzip', ['-p', archive, 'manifest.json'], { encoding: 'utf8' })), manifest);
     for (const entry of entries) assert.deepEqual(execFileSync('unzip', ['-p', archive, entry]), await readFile(join(dist, entry)));
     assert.throws(() => execFileSync(process.execPath, ['scripts/package.mjs', '--build-dir', dist, '--output-dir', output], { stdio: 'pipe' }), 'Do not overwrite an existing build archive');

@@ -16,13 +16,13 @@ const collected = (provider: Provider, limits: UsageLimit[]): Snapshot => ({
 });
 const fixture = (): View => {
   const settings = defaults();
-  settings.enabled.work_codex = true;
+  settings.enabled.chatgpt = true;
   settings.enabled.claude = true;
   return {
-    settings, permissions: { chatgpt: true, work_codex: true, claude: true },
+    settings, permissions: { chatgpt: true, claude: true, gemini: true },
     snapshots: {
-      chatgpt: emptySnapshot('chatgpt'),
-      work_codex: collected('work_codex', [limit('플랜 기간', 15)]),
+      gemini: emptySnapshot('gemini'),
+      chatgpt: collected('chatgpt', [limit('플랜 기간', 15)]),
       claude: collected('claude', [limit('Claude 기간', 63)])
     }
   };
@@ -31,10 +31,10 @@ const fixture = (): View => {
 test('a saved weekly selection cannot hide a fully used shorter window', () => {
   const view = fixture();
   const short = limit('5시간', 100), weekly = limit('7일', 15);
-  view.snapshots.work_codex.limits = [weekly, short];
-  view.settings.selectedLimit.work_codex = weekly.id;
+  view.snapshots.chatgpt.limits = [weekly, short];
+  view.settings.selectedLimit.chatgpt = weekly.id;
   const before = structuredClone(view);
-  assert.equal(selectedLimit(view.snapshots.work_codex, view.settings), short);
+  assert.equal(selectedLimit(view.snapshots.chatgpt, view.settings), short);
   assert.equal(badge(view, 'https://chatgpt.com/codex', NOW).text, '100%');
   assert.match(badge(view, 'https://chatgpt.com/codex', NOW).title, /5시간: 100%/);
   assert.deepEqual(view, before, 'display selection must not mutate or aggregate the reported limits');
@@ -77,7 +77,7 @@ test('the general ChatGPT page automatically uses the plan source regardless of 
 
 test('an enabled and authorized Claude tab takes priority over a legacy fixed plan preference', () => {
   const view = fixture();
-  view.settings.defaultProvider = 'work_codex';
+  view.settings.defaultProvider = 'chatgpt';
   view.settings.followTab = false;
   assert.equal(badge(view, 'https://claude.ai/new', NOW).text, '63%');
 });
@@ -86,10 +86,10 @@ test('unrelated and URL-redacted tabs never receive a service badge', () => {
   const view = fixture();
   view.settings.defaultProvider = 'claude';
   assert.equal(badge(view, 'https://unrelated.invalid/', NOW).text, '');
-  view.settings.enabled.work_codex = false;
+  view.settings.enabled.chatgpt = false;
   assert.equal(badge(view, 'https://unrelated.invalid/', NOW).text, '');
-  view.settings.enabled.work_codex = true;
-  view.permissions.work_codex = false;
+  view.settings.enabled.chatgpt = true;
+  view.permissions.chatgpt = false;
   assert.equal(badge(view, undefined, NOW).text, '');
   assert.equal(badge(view, 'chrome://extensions/', NOW).title, 'AI Gauge');
 });
@@ -101,7 +101,7 @@ test('disabled or unauthorized active sources do not expose their cached usage',
   view.settings.enabled.claude = true;
   view.permissions.claude = false;
   assert.equal(badge(view, 'https://claude.ai/new', NOW).text, '—');
-  view.permissions.work_codex = false;
+  view.permissions.chatgpt = false;
   const unavailable = badge(view, 'https://claude.ai/new', NOW);
   assert.equal(unavailable.text, '—');
   assert.match(unavailable.title, /권한 필요/);
@@ -124,7 +124,26 @@ test('failed, stale or unknown data for an active source stays unavailable inste
 
 test('lookalike domains and non-HTTPS URLs cannot select a site source', () => {
   const view = fixture();
-  for (const url of ['https://claude.ai.evil.invalid/', 'http://claude.ai/new']) {
+  for (const url of ['https://claude.ai.evil.invalid/', 'http://claude.ai/new', 'https://gemini.google.com.evil.invalid/', 'http://gemini.google.com/app', 'https://google.com/gemini']) {
     assert.equal(badge(view, url, NOW).text, '');
   }
+});
+
+test('Gemini badge selects its highest actual usage with legible blue and white colors', () => {
+  const view = fixture();
+  view.settings.enabled.gemini = true;
+  view.snapshots.gemini = collected('gemini', [limit('5시간', 0), limit('주간', 42)]);
+  const result = badge(view, 'https://gemini.google.com/app', NOW);
+  assert.equal(result.text, '42%'); assert.equal(result.title, 'AI Gauge · Gemini · 주간: 42%');
+  assert.equal(result.color, '#3569C8'); assert.equal(result.textColor, '#FFFFFF');
+  const channels = result.color.slice(1).match(/../g)!.map(hex => {
+    const value = parseInt(hex, 16) / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  const luminance = channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
+  assert(1.05 / (luminance + 0.05) >= 4.5, 'white badge numbers need at least 4.5:1 contrast');
+  view.snapshots.gemini = collected('gemini', [limit('5시간', 0)]);
+  assert.equal(badge(view, 'https://gemini.google.com/app', NOW).text, '0%');
+  view.snapshots.gemini.limits[0]!.percent = null;
+  assert.equal(badge(view, 'https://gemini.google.com/app', NOW).text, '—');
 });

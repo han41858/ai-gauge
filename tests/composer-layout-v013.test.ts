@@ -5,18 +5,18 @@ import { findComposerTarget } from '../src/content/selectors';
 import { UsageStrip } from '../src/content/usage-strip';
 import { defaults } from '../src/storage/settings';
 import { emptySnapshot } from '../src/storage/snapshots';
-import type { Provider, View } from '../src/shared/types';
+import type { PageProvider, View } from '../src/shared/types';
 
 const enabledView = (): View => {
   const settings = defaults();
-  settings.enabled = { chatgpt: true, work_codex: true, claude: true };
-  return { settings, permissions: { chatgpt: true, work_codex: true, claude: true }, snapshots: {
-    chatgpt: emptySnapshot('chatgpt'), work_codex: emptySnapshot('work_codex'), claude: emptySnapshot('claude')
+  settings.enabled = { chatgpt: true, claude: true, gemini: false };
+  return { settings, permissions: { chatgpt: true, claude: true, gemini: false }, snapshots: {
+    chatgpt: emptySnapshot('chatgpt'), claude: emptySnapshot('claude'), gemini: emptySnapshot('gemini')
   } };
 };
 const fixture = (html: string) => new JSDOM(html, { url: 'https://chatgpt.com/codex' });
 
-for (const provider of ['chatgpt', 'work_codex', 'claude'] satisfies Provider[]) {
+for (const provider of ['chatgpt', 'codex', 'claude'] satisfies PageProvider[]) {
   test(`${provider} keeps its row next to the composer inside a centered full-height page`, () => {
     const dom = fixture('<main><div id="stage" style="min-height:100vh;display:flex;flex-direction:column;justify-content:center;transition:height 150ms"><div id="slot"><form id="composer"><div id="prompt-textarea" contenteditable="true"></div><button>Send</button></form></div></div></main>');
     try {
@@ -79,7 +79,7 @@ test('a full-height decorated panel is not mistaken for a compact composer shell
 test('Codex home role-less editor stays next to its toolbar inside centered wrappers', () => {
   const dom = fixture('<main style="display:grid;min-height:100vh"><section style="display:flex;flex-direction:column;justify-content:center"><div id="slot"><div id="composer"><div><div contenteditable="plaintext-only"></div></div><div><button type="button">Choose environment</button><button type="submit">Send</button></div></div></div></section></main>');
   try {
-    const target = findComposerTarget(dom.window.document, 'work_codex');
+    const target = findComposerTarget(dom.window.document, 'codex');
     assert.equal(target?.anchor.id, 'composer');
     assert(target?.anchor.querySelector('button[type="submit"]'));
   } finally { dom.window.close(); }
@@ -88,6 +88,6 @@ test('Codex home role-less editor stays next to its toolbar inside centered wrap
 test('an explicit Codex composer inside a broad form is recognized before unrelated editors', () => {
   const dom = fixture('<main><form><textarea readonly></textarea><div data-testid="codex-composer" id="composer"><div contenteditable="plaintext-only"></div></div><section><textarea></textarea></section></form></main>');
   try {
-    assert.equal(findComposerTarget(dom.window.document, 'work_codex')?.anchor.id, 'composer');
+    assert.equal(findComposerTarget(dom.window.document, 'codex')?.anchor.id, 'composer');
   } finally { dom.window.close(); }
 });

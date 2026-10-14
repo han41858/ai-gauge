@@ -1,4 +1,4 @@
-import { isProvider, providerFromUrl, PROVIDERS, type Provider, type Settings, type View } from './types';
+import { isProvider, providerFromUrl, PROVIDERS, PAGE_PROVIDERS, type Provider, type Settings, type View } from './types';
 import { record } from './validation';
 import { isSettings } from '../storage/settings';
 import { parseSnapshot } from '../storage/snapshots';
@@ -13,8 +13,8 @@ export function parseMessage(input: unknown): Message | null {
   if ((r.type === 'enable' || r.type === 'disable') && keys === 'provider,type' && isProvider(r.provider)) return { type: r.type, provider: r.provider };
   if (r.type === 'strips' && keys === 'strips,type') {
     const strips = record(r.strips);
-    if (strips && Object.keys(strips).length === PROVIDERS.length && PROVIDERS.every(p => typeof strips[p] === 'boolean')) {
-      return { type: 'strips', strips: Object.fromEntries(PROVIDERS.map(p => [p, strips[p]])) as Settings['strips'] };
+    if (strips && Object.keys(strips).length === PAGE_PROVIDERS.length && PAGE_PROVIDERS.every(p => typeof strips[p] === 'boolean')) {
+      return { type: 'strips', strips: Object.fromEntries(PAGE_PROVIDERS.map(p => [p, strips[p]])) as Settings['strips'] };
     }
   }
   if (r.type === 'refresh' && keys === 'provider,trigger,type' && isProvider(r.provider) && (r.trigger === 'manual' || r.trigger === 'event')) return { type: 'refresh', provider: r.provider, trigger: r.trigger };
@@ -29,14 +29,20 @@ export function authorized(message: Message, sender: chrome.runtime.MessageSende
   }
   return sender.url === `chrome-extension://${extensionId}/popup.html`;
 }
+function sameFields(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (Array.isArray(left)) return Array.isArray(right) && left.length === right.length && left.every((value, index) => sameFields(value, right[index]));
+  const a = record(left), b = record(right);
+  return !!a && !!b && Object.keys(a).length === Object.keys(b).length && Object.keys(a).every(key => Object.hasOwn(b, key) && sameFields(a[key], b[key]));
+}
 export function isReply(input: unknown): input is Extract<Reply, { ok: true }> {
   const r = record(input), view = record(r?.view);
   if (r?.ok !== true || !view || !isSettings(view.settings)) return false;
-  return ['chatgpt', 'work_codex', 'claude'].every(p => {
+  return PROVIDERS.every(p => {
     const raw = record(record(view.snapshots)?.[p]);
     if (!raw || typeof record(view.permissions)?.[p] !== 'boolean') return false;
     const clean = parseSnapshot(raw, p as Provider);
-    return JSON.stringify(clean) === JSON.stringify(raw);
+    return sameFields(clean, raw);
   });
 }
 export async function request(message: Message): Promise<View> {

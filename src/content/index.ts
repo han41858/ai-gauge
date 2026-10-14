@@ -1,4 +1,4 @@
-import { SITE_GROUPS, type Provider, type View } from '../shared/types';
+import { SITE_GROUPS, type PageProvider, type Provider, type View } from '../shared/types';
 import { request } from '../shared/contracts';
 import { UsageStrip } from './usage-strip';
 import { hasStreamingControl } from './selectors';
@@ -10,11 +10,9 @@ import { DEVELOPMENT } from '../shared/build-mode';
 declare global { interface Window { __aiGaugeMounted?: boolean } }
 if (resolvePageProvider(document, location.href) && !window.__aiGaugeMounted) {
   window.__aiGaugeMounted = true;
-  let provider: Provider | null = null, strip: UsageStrip | null = null, view: View | null = null;
+  let provider: PageProvider | null = null, strip: UsageStrip | null = null, view: View | null = null;
   let stopped = false, timer: ReturnType<typeof setTimeout> | null = null, wasStreaming = false, lastSignal = 0, pending = false, loadAgain = false;
   const refreshQueue = new Set<Provider>();
-  let quotaTimer: ReturnType<typeof setTimeout> | null = null;
-  let quotaInitialCheck = false;
   let viewRetryTimer: ReturnType<typeof setTimeout> | null = null, viewFailures = 0;
   let completionTimer: ReturnType<typeof setTimeout> | null = null, completionProvider: Provider | null = null;
   let routeUrl: string | null = null;
@@ -22,7 +20,6 @@ if (resolvePageProvider(document, location.href) && !window.__aiGaugeMounted) {
     if (completionTimer) clearTimeout(completionTimer);
     completionTimer = null; completionProvider = null;
   };
-  const stopQuotaObserver = () => { if (provider !== 'claude') document.dispatchEvent(new Event('ai-gauge-chatgpt-stop')); };
   const route = () => {
     const next = resolvePageProvider(document, location.href);
     const navigated = routeUrl !== null && routeUrl !== location.href;
@@ -41,8 +38,6 @@ if (resolvePageProvider(document, location.href) && !window.__aiGaugeMounted) {
     stopped = true; window.__aiGaugeMounted = false; strip?.remove(); observer.disconnect(); if (timer) clearTimeout(timer);
     if (viewRetryTimer) clearTimeout(viewRetryTimer);
     clearCompletion();
-    stopQuotaObserver(); if (quotaTimer) clearTimeout(quotaTimer);
-    document.removeEventListener('ai-gauge-chatgpt-quota', onQuota);
     document.removeEventListener('focusin', scheduleCheck);
     document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('popstate', onRoute);
     chrome.runtime.onMessage.removeListener(onMessage); chrome.storage.onChanged.removeListener(onStorage);
@@ -72,15 +67,8 @@ if (resolvePageProvider(document, location.href) && !window.__aiGaugeMounted) {
       view = nextView;
       viewFailures = 0; if (viewRetryTimer) { clearTimeout(viewRetryTimer); viewRetryTimer = null; }
       route(); strip?.update(view);
-      if (provider === 'chatgpt' && view.permissions.chatgpt && view.settings.enabled.chatgpt && !quotaInitialCheck) {
-        quotaInitialCheck = true;
-        // The init response may precede the bridge's first view. Respect the
-        // existing cooldown, then read that earlier observation from the cache.
-        if (!quotaTimer) quotaTimer = setTimeout(() => { quotaTimer = null; void load('chatgpt'); }, 60_100);
-      }
-      if (!view.permissions.chatgpt || !view.settings.enabled.chatgpt) stopQuotaObserver();
       const group = SITE_GROUPS.find(g => g.providers.includes(current));
-      if (!view.permissions[current] || !group || !needsContent(view, group.providers)) stop();
+      if (!view.permissions[displayProvider(current)] || !group || !needsContent(view, group.providers)) stop();
       else scheduleCompletion();
     } catch {
       if (stopped) return;
@@ -135,7 +123,7 @@ if (resolvePageProvider(document, location.href) && !window.__aiGaugeMounted) {
   });
   observer.observe(document, {
     childList: true, subtree: true, attributes: true,
-    attributeFilter: ['hidden', 'aria-hidden', 'inert', 'style', 'class', 'contenteditable', 'aria-label', 'data-testid']
+    attributeFilter: ['hidden', 'aria-hidden', 'inert', 'style', 'class', 'contenteditable', 'aria-label', 'data-testid', 'data-test-id']
   });
   const onMessage = (message: unknown, sender: chrome.runtime.MessageSender, sendResponse?: (response: unknown) => void) => {
     if (DEVELOPMENT && authorizedDisplayRequest(message, sender, chrome.runtime.id)) {
@@ -154,15 +142,8 @@ if (resolvePageProvider(document, location.href) && !window.__aiGaugeMounted) {
   const onStorage = () => { void load(); };
   const onVisible = () => { if (document.visibilityState === 'visible') { check(); void load(provider ? displayProvider(provider) : undefined); } };
   const onRoute = () => { check(); };
-  const onQuota = () => {
-    if (provider !== 'chatgpt' || !view?.settings.enabled.chatgpt || !view.permissions.chatgpt) return;
-    void load('chatgpt');
-    // A new response can arrive during the scheduler's one-minute cooldown.
-    if (!quotaTimer) quotaTimer = setTimeout(() => { quotaTimer = null; void load('chatgpt'); }, 60_100);
-  };
   chrome.runtime.onMessage.addListener(onMessage); chrome.storage.onChanged.addListener(onStorage);
   document.addEventListener('focusin', scheduleCheck);
   document.addEventListener('visibilitychange', onVisible); window.addEventListener('popstate', onRoute);
-  document.addEventListener('ai-gauge-chatgpt-quota', onQuota);
   void load();
 }

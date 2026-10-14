@@ -13,8 +13,8 @@ const view = (): View => {
   settings.enabled.claude = true;
   return {
     settings,
-    permissions: { chatgpt: false, work_codex: false, claude: true },
-    snapshots: { chatgpt: emptySnapshot('chatgpt'), work_codex: emptySnapshot('work_codex'), claude: emptySnapshot('claude') }
+    permissions: { chatgpt: false, claude: true, gemini: false },
+    snapshots: { chatgpt: emptySnapshot('chatgpt'), claude: emptySnapshot('claude'), gemini: emptySnapshot('gemini') }
   };
 };
 const composer = (classes = 'min-w-0') => `<div id="surface" class="bg-surface-3" style="border:1px solid gray;border-radius:16px"><div id="input-wrapper" class="relative w-full ${classes}"><div id="input" class="ProseMirror" contenteditable="true">Private prompt</div></div><div id="toolbar" role="toolbar"><button>Attach</button><button id="send">Send</button></div></div>`;
@@ -69,7 +69,7 @@ test('Claude column surface permits a full-width internal row', () => {
 
 test('Claude class markers do not apply to a different provider', () => {
   const doc = documentFor(`<main><form>${composer()}</form></main>`);
-  assert.equal(findComposerTarget(doc, 'work_codex')?.anchor, doc.querySelector('form'));
+  assert.equal(findComposerTarget(doc, 'codex')?.anchor, doc.querySelector('form'));
 });
 
 test('Claude skips class matches unrelated to the selected editor', () => {

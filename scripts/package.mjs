@@ -14,7 +14,7 @@ const buildDir = resolve(values['build-dir']), outputDir = resolve(values['outpu
 const manifest = JSON.parse(await readFile(join(buildDir, 'manifest.json'), 'utf8'));
 assert.match(manifest.version_name, /^\d{12}$/);
 const assets = ['icon128.png', 'icon16.png', 'icon32.png', 'icon48.png'];
-const runtime = ['background.js', 'chatgpt-observer.js', 'content.js', 'manifest.json', 'popup.css', 'popup.html', 'popup.js'];
+const runtime = ['background.js', 'content.js', 'manifest.json', 'popup.css', 'popup.html', 'popup.js'];
 const files = [...assets.map(file => `assets/${file}`), ...runtime];
 assert.deepEqual((await readdir(buildDir)).sort(), ['assets', ...runtime], 'Package only the built extension runtime files');
 assert.deepEqual((await readdir(join(buildDir, 'assets'))).sort(), assets, 'Package only the prepared local icons');

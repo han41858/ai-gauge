@@ -33,7 +33,7 @@ test('Claude tab arrival triggers the real collector path after a no-tab attempt
     await scheduler.refresh('claude', 'tab');
     assert.equal(snapshot.state, 'ok'); assert.equal(snapshot.collectedAt, now); assert.equal(snapshot.limits[0]?.percent, 35);
     assert.equal(snapshot.limits[0]?.resetsAt, '2026-10-14T03:00:00.000Z');
-    assert.deepEqual(urls, ['/api/organizations', '/api/organizations/00000000-0000-0000-0000-000000000001/usage']);
+    assert.deepEqual(urls, ['https://claude.ai/api/organizations', 'https://claude.ai/api/organizations/00000000-0000-0000-0000-000000000001/usage']);
     assert.deepEqual(tabIds, [0]); assert(!JSON.stringify(snapshot).includes('private')); assert(!JSON.stringify(snapshot).includes('00000000'));
     await scheduler.refresh('claude', 'tab'); assert.equal(urls.length, 2);
   } finally {
@@ -69,17 +69,24 @@ test('multiple active Claude tabs prefer the last focused window without trying 
   } finally { globalThis.chrome = previous; }
 });
 
-test('production-built MAIN collector survives Chrome-style function serialization for Claude and Work/Codex', async () => {
+test('serialized MAIN collectors keep requests on their fixed origin despite a foreign document base URI', async () => {
   const compiled = await build({ entryPoints: ['src/providers/tab-transport.ts'], bundle: true, write: false, format: 'cjs', target: 'chrome120', legalComments: 'none' });
-  const module = { exports: {} as { collectInPage: (provider: 'claude' | 'work_codex') => Promise<TransportResult> } };
+  const module = { exports: {} as { collectInPage: (provider: 'claude' | 'chatgpt') => Promise<TransportResult> } };
   runInNewContext(compiled.outputFiles[0]!.text, { module });
-  for (const provider of ['claude', 'work_codex'] as const) {
+  for (const provider of ['claude', 'chatgpt'] as const) {
     let calls = 0;
+    const origin = provider === 'claude' ? 'https://claude.ai' : 'https://chatgpt.com';
+    const document = { baseURI: 'https://untrusted.invalid/changed-base/' };
     const usage = JSON.parse(readFileSync(new URL(`./fixtures/${provider === 'claude' ? 'claude' : 'chatgpt'}.json`, import.meta.url), 'utf8'));
     const isolatedPage = {
-      location: { origin: provider === 'claude' ? 'https://claude.ai' : 'https://chatgpt.com' },
+      location: { origin }, document,
       AbortController, setTimeout, clearTimeout,
-      fetch: async () => { calls++; return new Response(JSON.stringify(calls === 1 ? provider === 'claude' ? [{ uuid: '00000000-0000-0000-0000-000000000001' }] : { accessToken: 'synthetic-private-token' } : usage), { headers: { 'content-type': 'application/json' } }); }
+      fetch: async (url: string, init: RequestInit) => {
+        // Browser fetch resolves relative strings against document.baseURI.
+        assert.equal(new URL(url, document.baseURI).origin, origin);
+        assert.equal(init.redirect, 'error'); assert.equal(init.credentials, 'include');
+        calls++; return new Response(JSON.stringify(calls === 1 ? provider === 'claude' ? [{ uuid: '00000000-0000-0000-0000-000000000001' }] : { accessToken: 'synthetic-private-token' } : usage), { headers: { 'content-type': 'application/json' } });
+      }
     };
     // No module helpers/imports are available in this new page context.
     const result = await runInNewContext(`(${module.exports.collectInPage.toString()})('${provider}')`, isolatedPage) as TransportResult;

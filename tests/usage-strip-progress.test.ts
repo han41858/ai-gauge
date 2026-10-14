@@ -8,11 +8,11 @@ import { emptySnapshot, FRESH_MS } from '../src/storage/snapshots';
 import type { View } from '../src/shared/types';
 
 function view(percent: number | null = 17): View {
-  const settings = defaults(); settings.enabled.work_codex = true;
+  const settings = defaults(); settings.enabled.chatgpt = true;
   const now = Date.now();
-  return { settings, permissions: { chatgpt: true, work_codex: true, claude: true }, snapshots: {
-    chatgpt: emptySnapshot('chatgpt'), claude: emptySnapshot('claude'),
-    work_codex: { ...emptySnapshot('work_codex'), state: 'ok', collectedAt: now, checkedAt: now, errorCode: null,
+  return { settings, permissions: { chatgpt: true, gemini: true, claude: true }, snapshots: {
+    gemini: emptySnapshot('gemini'), claude: emptySnapshot('claude'),
+    chatgpt: { ...emptySnapshot('chatgpt'), state: 'ok', collectedAt: now, checkedAt: now, errorCode: null,
       limits: [{ id: 'weekly', label: '7일', category: 'window', percent, resetsAt: new Date(now + 49 * 3_600_000).toISOString(),
         windowSeconds: 604800, remaining: null, unit: null, source: 'api' }] }
   } };
@@ -55,14 +55,14 @@ test('missing and invalid usage hide progress instead of clamping it or inventin
   const { dom, strip, elements } = fixture();
   try {
     for (const value of [null, Number.NaN, Number.POSITIVE_INFINITY, -1, 101]) {
-      const current = view(value); current.snapshots.work_codex.limits[0]!.remaining = 45;
+      const current = view(value); current.snapshots.chatgpt.limits[0]!.remaining = 45;
       strip.update(current);
       const { progress, current: label } = elements();
       assert.equal(progress.hidden, true);
       assert.equal(progress.hasAttribute('value'), false);
       assert.equal(label.textContent, '사용량: 확인 불가');
     }
-    const current = view(); current.snapshots.work_codex.limits = [];
+    const current = view(); current.snapshots.chatgpt.limits = [];
     strip.update(current);
     assert.equal(elements().progress.hidden, true);
     assert.equal(elements().progress.hasAttribute('value'), false);
@@ -75,19 +75,19 @@ test('failed, stale and aged snapshots cannot leave their old progress visible',
     for (const state of ['error', 'stale', 'signed_out', 'rate_limited', 'unsupported'] as const) {
       strip.update(view(63));
       assert.equal(elements().progress.value, 63);
-      const current = view(63); current.snapshots.work_codex.state = state;
+      const current = view(63); current.snapshots.chatgpt.state = state;
       strip.update(current);
       assert.equal(elements().progress.hidden, true);
       assert.equal(elements().progress.hasAttribute('value'), false);
       assert.doesNotMatch(elements().host.getAttribute('aria-label')!, /63%/);
     }
-    const aged = view(63); aged.snapshots.work_codex.collectedAt = Date.now() - FRESH_MS;
+    const aged = view(63); aged.snapshots.chatgpt.collectedAt = Date.now() - FRESH_MS;
     strip.update(aged);
     assert.equal(elements().progress.hidden, true);
   } finally { dom.window.close(); }
 });
 
-test('usage and reset are separate wrapping elements with a small progress bar and clock label', () => {
+test('usage and reset fit a 30px row that hides details before the current usage on narrow screens', () => {
   const { dom, strip, elements } = fixture();
   try {
     const current = view(17); strip.update(current);
@@ -95,14 +95,17 @@ test('usage and reset are separate wrapping elements with a small progress bar a
     assert.equal(progress.previousElementSibling, label);
     assert.match(reset.textContent!, /^🕒 사용량 초기화:/);
     assert.equal(label.parentElement?.nextElementSibling, reset);
-    const parts = usageParts(current.snapshots.work_codex, current.snapshots.work_codex.limits[0]);
+    const parts = usageParts(current.snapshots.chatgpt, current.snapshots.chatgpt.limits[0]);
     assert.equal(host.getAttribute('aria-label'), parts.label);
     assert.doesNotMatch(host.getAttribute('aria-label')!, /%, 사용량 초기화/);
     assert.equal(root.querySelector('[role="status"]')?.getAttribute('aria-live'), 'polite');
     assert.equal(root.querySelector('[role="status"]')?.getAttribute('aria-atomic'), 'true');
     const style = root.querySelector('style')!.textContent!;
-    assert.match(style, /gap:4px 14px/);
-    assert.match(style, /flex-wrap:wrap/);
+    assert.match(style, /gap:14px/);
+    assert.match(style, /:host\{[^}]*height:30px[^}]*font:12px/);
+    assert.match(style, /\.usage\{[^}]*align-items:center[^}]*height:30px[^}]*padding:0 10px/);
+    assert.match(style, /@container ai-gauge \(max-width:520px\)\{\.reset\{display:none/);
+    assert.match(style, /@container ai-gauge \(max-width:280px\)\{progress\{display:none/);
     assert.match(style, /progress\{[^}]*width:80px[^}]*height:6px[^}]*border:0/);
   } finally { dom.window.close(); }
 });
@@ -110,7 +113,7 @@ test('usage and reset are separate wrapping elements with a small progress bar a
 test('known usage still has a valid progress bar when only the reset timestamp is missing', () => {
   const { dom, strip, elements } = fixture();
   try {
-    const current = view(45); current.snapshots.work_codex.limits[0]!.resetsAt = null;
+    const current = view(45); current.snapshots.chatgpt.limits[0]!.resetsAt = null;
     strip.update(current);
     assert.equal(elements().progress.hidden, false);
     assert.equal(elements().progress.value, 45);
@@ -127,7 +130,7 @@ test('repeated mounts preserve the progress nodes without mutations and updates 
     observer.observe(before.host, { attributes: true });
     for (let i = 0; i < 20; i++) strip.mount();
     assert.equal(observer.takeRecords().length, 0);
-    current.snapshots.work_codex.limits[0]!.percent = 42;
+    current.snapshots.chatgpt.limits[0]!.percent = 42;
     strip.update(current);
     assert.equal(elements().progress, before.progress);
     assert.equal(elements().current, before.current);

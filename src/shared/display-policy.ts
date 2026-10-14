@@ -1,17 +1,16 @@
-import type { Provider, View } from './types';
+import type { PageProvider, Provider, View } from './types';
 
 // A page location is independent of the quota source. Both OpenAI page types
-// show the same plan pool; the ordinary-chat observation remains separate.
-export const displayProvider = (page: Provider): Provider => page === 'chatgpt' ? 'work_codex' : page;
+// show the same plan pool, collected and stored once.
+export const displayProvider = (page: PageProvider): Provider => page === 'codex' ? 'chatgpt' : page;
 
-export function shouldShowStrip(view: View, page: Provider): boolean {
+export function shouldShowStrip(view: View, page: PageProvider): boolean {
   const source = displayProvider(page);
   return view.permissions[source] && view.settings.enabled[source] && view.settings.strips[page];
 }
 
-export function needsContent(view: View, pages: Provider[]): boolean {
-  const observeChatGPT = pages.includes('chatgpt') && view.permissions.chatgpt && view.settings.enabled.chatgpt;
-  return observeChatGPT || pages.some(page => shouldShowStrip(view, page));
+export function needsContent(view: View, pages: PageProvider[]): boolean {
+  return pages.some(page => shouldShowStrip(view, page));
 }
 
-export const canRefreshFromPage = (page: Provider, source: Provider): boolean => page === source || displayProvider(page) === source;
+export const canRefreshFromPage = (page: PageProvider, source: Provider): boolean => displayProvider(page) === source;

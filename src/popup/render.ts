@@ -1,19 +1,18 @@
-import { HOME_URLS, type Provider, type View } from '../shared/types';
+import { HOME_URLS, NAMES, PROVIDERS, type Provider, type View } from '../shared/types';
 import { resetLabel, statusText, usagePercentLabel } from '../shared/format';
 import { percent } from '../shared/validation';
 import { effectiveSnapshot } from '../storage/snapshots';
 export interface Actions { enable(p: Provider): void; disable(p: Provider): void; revoke(p: Provider): void; refresh(p: Provider): void; select?(p: Provider, id: string | null): void }
-const CARD_PROVIDERS: Provider[] = ['work_codex', 'claude'];
-const limitLabel = (provider: Provider, label: string) => provider === 'work_codex'
+const limitLabel = (provider: Provider, label: string) => provider === 'chatgpt'
   ? label.replace(/^Work\s*\/\s*Codex\s*공유\s*(?:[·:–—-]\s*)?/, '').trim() || '사용량' : label;
 export function renderCards(container: HTMLElement, view: View, actions: Actions, now = Date.now()) {
   const d = container.ownerDocument;
   const el = <K extends keyof HTMLElementTagNameMap>(tag: K, text?: string, cls?: string) => { const e = d.createElement(tag); if (text) e.textContent = text; if (cls) e.className = cls; return e; };
-  const cards = CARD_PROVIDERS.map(p => {
+  const cards = PROVIDERS.map(p => {
     const s = effectiveSnapshot(view.snapshots[p], now), enabled = view.settings.enabled[p];
     const card = el('section', undefined, 'card');
     card.dataset.provider = p;
-    const title = p === 'work_codex' ? 'ChatGPT' : 'Claude';
+    const title = NAMES[p];
     card.setAttribute('aria-label', `${title} 사용량`);
     card.append(el('h2', title));
     if (!enabled || s.state !== 'ok') card.append(el('p', enabled ? statusText(s) : '꺼짐', 'status'));
@@ -39,7 +38,7 @@ export function renderCards(container: HTMLElement, view: View, actions: Actions
       button(controls, '끄기', () => actions.disable(p));
     }
     if (view.permissions[p]) button(controls, '권한 철회', () => actions.revoke(p));
-    const link = el('a', '사이트 열기'); link.href = HOME_URLS[p === 'work_codex' ? 'chatgpt' : p]; link.target = '_blank'; link.rel = 'noopener noreferrer'; controls.append(link);
+    const link = el('a', '사이트 열기'); link.href = HOME_URLS[p]; link.target = '_blank'; link.rel = 'noopener noreferrer'; controls.append(link);
     card.append(controls); return card;
   });
   container.replaceChildren(...cards);

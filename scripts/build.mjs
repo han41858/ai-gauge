@@ -14,7 +14,6 @@ await rm(outdir, { recursive: true, force: true });
 await mkdir(outdir, { recursive: true });
 await build({ ...options, entryPoints: { background: 'src/background/index.ts', popup: 'src/popup/index.ts' }, outdir, format: 'esm' });
 await build({ ...options, entryPoints: ['src/content/index.ts'], outfile: join(outdir, 'content.js'), format: 'iife' });
-await build({ ...options, entryPoints: ['src/providers/chatgpt-observer-entry.ts'], outfile: join(outdir, 'chatgpt-observer.js'), format: 'iife' });
 const manifest = { ...JSON.parse(await readFile('manifest.json', 'utf8')), ...version };
 await writeFile(join(outdir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
 let popup = await readFile('src/popup/popup.html', 'utf8');
