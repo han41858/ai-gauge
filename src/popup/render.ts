@@ -6,7 +6,7 @@ import { effectiveSnapshot } from '../storage/snapshots';
 import { ticketDisplay } from '../shared/ticket-presentation';
 export interface Actions { enable(p: Provider): void; disable(p: Provider): void; revoke(p: Provider): void; refresh(p: Provider): void; select?(p: Provider, id: string | null): void }
 const limitLabel = (provider: Provider, label: string) => provider === 'chatgpt'
-  ? label.replace(/^Work\s*\/\s*Codex\s*공유\s*(?:[·:–—-]\s*)?/, '').trim() || '사용량' : label;
+  ? label.replace(/^(?:ChatGPT\s*·\s*|Work\s*\/\s*Codex\s*공유\s*(?:[·:–—-]\s*)?)/, '').trim() || '사용량' : label;
 export function renderCards(container: HTMLElement, view: View, actions: Actions, now = Date.now()) {
   const d = container.ownerDocument;
   const el = <K extends keyof HTMLElementTagNameMap>(tag: K, text?: string, cls?: string) => { const e = d.createElement(tag); if (text) e.textContent = text; if (cls) e.className = cls; return e; };

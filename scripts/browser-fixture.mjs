@@ -50,7 +50,7 @@ try {
     settings: { enabled: { chatgpt: true, claude: true, gemini: true }, strips: { chatgpt: true, codex: true, claude: true, gemini: true }, defaultProvider: 'chatgpt', selectedLimit: { chatgpt: null, claude: null, gemini: null }, followTab: false, warning: 70, danger: 90 },
     permissions: { chatgpt: true, claude: true, gemini: true },
     snapshots: {
-      chatgpt: { provider: 'chatgpt', state: 'ok', limits: [{ id: 'shared:primary_window', label: '7일', category: 'product', percent: 42, resetsAt: new Date(Date.now() + 3600000).toISOString(), windowSeconds: 604800, remaining: null, unit: null, source: 'api' }], collectedAt: Date.now(), checkedAt: Date.now(), nextAttemptAt: 0, failures: 0, errorCode: null },
+      chatgpt: { provider: 'chatgpt', state: 'ok', limits: [{ id: 'shared:primary_window', label: 'ChatGPT · 7일', category: 'product', percent: 42, resetsAt: new Date(Date.now() + 3600000).toISOString(), windowSeconds: 604800, remaining: null, unit: null, source: 'api' }], collectedAt: Date.now(), checkedAt: Date.now(), nextAttemptAt: 0, failures: 0, errorCode: null },
       claude: { provider: 'claude', state: 'error', limits: [{ id: 'five_hour', label: '5시간', category: 'window', percent: 0, resetsAt: null, windowSeconds: 18000, remaining: null, unit: null, source: 'api' }], collectedAt: Date.now() - 900000, checkedAt: Date.now(), nextAttemptAt: Date.now() + 120000, failures: 1, errorCode: 'network' },
       gemini: { provider: 'gemini', state: 'ok', limits: [
         { id: 'gemini:1', label: '5시간', category: 'window', percent: 0, resetsAt: new Date(Date.now() + 7200000).toISOString(), windowSeconds: 18000, remaining: 600, unit: null, source: 'api' },
@@ -95,6 +95,7 @@ try {
   assert.doesNotMatch(state.text, /지금 사용 가능/);
   assert(await evaluate(`['chatgpt','claude'].every(provider=>{const link=document.querySelector('[data-provider="'+provider+'"] .ticket-info'),rows=[...link.querySelectorAll('.ticket-expiry')];return rows.length===2&&rows.every((row,i)=>{const date=new Date(window.__fixture.snapshots[provider].tickets.inventory.grants[i].expiresAt),label='1개 · '+(date.getMonth()+1)+'/'+date.getDate()+' '+String(date.getHours()).padStart(2,'0')+':'+String(date.getMinutes()).padStart(2,'0')+' 만료';return row.textContent===label&&link.getAttribute('aria-label').includes(label);});})`), 'Popup presents each ticket expiry separately in local time and accessible labels');
   assert.equal(await evaluate(`document.querySelector('[data-provider="chatgpt"] .percent').textContent`), '사용량: 42%');
+  assert.equal(await evaluate(`document.querySelector('[data-provider="chatgpt"] .limit-line > :first-child').textContent`), '7일', 'The ChatGPT card title is not repeated in the usage window label');
   assert.match(await evaluate(`document.querySelector('[data-provider="chatgpt"] .reset').textContent`), /^🕒 사용량 초기화: \d{1,2}\/\d{1,2}\([일월화수목금토]\) \d{2}:\d{2}, \d+h 남음$/);
   assert.deepEqual(await evaluate(`[...document.querySelectorAll('[data-provider="gemini"] .limit-line')].map(row=>row.textContent)`), ['5시간사용량: 0%', '주간사용량: 42%']);
   assert.equal(await evaluate(`getComputedStyle(document.querySelector('[data-provider="gemini"] h2'),'::before').backgroundColor`), 'rgb(53, 105, 200)');
