@@ -1,0 +1,28 @@
+{
+  "name": "ai-gauge",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prepare:icons": "node scripts/prepare-icons.mjs",
+    "build": "node scripts/build.mjs",
+    "build:release": "node scripts/build.mjs --release",
+    "package": "node scripts/package.mjs",
+    "test": "tsx --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "npm run typecheck",
+    "check": "npm run lint && npm test && npm run build && npm run audit:extension",
+    "test:browser:fixture": "npm run build && node scripts/browser-fixture.mjs",
+    "test:browser:extension": "npm run build && node scripts/browser-smoke.mjs",
+    "audit:extension": "node scripts/audit-build.mjs"
+  },
+  "devDependencies": {
+    "@types/chrome": "0.1.32",
+    "@types/jsdom": "21.1.7",
+    "@types/node": "24.10.1",
+    "esbuild": "0.25.12",
+    "jsdom": "26.1.0",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3"
+  }
+}

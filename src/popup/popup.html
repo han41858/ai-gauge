@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>AI Gauge</title><link rel="stylesheet" href="popup.css"></head>
+<body>
+  <header><img class="brand-mark" src="assets/icon128.png" width="28" height="28" alt="" aria-hidden="true"><h1>AI Gauge</h1></header>
+  <main><div id="cards"></div><details id="preferences"><summary>설정</summary><form id="settings-form"><div id="strip-settings"></div><button type="submit">설정 저장</button></form></details><p id="feedback" role="status" aria-live="polite"></p>
+    <details id="diagnostics"><summary>진단 정보</summary><p class="status">버전·설정·오류·시각과 현재 탭의 표시 대상 발견 여부·요소 개수만 확인합니다. 입력 내용·계정·URL은 포함하지 않으며 자동으로 전송되지 않습니다.</p><div class="actions"><button type="button" id="diagnostics-show">현재 상태 보기</button><button type="button" id="diagnostics-copy">진단 정보 복사</button></div><textarea id="diagnostics-output" aria-label="로컬 진단 정보" readonly hidden spellcheck="false"></textarea><p id="diagnostics-feedback" role="status" aria-live="polite"></p></details>
+  </main>
+  <footer><span id="extension-version"></span><span>로컬 전용</span></footer>
+  <script type="module" src="popup.js"></script>
+</body></html>

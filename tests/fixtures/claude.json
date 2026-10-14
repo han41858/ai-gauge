@@ -1,0 +1,1 @@
+{"five_hour":{"utilization":0,"resets_at":"2026-10-14T10:00:00+09:00"},"seven_day":{"utilization":73.5,"resets_at":"2026-10-20T01:00:00Z"},"seven_day_sonnet":{"utilization":null,"resets_at":null},"limits":[{"kind":"weekly_scoped","percent":28,"resets_at":"2026-10-20T01:00:00Z","scope":{"model":{"display_name":"Synthetic Model"}}}],"email":"never-store@example.invalid"}
