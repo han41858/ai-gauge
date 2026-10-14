@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | ChatGPT | 열린 `chatgpt.com` 탭의 MAIN world에서 `/api/auth/session` → GET `/backend-api/wham/usage`. 기본·추가 플랜 제한을 하나의 `chatgpt` 스냅샷에 저장하고 일반 ChatGPT와 Codex 화면이 같은 결과를 읽음. 일반 채팅 모델별 한도 관찰기는 제거 | 사용자가 이전 빌드의 Work / Codex 플랜 사용량 수집을 확인. 개발 환경의 API 원문·계정별 reset 대조와 v1.2 실제 업그레이드는 미실시 |
 | Claude | GET `/api/organizations` → GET `/api/organizations/{uuid}/usage`. `five_hour`, `seven_day_*`, 모델별 `limits[]`를 정규화. 복수 조직은 임의 선택 없이 `ambiguous_account` | 사용자가 이전 빌드의 사용량·리셋 시각과 홈/채팅 표시 위치를 확인. 개발 환경의 원문·요금제/조직별 대조는 미실시 |
-| Gemini | `jSf9Qc` 읽기 전용 RPC. 사용자 제공 실제 관찰과 공개 프레임 자료로 독립 구현. 비공개 vendor·요금제 RPC·대화 이력·계정 조회 없음 | 사용자 웹앱 Network 관찰과 개인정보 없는 내부 JSON 확보. 확장의 실제 호출·초기화 일치·입력창 DOM은 미검증 |
+| Gemini | `jSf9Qc` 읽기 전용 RPC. 사용자 제공 실제 관찰과 공개 프레임 자료로 독립 구현. 비공개 vendor·요금제 RPC·대화 이력·계정 조회 없음 | 202610142031 안내 후 사용자 실환경 수집 성공 확인. 웹앱 초기화 일치·입력창별 DOM은 별도 확인 필요 |
 
 각 서비스의 정상 값, 미확인 값, 수집 실패, 오래된 값을 구분합니다. 실제로 받은 창만 표시하며 별도 백엔드 없이 브라우저 로컬에서 수집·저장·표시합니다.
 
@@ -31,7 +31,7 @@
 
 여러 Google 계정의 RPC 대상 선택은 확인되지 않았습니다. `/u/1` 또는 `authuser=1` 등 명시적으로 기본 계정이 아닌 경로·쿼리는 다른 계정을 잘못 조회하지 않도록 요청 전에 unsupported로 종료합니다. 경로 `/u/0`과 쿼리 `authuser=0`은 기본 계정 경로로 허용하되 **실제 계정별 일치는 미검증**입니다. 경로와 쿼리가 충돌하거나 여러 `authuser` 값 중 기본값이 아닌 값이 있어도 요청하지 않습니다.
 
-**검증 범위:** 사용자가 제공한 실제 관찰 문자열은 `tests/fixtures/gemini-observed.json`에 그대로 보존했습니다. `gemini-batchexecute.txt`의 외부 프레임은 그 내부 문자열을 감싼 **합성 fixture**이며 실계정 원문 전체 캡처가 아닙니다. 파서·전송·진단 경계 테스트 **27개 통과**: 진짜 0/미확인 구분, 초·나노초와 UTC 날짜 경계, 길이 프레임·다른 RPC·손상·중복·잘못된 비율/시각, HTTP 401/403/429, 로그인 HTML, 토큰 부재, 비기본 계정 차단, RPC 내부 오류, timeout·응답 크기 제한을 확인했습니다. `chrome120` 대상 변환 함수만 빈 VM으로 직렬화하여 외부 closure 없이 실행되는지도 검증했습니다. 이 개발 환경에는 로그인한 Gemini 세션이 없으므로 **AI Gauge 확장의 실제 RPC 호출, CSP/세션 호환, 화면 수치·초기화 시각 일치는 미검증**입니다. 입력창의 `rich-textarea .ql-editor`, `input-area-v2`, `.input-area` 후보 역시 공개 참고 소스가 가정한 구조이며 실서비스 DOM 검증이 아닙니다. 비공식 API의 지속성이나 Chrome Web Store 적합성도 확정하지 않습니다. 이전 빌드의 사용자 확인을 v1.2 실제 호출 검증으로 확대하지 않습니다.
+**검증 범위:** 사용자가 제공한 실제 관찰 문자열은 `tests/fixtures/gemini-observed.json`에 그대로 보존했습니다. `gemini-batchexecute.txt`의 외부 프레임은 그 내부 문자열을 감싼 **합성 fixture**이며 실계정 원문 전체 캡처가 아닙니다. 파서·전송·진단 경계 테스트 **27개 통과**: 진짜 0/미확인 구분, 초·나노초와 UTC 날짜 경계, 길이 프레임·다른 RPC·손상·중복·잘못된 비율/시각, HTTP 401/403/429, 로그인 HTML, 토큰 부재, 비기본 계정 차단, RPC 내부 오류, timeout·응답 크기 제한을 확인했습니다. `chrome120` 대상 변환 함수만 빈 VM으로 직렬화하여 외부 closure 없이 실행되는지도 검증했습니다. 빌드 `202610142031` 안내 후 사용자가 실제 사용량 수집 성공을 확인했습니다. 이 개발 환경에는 로그인한 Gemini 세션이 없어 직접 로그인 호출을 실행하지 않았으며, 다른 계정·세션 상태와 웹앱 수치·초기화 시각의 세부 대조는 미검증입니다. 입력창의 `rich-textarea .ql-editor`, `input-area-v2`, `.input-area` 후보 역시 공개 참고 소스가 가정한 구조이며 실서비스 DOM 검증이 아닙니다. 비공식 API의 지속성이나 Chrome Web Store 적합성도 확정하지 않습니다. Gemini 수집 성공은 이번 사용자 확인에 근거하며 이전 ChatGPT·Claude 확인에서 유추한 결과가 아닙니다.
 
 ### HTTP 200 형식 오류 보완
 
@@ -48,6 +48,8 @@
 제공된 본문에는 주간 비율 `4.305E-4`(0.04305%), 5시간 비율 `0.01`(1%)와 기존 계약의 초기화 시각이 있습니다. `tests/fixtures/gemini-batchexecute-observed-redacted.txt`는 사용자가 제공한 전체 프레임을 기반으로 하되, 사용량과 무관한 `af.httprm` 식별 문자열을 같은 길이의 0으로 대체합니다. 그 메타데이터를 반환·저장·사용량 해석에 사용하지 않습니다.
 
 채팅으로 전달된 본문에는 마지막 LF가 없습니다. 실제 전송에서도 생략됐는지 복사 과정에서 사라졌는지는 미확인입니다. 이를 위해 마지막 프레임에서 길이가 정확히 한 글자 부족하고 남은 JSON이 완전하게 파싱되는 경우에만 종료 LF 생략을 허용합니다. 두 글자 이상 길이 차이·잘린 JSON·잘못된 중간 프레임·후행 쓰레기·중복 RPC는 계속 거부합니다. 제공 응답의 로컬 파싱 재현과 수정 후 실계정 수집 성공은 구분합니다.
+
+**후속 실사용 확인:** 2026-10-14 빌드 `202610142031` 안내 후 사용자가 “Gemini도 성공했어”라고 확인했습니다. Gemini의 실제 사용량 수집 성공은 사용자 검증 완료로 기록합니다. 개발 환경의 독립 로그인 실행이나 입력창별 배치·초기화 시각 대조·다른 계정 상태 검증을 의미하지는 않습니다.
 
 라이선스: Claude Tuner는 MIT, Copyright (c) 2025-2026 Claude Tuner Contributors이고 `gemini-usage`는 MIT, Copyright (c) 2026 Eric Andrechek입니다. 공개 요청·응답 계약을 참고하여 독립 작성하며 원본 코드·파일은 복사하지 않습니다.
 
@@ -145,4 +147,4 @@ Chrome 공식 network/scripting/permissions 문서는 환경의 egress proxy에�
 
 확인할 공식 문서: [Chrome network](https://developer.chrome.com/docs/extensions/develop/concepts/network-requests), [scripting](https://developer.chrome.com/docs/extensions/reference/api/scripting), [permissions](https://developer.chrome.com/docs/extensions/reference/api/permissions), [OpenAI terms](https://openai.com/policies/terms-of-use/), [Anthropic terms](https://www.anthropic.com/legal/consumer-terms), [Google terms](https://policies.google.com/terms), [Chrome Web Store user data](https://developer.chrome.com/docs/webstore/program-policies/user-data-faq).
 
-이 환경의 Chromium에서는 실제 확장 로딩이 관리자 정책으로 비활성화되어 `Extensions.loadUnpacked`가 실패했습니다. 로그인한 사용자의 프로필·세션도 없습니다. 합성 테스트·사용자 제공 관찰·개발 환경 실측을 구분하며 설치·권한·실제 RPC 호출·화면과의 수치 대조를 완료했다고 주장하지 않습니다. 최신 실행 결과와 실사용 확인 항목은 [validation.md](validation.md), 빌드·설치 방법은 [README](../README.md)를 참고하세요.
+이 환경의 Chromium에서는 실제 확장 로딩이 관리자 정책으로 비활성화되어 `Extensions.loadUnpacked`가 실패했습니다. 로그인한 사용자의 프로필·세션도 없습니다. 합성 테스트·사용자 제공 관찰·개발 환경 실측을 구분하며 사용자가 확인한 수집 성공을 개발 환경의 직접 실측이나 모든 설치·권한·화면 수치 대조 완료로 확대하지 않습니다. 최신 실행 결과와 실사용 확인 항목은 [validation.md](validation.md), 빌드·설치 방법은 [README](../README.md)를 참고하세요.

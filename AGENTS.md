@@ -2,7 +2,7 @@
 
 ## 프로젝트 목적
 
-AI Gauge는 ChatGPT·Claude의 사용량과 초기화 정보를 Chrome에서 보여주는 **로컬 전용 Manifest V3 확장 프로그램**이며 Gemini 지원을 개발 중입니다. Gemini의 웹앱 관찰 응답과 확장 자체의 실사용 검증을 구분합니다. 자세한 범위와 확인 상태는 `AI_GAUGE_SPEC.md`를 참고하세요. Chrome 개발자 모드 설치를 대상으로 하며 Chrome Web Store 등록은 범위 밖입니다.
+AI Gauge는 ChatGPT·Claude·Gemini의 사용량과 초기화 정보를 Chrome에서 보여주는 **로컬 전용 Manifest V3 확장 프로그램**입니다. 세 서비스의 수집 성공은 사용자가 확인했습니다. 사용자 실사용 확인·웹앱 관찰 응답·개발 환경의 fixture 검증을 구분하며, 수집 성공을 입력창별 배치나 모든 계정 상태의 검증으로 확대하지 않습니다. 자세한 범위와 확인 상태는 `AI_GAUGE_SPEC.md`를 참고하세요. Chrome 개발자 모드 설치를 대상으로 하며 Chrome Web Store 등록은 범위 밖입니다.
 
 ## 의사소통과 작업 방식
 

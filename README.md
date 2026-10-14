@@ -12,6 +12,6 @@ ChatGPT, Claude, Gemini의 사용량과 초기화 시간을 한곳에서 확인�
 
 </div>
 
-ChatGPT와 Codex는 동일한 플랜 사용량을 표시합니다. Gemini는 개발 중이며 fixture 검증과 실제 로그인 호출 검증을 구분합니다.
+ChatGPT와 Codex는 동일한 플랜 사용량을 표시합니다. ChatGPT·Claude·Gemini의 실제 사용량 수집 성공은 사용자가 확인했습니다. 세부 검증 범위는 [검증 결과](docs/validation.md)를 참고하세요.
 
 [설치와 사용](docs/installation.md) · [명세](AI_GAUGE_SPEC.md) · [검증 결과](docs/validation.md) · [수집 가능성](docs/provider-feasibility.md) · [권한과 개인정보](docs/permissions.md)
