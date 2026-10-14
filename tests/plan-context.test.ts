@@ -7,6 +7,7 @@ import { emptySnapshot } from '../src/storage/snapshots';
 import { parseChatGPT } from '../src/providers/parsers';
 import type { Provider, Snapshot } from '../src/shared/types';
 import type { Reply } from '../src/shared/contracts';
+import { ticketSummary } from '../src/shared/tickets';
 
 class Event<T extends (...args: never[]) => unknown = (...args: never[]) => unknown> {
   listeners: T[] = [];
@@ -20,7 +21,7 @@ const waitFor = async (condition: () => boolean) => {
   for (let i = 0; i < 100; i++) { if (condition()) return; await new Promise(resolve => setTimeout(resolve, 5)); }
   assert(condition(), 'Plan lifecycle operation did not settle');
 };
-function worker() {
+function worker(ticketSeed = false) {
   let now = 1_800_000_000_000, requests = 0, responsePlan = 'plus';
   let hold: Promise<void> | null = null, release: (() => void) | null = null;
   const tabs = [
@@ -36,7 +37,11 @@ function worker() {
   const seed = (provider: Provider) => {
     stored[keys[provider]] = { ...emptySnapshot(provider), state: 'ok', errorCode: null,
       limits: parseChatGPT(payload()), checkedAt: now, collectedAt: now, nextAttemptAt: now + 60_000,
-      plan: { label: labels[provider], checkedAt: now } } satisfies Snapshot;
+      plan: { label: labels[provider], checkedAt: now },
+      ...(ticketSeed && provider !== 'gemini' ? { tickets: { checkedAt: now, failures: 0, inventory: {
+        mode: 'summary' as const, grants: [{ kind: 'unspecified' as const, count: 2, startsAt: null, expiresAt: null,
+          usableNow: null, clears: [], requiresLimit: null, blocked: null, selected: null }], usableCount: null, cooldownUntil: null
+      } } } : {}) } satisfies Snapshot;
   };
   for (const provider of ['chatgpt', 'claude', 'gemini'] as const) seed(provider);
   const snapshot = (provider: Provider) => stored[keys[provider]] as Snapshot;
@@ -202,4 +207,19 @@ test('new collection updates subscription but a late pre-navigation plan cannot 
   assert.equal(old.view.snapshots.chatgpt.limits[0]!.percent, 27, 'plan invalidation does not fail usage');
   assert.equal(w.snapshot('chatgpt').plan, null);
   assert.equal(w.requests(), 2, 'the lifecycle signal does not create an extra provider request');
+});
+
+test('an immediate popup view waits for restart ticket quarantine without hiding valid usage or plans', async () => {
+  const w = worker(true);
+  const reply = await w.send({ type: 'view' });
+  assert(reply.ok);
+  for (const provider of ['chatgpt', 'claude'] as const) {
+    const snapshot: Snapshot = reply.view.snapshots[provider];
+    assert.equal(snapshot.ticketRefreshPending, true);
+    assert.equal(ticketSummary(snapshot, 1_800_000_000_000), null);
+    assert.equal(snapshot.tickets?.inventory.grants[0]?.count, 2, 'the cache remains stored without its expired worker trust');
+    assert.equal(snapshot.limits[0]?.percent, 27);
+    assert.equal(snapshot.plan?.label, labels[provider]);
+  }
+  assert.equal(w.requests(), 0, 'quarantine must respect the existing collection gate');
 });

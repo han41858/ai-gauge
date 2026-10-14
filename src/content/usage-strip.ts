@@ -5,6 +5,7 @@ import { usageParts } from './usage-label';
 import { findComposerTarget, retainsComposerMarker, type ComposerTarget } from './selectors';
 import { effectiveSnapshot } from '../storage/snapshots';
 import { ICON_DATA_URL } from '../shared/icon';
+import { ticketDisplay } from '../shared/ticket-presentation';
 export class UsageStrip {
   private host: HTMLElement | null = null;
   private view: View | null = null;
@@ -38,11 +39,14 @@ export class UsageStrip {
 .current{display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;min-width:0;max-width:100%;overflow:hidden}
 .current>span,.reset,.status{color:inherit;opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .reset,.status{min-width:0;max-width:100%}
+.tickets{flex:0 0 auto;max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:inherit;opacity:.8;text-decoration:underline;text-underline-offset:3px}
+.tickets:focus-visible{outline:2px solid currentColor;outline-offset:2px;border-radius:2px}
 .usage:has(.status:not([hidden])) .reset{display:none}
 progress{appearance:none;-webkit-appearance:none;width:80px;max-width:100%;height:6px;flex:0 0 80px;box-sizing:border-box;border:0;border-radius:999px;overflow:hidden;background:#8893a033;color:inherit;accent-color:currentColor}
 progress::-webkit-progress-bar{background:#8893a033;border-radius:999px}
 progress::-webkit-progress-value{background:currentColor;border-radius:999px}
 progress::-moz-progress-bar{background:currentColor;border-radius:999px}
+@container ai-gauge (max-width:900px){.tickets{display:none}}
 @container ai-gauge (max-width:520px){.reset{display:none}}
 @container ai-gauge (max-width:280px){progress{display:none}}
 @container ai-gauge (max-width:180px){.brand-icon{display:none}}
@@ -70,6 +74,11 @@ progress::-moz-progress-bar{background:currentColor;border-radius:999px}
       this.resetText = this.doc.createElement('span'); this.resetText.className = 'reset';
       this.statusText = this.doc.createElement('span'); this.statusText.className = 'status'; this.statusText.hidden = true;
       row.append(current, this.resetText, this.statusText);
+      if (p !== 'gemini') {
+        this.ticketLink = this.doc.createElement('a'); this.ticketLink.className = 'tickets'; this.ticketLink.hidden = true;
+        this.ticketLink.target = '_blank'; this.ticketLink.rel = 'noopener noreferrer';
+        row.append(this.ticketLink);
+      }
       root.append(style, row);
     }
     if (anchor.nextElementSibling !== this.host) anchor.after(this.host);
@@ -84,6 +93,20 @@ progress::-moz-progress-bar{background:currentColor;border-radius:999px}
     if (parts.percent === null) {
       if (this.progress!.hasAttribute('value')) this.progress!.removeAttribute('value');
     } else if (this.progress!.getAttribute('value') !== String(parts.percent)) this.progress!.setAttribute('value', String(parts.percent));
+    if (this.ticketLink) {
+      const tickets = ticketDisplay(view.snapshots[displayProvider(p)]);
+      if (this.ticketLink.hidden !== (tickets === null)) this.ticketLink.hidden = tickets === null;
+      if (tickets) {
+        if (this.ticketLink.textContent !== tickets.inline) this.ticketLink.textContent = tickets.inline;
+        if (this.ticketLink.getAttribute('href') !== tickets.href) this.ticketLink.href = tickets.href;
+        if (this.ticketLink.getAttribute('aria-label') !== tickets.accessible) this.ticketLink.setAttribute('aria-label', tickets.accessible);
+        if (this.ticketLink.title !== tickets.details) this.ticketLink.title = tickets.details;
+        if (this.ticketLink.getAttribute('aria-description') !== tickets.details) this.ticketLink.setAttribute('aria-description', tickets.details);
+      } else {
+        if (this.ticketLink.textContent) this.ticketLink.textContent = '';
+        for (const attribute of ['href', 'aria-label', 'aria-description', 'title']) if (this.ticketLink.hasAttribute(attribute)) this.ticketLink.removeAttribute(attribute);
+      }
+    }
     if (this.host.getAttribute('aria-label') !== parts.label) this.host.setAttribute('aria-label', parts.label);
   }
   private hidden(input: HTMLElement): boolean {
@@ -98,8 +121,9 @@ progress::-moz-progress-bar{background:currentColor;border-radius:999px}
   private resetText: HTMLElement | null = null;
   private statusText: HTMLElement | null = null;
   private progress: HTMLProgressElement | null = null;
+  private ticketLink: HTMLAnchorElement | null = null;
   remove() {
     this.host?.remove(); this.host = null; this.target = null;
-    this.currentText = null; this.resetText = null; this.statusText = null; this.progress = null;
+    this.currentText = null; this.resetText = null; this.statusText = null; this.progress = null; this.ticketLink = null;
   }
 }

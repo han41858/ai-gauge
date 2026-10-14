@@ -152,3 +152,7 @@ Chrome 공식 network/scripting/permissions 문서는 환경의 egress proxy에�
 확인할 공식 문서: [Chrome network](https://developer.chrome.com/docs/extensions/develop/concepts/network-requests), [scripting](https://developer.chrome.com/docs/extensions/reference/api/scripting), [permissions](https://developer.chrome.com/docs/extensions/reference/api/permissions), [OpenAI terms](https://openai.com/policies/terms-of-use/), [Anthropic terms](https://www.anthropic.com/legal/consumer-terms), [Google terms](https://policies.google.com/terms), [Chrome Web Store user data](https://developer.chrome.com/docs/webstore/program-policies/user-data-faq).
 
 이 환경의 Chromium에서는 실제 확장 로딩이 관리자 정책으로 비활성화되어 `Extensions.loadUnpacked`가 실패했습니다. 로그인한 사용자의 프로필·세션도 없습니다. 합성 테스트·사용자 제공 관찰·개발 환경 실측을 구분하며 사용자가 확인한 수집 성공을 개발 환경의 직접 실측이나 모든 설치·권한·화면 수치 대조 완료로 확대하지 않습니다. 최신 실행 결과와 실사용 확인 항목은 [validation.md](validation.md), 빌드·설치 방법은 [README](../README.md)를 참고하세요.
+
+## 초기화 티켓: 공개 계약 확인, 실제 로그인 호출 미검증
+
+ChatGPT의 `rate_limit_reset_credits` 요약·상세 GET과 Claude의 `usage?cedar_ember=1`에 대해 Claude Tuner 공개 파서/수집 코드에서 응답 구조를 확인했습니다. 공개 트리에는 주석이 인용한 실제 fixture가 없어 직접 관찰 응답이라고 주장하지 않습니다. API 구조·알 수 없는 필드·계정/조직 일치·조회 전용 제약은 [reset-tickets.md](reset-tickets.md)에 기록합니다. Gemini 티켓 API는 확인되지 않아 수집·표시에서 제외합니다.

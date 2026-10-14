@@ -33,7 +33,7 @@ test('Claude tab arrival triggers the real collector path after a no-tab attempt
     await scheduler.refresh('claude', 'tab');
     assert.equal(snapshot.state, 'ok'); assert.equal(snapshot.collectedAt, now); assert.equal(snapshot.limits[0]?.percent, 35);
     assert.equal(snapshot.limits[0]?.resetsAt, '2026-10-14T03:00:00.000Z');
-    assert.deepEqual(urls, ['https://claude.ai/api/organizations', 'https://claude.ai/api/organizations/00000000-0000-0000-0000-000000000001/usage']);
+    assert.deepEqual(urls, ['https://claude.ai/api/organizations', 'https://claude.ai/api/organizations/00000000-0000-0000-0000-000000000001/usage?cedar_ember=1']);
     assert.deepEqual(tabIds, [0]); assert(!JSON.stringify(snapshot).includes('private')); assert(!JSON.stringify(snapshot).includes('00000000'));
     await scheduler.refresh('claude', 'tab'); assert.equal(urls.length, 2);
   } finally {
@@ -80,7 +80,7 @@ test('serialized MAIN collectors keep requests on their fixed origin despite a f
     const usage = JSON.parse(readFileSync(new URL(`./fixtures/${provider === 'claude' ? 'claude' : 'chatgpt'}.json`, import.meta.url), 'utf8'));
     const isolatedPage = {
       location: { origin }, document,
-      AbortController, setTimeout, clearTimeout,
+      AbortController, Response, setTimeout, clearTimeout,
       fetch: async (url: string, init: RequestInit) => {
         // Browser fetch resolves relative strings against document.baseURI.
         assert.equal(new URL(url, document.baseURI).origin, origin);

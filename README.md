@@ -16,4 +16,6 @@ ChatGPT와 Codex는 동일한 플랜 사용량을 표시합니다. ChatGPT·Clau
 
 팝업의 서비스명 옆에 확인된 현재 요금제만 표시하며 확인할 수 없는 경우에는 배지를 숨깁니다. 판별 근거와 실사용 확인이 필요한 범위는 [요금제 판별](docs/plan-detection.md)에 정리했습니다.
 
+ChatGPT·Claude의 확인된 초기화 티켓은 팝업과 충분히 넓은 입력창 표시줄에 표시합니다. 티켓 링크는 공식 사용량 관리 화면을 열며 확장 프로그램에서 티켓을 소비하지 않습니다. 수량·사용 조건·계정 확인과 실사용 검증 한계는 [초기화 티켓 조회](docs/reset-tickets.md)를 참고하세요.
+
 [설치와 사용](docs/installation.md) · [명세](AI_GAUGE_SPEC.md) · [검증 결과](docs/validation.md) · [수집 가능성](docs/provider-feasibility.md) · [권한과 개인정보](docs/permissions.md)

@@ -3,6 +3,7 @@ import { resetLabel, statusText, usagePercentLabel } from '../shared/format';
 import { percent } from '../shared/validation';
 import { currentPlanLabel } from '../shared/plan';
 import { effectiveSnapshot } from '../storage/snapshots';
+import { ticketDisplay } from '../shared/ticket-presentation';
 export interface Actions { enable(p: Provider): void; disable(p: Provider): void; revoke(p: Provider): void; refresh(p: Provider): void; select?(p: Provider, id: string | null): void }
 const limitLabel = (provider: Provider, label: string) => provider === 'chatgpt'
   ? label.replace(/^Work\s*\/\s*Codex\s*공유\s*(?:[·:–—-]\s*)?/, '').trim() || '사용량' : label;
@@ -37,6 +38,16 @@ export function renderCards(container: HTMLElement, view: View, actions: Actions
         if (used !== null) { const bar = el('progress'); bar.max = 100; bar.value = used; bar.setAttribute('aria-label', `${name} 사용량${s.state === 'ok' ? '' : ' (이전 값)'}`); row.append(bar); }
         row.append(el('div', resetLabel(limit.resetsAt, now), 'reset')); card.append(row);
       }
+    }
+    const tickets = enabled && view.permissions[p] ? ticketDisplay(view.snapshots[p], now) : null;
+    if (tickets) {
+      const link = el('a', undefined, 'ticket-info');
+      link.href = tickets.href; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.title = tickets.details;
+      link.setAttribute('aria-label', tickets.accessible);
+      link.setAttribute('aria-description', tickets.details);
+      link.append(el('span', `${tickets.count} · ${tickets.usable}`, 'ticket-count'));
+      if (tickets.expiry) link.append(el('span', tickets.expiry, 'ticket-expiry'));
+      card.append(link);
     }
     const controls = el('div', undefined, 'actions');
     const button = (parent: HTMLElement, text: string, fn: () => void, cls?: string) => { const b = el('button', text, cls); b.type = 'button'; b.addEventListener('click', fn); parent.append(b); return b; };

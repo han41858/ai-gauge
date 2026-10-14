@@ -3,6 +3,7 @@ import { record, finite, percent, resetTime, label, nonnegative } from '../share
 import { parseSettings } from './settings';
 import { ERROR_TEXT } from '../shared/errors';
 import { parsePlan } from '../shared/plan';
+import { parseTicketCache } from '../shared/tickets';
 export const FRESH_MS = 10 * 60_000;
 export function emptySnapshot(provider: Provider): Snapshot {
   return { provider, state: 'error', limits: [], collectedAt: null, checkedAt: null, nextAttemptAt: 0, failures: 0, errorCode: 'not_collected' };
@@ -24,7 +25,9 @@ export function parseSnapshot(input: unknown, provider: Provider): Snapshot {
   }));
   return { provider, state: r.state as Snapshot['state'], limits, collectedAt: r.collectedAt, checkedAt: r.checkedAt, nextAttemptAt: Math.max(0, r.nextAttemptAt), failures: Math.max(0, r.failures), errorCode: r.errorCode as Snapshot['errorCode'],
     ...(Object.hasOwn(r, 'plan') ? { plan: parsePlan(provider, r.plan) } : {}),
-    ...(Object.hasOwn(r, 'planRefreshPending') ? { planRefreshPending: r.planRefreshPending === true } : {}) };
+    ...(Object.hasOwn(r, 'planRefreshPending') ? { planRefreshPending: r.planRefreshPending === true } : {}),
+    ...(Object.hasOwn(r, 'tickets') ? { tickets: provider === 'gemini' ? null : parseTicketCache(r.tickets) } : {}),
+    ...(Object.hasOwn(r, 'ticketRefreshPending') ? { ticketRefreshPending: r.ticketRefreshPending === true } : {}) };
 }
 export function hasElapsedReset(snapshot: Snapshot, now = Date.now()): boolean {
   return snapshot.limits.some(limit => {

@@ -28,7 +28,9 @@ for (const url of ['https://chatgpt.com/', 'https://chatgpt.com/codex', 'https:/
     assert.deepEqual(await collectChatGPT(), { limits: parseChatGPT(raw), plan: null });
     assert.equal(calls.injections.length, 1); assert.equal(calls.injections[0]?.target.tabId, 7);
     assert.equal(calls.injections[0]?.world, 'MAIN'); assert.equal(calls.injections[0]?.func, collectInPage);
-    assert.deepEqual(calls.injections[0]?.args, ['chatgpt']);
+    assert.equal(calls.injections[0]?.args?.[0], 'chatgpt');
+    assert.match(calls.injections[0]?.args?.[1] ?? '', /^[a-f0-9]{64}$/, 'only a random worker salt accompanies the provider, never credentials');
+    assert.equal(calls.injections[0]?.args?.length, 2);
   }));
 }
 test('unavailable tabs are skipped and collection never tries another tab after failure', async () => transport({ tabs: [

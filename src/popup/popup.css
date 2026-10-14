@@ -46,6 +46,9 @@ progress::-webkit-progress-value { background: linear-gradient(90deg, var(--blue
 .old .percent { color: var(--muted); }
 .old progress::-webkit-progress-value { background: var(--muted); }
 .reset { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.ticket-info { display: block; margin-top: 10px; font-size: 12px; text-decoration: none; }
+.ticket-count { text-decoration: underline; text-underline-offset: 3px; }
+.ticket-expiry { display: block; margin-top: 2px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 12px; font-size: 12px; }
 .actions a { margin-left: auto; padding: 5px 2px; text-decoration: none; }
 .actions a:hover { text-decoration: underline; }
