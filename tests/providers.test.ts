@@ -57,7 +57,7 @@ test('transport maps network failure without leaking exception details', async (
 test('ChatGPT uses one shared pool collector from an ordinary chat tab', async () => {
   const oldChrome = globalThis.chrome;
   globalThis.chrome = { permissions: { contains: async () => true }, tabs: { query: async () => [{ id: 1, url: 'https://chatgpt.com/' }] }, scripting: { executeScript: async (details: { args: string[] }) => { assert.deepEqual(details.args, ['chatgpt']); return [{ result: { status: 200, code: null, retryAfter: null, data: fixture('chatgpt') } }]; } } } as unknown as typeof chrome;
-  try { assert.deepEqual(await collectChatGPT(), parseChatGPT(fixture('chatgpt'))); }
+  try { assert.deepEqual(await collectChatGPT(), { limits: parseChatGPT(fixture('chatgpt')), plan: null }); }
   finally { globalThis.chrome = oldChrome; }
 });
 test('Pro plan names do not create or suppress hardcoded usage windows', () => {

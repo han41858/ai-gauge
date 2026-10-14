@@ -12,6 +12,8 @@
 
 각 서비스의 정상 값, 미확인 값, 수집 실패, 신뢰할 수 없는 이전 수집값을 구분합니다. 정상 캐시의 시간 경과만으로 경고하지 않습니다. 실제로 받은 창만 표시하며 별도 백엔드 없이 브라우저 로컬에서 수집·저장·표시합니다.
 
+현재 요금제도 팝업에서 별도로 표시합니다. ChatGPT·Claude는 기존 응답의 메타데이터, Gemini는 선택적 `otAQ7b` 정책 RPC를 사용합니다. 정책 조회 실패는 정상 사용량에 영향을 주지 않습니다. 공개 계약과 합성 fixture를 기준으로 구현했으며 실제 계정 요금제 표시는 별도 검증 대상입니다. 근거·식별자·계정 전환 처리의 한계는 [plan-detection.md](plan-detection.md)를 참고하세요.
+
 ## v1.2 Gemini 독립 수집 사전 검증
 
 2026-10-14 명세 v1.2에 사용자가 제공한 **Gemini 웹앱의 실제 Network 관찰**이 추가되어 이전의 v1.0 제외 결정을 갱신합니다. 확인된 호출은 `POST https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=jSf9Qc&source-path=%2Fusage&rt=c`, RPC 파라미터는 `[]`입니다. `wrb.fr` 내부 JSON은 다음과 같습니다. 이는 사용자 제공 관찰이며 개발 환경에서 독립 호출에 성공했다는 뜻은 아닙니다.

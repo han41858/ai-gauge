@@ -117,7 +117,7 @@ test('production content recognizes a late Codex footer and return to ordinary c
     assert.equal(dom.window.location.href, rootUrl);
     assert.equal(diagnostic()?.provider, 'codex');
     assert.equal(diagnostic()?.targetFound, true);
-    assert(requests.some(message => message.type === 'refresh' && message.provider === 'chatgpt'));
+    assert(requests.some(message => message.type === 'context' && message.provider === 'chatgpt'));
     dom.window.document.body.innerHTML = ordinary;
     await waitFor(() => dom.window.document.getElementById('chat-composer')?.nextElementSibling?.id === 'ai-gauge-usage-strip');
     assert.equal(diagnostic()?.provider, 'chatgpt');

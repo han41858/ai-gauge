@@ -84,6 +84,7 @@ chrome.runtime.onMessage.addListener((input: unknown, sender, sendResponse: (rep
       await reconcile();
     }
     if (message.type === 'enable') await enableProvider(message.provider);
+    if (message.type === 'context') await refresh(message.provider, 'event');
     if (message.type === 'refresh') await refresh(message.provider, message.trigger);
     if (message.type === 'view' && !sender.tab) void refreshAll('event').catch(() => undefined);
     const view = message.type === 'view' ? await readView() : await publish();
@@ -98,9 +99,18 @@ chrome.tabs.onActivated.addListener(({ tabId }) => {
   void chrome.tabs.get(tabId).then(async tab => { const p = providerFromUrl(tab.url); if (p) await refresh(displayProvider(p), 'tab'); await publish(); }).catch(() => undefined);
 });
 chrome.tabs.onUpdated.addListener((_tabId, change, tab) => {
-  if (change.status === 'complete' || change.url) void (async () => { const p = providerFromUrl(tab.url); if (p && tab.active) await refresh(displayProvider(p), 'tab'); await publish(); })().catch(() => undefined);
+  if (change.status === 'loading' || change.status === 'complete' || change.url) void (async () => {
+    const p = providerFromUrl(change.url ?? tab.url);
+    if (p) {
+      // A new document may follow an account switch. Focus, content attachment
+      // and SPA conversation routes alone do not prove the account changed.
+      if (change.status === 'loading') await scheduler.invalidatePlan(displayProvider(p));
+      if (tab.active && change.status !== 'loading') await refresh(displayProvider(p), 'tab');
+    }
+    await publish();
+  })().catch(() => undefined);
 });
-chrome.windows.onFocusChanged.addListener(() => { void updateBadgeFromFocus().catch(() => undefined); });
+chrome.windows.onFocusChanged.addListener(windowId => { if (windowId !== -1) void updateBadgeFromFocus().catch(() => undefined); });
 async function updateBadgeFromFocus() { const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true }); const p = providerFromUrl(tabs[0]?.url); if (p) await refresh(displayProvider(p), 'tab'); await publish(); }
 chrome.permissions.onAdded.addListener(added => {
   // Chrome may close the popup while showing its permission dialog. Complete

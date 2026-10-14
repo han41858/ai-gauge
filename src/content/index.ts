@@ -17,6 +17,7 @@ if (resolvePageProvider(document, location.href) && !window.__aiGaugeMounted) {
   let completionTimer: ReturnType<typeof setTimeout> | null = null, completionProvider: Provider | null = null;
   let clockTimer: ReturnType<typeof setInterval> | null = null;
   let routeUrl: string | null = null;
+  let contextPending = false;
   const clearCompletion = () => {
     if (completionTimer) clearTimeout(completionTimer);
     completionTimer = null; completionProvider = null;
@@ -24,6 +25,7 @@ if (resolvePageProvider(document, location.href) && !window.__aiGaugeMounted) {
   const route = () => {
     const next = resolvePageProvider(document, location.href);
     const navigated = routeUrl !== null && routeUrl !== location.href;
+    if (navigated || next !== provider) contextPending = true;
     routeUrl = location.href;
     if (navigated || next !== provider) clearCompletion();
     if (next === provider) {
@@ -63,17 +65,22 @@ if (resolvePageProvider(document, location.href) && !window.__aiGaugeMounted) {
     route(); if (!provider) return;
     const current = provider;
     pending = true;
+    const context = contextPending;
+    contextPending = false;
     try {
-      const nextView = await request(refresh && canRefreshFromPage(current, refresh) ? { type: 'refresh', provider: refresh, trigger: 'event' } : { type: 'view' });
+      const nextView = await request(context ? { type: 'context', provider: displayProvider(current) }
+        : refresh && canRefreshFromPage(current, refresh) ? { type: 'refresh', provider: refresh, trigger: 'event' } : { type: 'view' });
       if (stopped) return;
       view = nextView;
       viewFailures = 0; if (viewRetryTimer) { clearTimeout(viewRetryTimer); viewRetryTimer = null; }
-      route(); strip?.update(view);
+      route(); if (contextPending) loadAgain = true;
+      strip?.update(view);
       const group = SITE_GROUPS.find(g => g.providers.includes(current));
       if (!view.permissions[displayProvider(current)] || !group || !needsContent(view, group.providers)) stop();
       else scheduleCompletion();
     } catch {
       if (stopped) return;
+      if (context) contextPending = true;
       let live = false;
       try { live = Boolean(chrome.runtime.id); } catch { /* Extension was unloaded. */ }
       if (!live) stop();
@@ -98,7 +105,7 @@ if (resolvePageProvider(document, location.href) && !window.__aiGaugeMounted) {
     if (timer) clearTimeout(timer);
     timer = null; if (stopped) return;
     const changed = route(); strip?.mount(); if (!provider) return;
-    if (changed) void load(displayProvider(provider));
+    if (changed || contextPending) void load(displayProvider(provider));
     const streaming = hasStreamingControl(document, provider);
     if (wasStreaming && !streaming) { completionProvider = displayProvider(provider); scheduleCompletion(); }
     wasStreaming = streaming;

@@ -17,6 +17,7 @@ const compiled = transformSync(readFileSync(new URL('../src/providers/gemini-tra
 const module = { exports: {} as { collectGeminiInPage: () => Promise<TransportResult> } };
 runInNewContext(compiled, { module });
 const serialized = module.exports.collectGeminiInPage.toString();
+const quota = (value: TransportResult) => (value.data as { usage: unknown }).usage;
 interface Options { body?: string; status?: number; contentType?: string; retryAfter?: string; url?: string; token?: unknown; error?: boolean; timeout?: boolean; invalidUtf8?: boolean; noBody?: boolean }
 async function run(options: Options = {}) {
   const calls: Array<{ url: string; options: RequestInit }> = [];
@@ -38,9 +39,9 @@ async function run(options: Options = {}) {
   return { value: JSON.parse(JSON.stringify(value)) as TransportResult, calls };
 }
 
-test('Gemini MAIN-world function works without imports, reads only bootstrap token and returns only quota fields', async () => {
+test('Gemini MAIN-world function works without imports, reads only bootstrap token and returns only quota and plan signals', async () => {
   const { value, calls } = await run();
-  assert.equal(value.status, 200); assert.equal(value.code, null); assert.equal(calls.length, 1);
+  assert.equal(value.status, 200); assert.equal(value.code, null); assert.equal(calls.length, 2);
   const call = calls[0]!;
   assert.equal(call.url, 'https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=jSf9Qc&source-path=%2Fusage&rt=c');
   assert.equal(new URL(call.url, 'https://foreign-base.invalid/').origin, 'https://gemini.google.com', 'document base changes cannot change the request origin');
@@ -50,8 +51,9 @@ test('Gemini MAIN-world function works without imports, reads only bootstrap tok
   const body = new URLSearchParams(call.options.body as string);
   assert.equal(body.get('at'), 'synthetic-private-token');
   assert.deepEqual(JSON.parse(body.get('f.req')!), [[['jSf9Qc', '[]', null, 'generic']]]);
-  assert.deepEqual(value.data, [null, [[null, 0, 2, [[1792472727, 343404000]]], [null, 0, 1, [[1791983127, 343263000]]]]]);
-  assert.equal(parseGemini(value.data).length, 2);
+  assert.deepEqual(quota(value), [null, [[null, 0, 2, [[1792472727, 343404000]]], [null, 0, 1, [[1791983127, 343263000]]]]]);
+  assert.equal(parseGemini(quota(value)).length, 2);
+  assert.equal((value.data as { plan: unknown }).plan, null, 'an unrelated policy response cannot infer a plan');
   assert.doesNotMatch(JSON.stringify(value), /synthetic-private-token|12096|planId|account|email/);
 });
 
@@ -59,32 +61,32 @@ test('Gemini handles optional XSSI, UTF-16 length frames and unrelated RPC/statu
   const frames = [[['wrb.fr', 'unrelated', 'not JSON 🔒', null, null, [1060]]], [row(), ['di', 42], ['af.httprm', 1]]];
   for (const body of [framed(...frames), framed(...frames).slice(6), JSON.stringify([row()]), ")]}'\n" + JSON.stringify([row()])]) {
     const { value } = await run({ body });
-    assert.equal(value.code, null); assert.equal(parseGemini(value.data).length, 2);
+    assert.equal(value.code, null); assert.equal(parseGemini(quota(value)).length, 2);
   }
 });
 
 test('Gemini accepts lengths including the separator newline, multiple frames and EOF without a final newline', async () => {
   const frames = [[['wrb.fr', 'unrelated', 'not JSON 🔒', null, null, null]], [row()], [['di', 42], ['af.httprm', 1]]];
-  const expected = parseGemini((await run()).value.data);
+  const expected = parseGemini(quota((await run()).value));
   for (const newline of ['\n', '\r\n']) {
     const includingSeparator = frames.map(frame => { const json = JSON.stringify(frame); return `${json.length + newline.length}${newline}${json}`; }).join(newline);
     for (const body of [includingSeparator, includingSeparator + newline, ")]}'\n\n" + includingSeparator]) {
       const { value } = await run({ body });
-      assert.equal(value.code, null); assert.deepEqual(parseGemini(value.data), expected);
+      assert.equal(value.code, null); assert.deepEqual(parseGemini(quota(value)), expected);
     }
   }
 });
 
 test('Gemini accepts adjacent length frames without whitespace between JSON and the next length marker', async () => {
   const frames = [[['wrb.fr', 'unrelated', 'not JSON 🔒', null, null, null]], [row()], [['di', 42], ['af.httprm', 1]]];
-  const expected = parseGemini((await run()).value.data);
+  const expected = parseGemini(quota((await run()).value));
   for (const newline of ['\n', '\r\n']) for (const includeSeparator of [false, true]) {
     const content = adjacentFrames(frames, newline, includeSeparator);
     assert.match(content, /\]\]\d+\r?\n\[/, 'fixture must have no whitespace between frame content and the next length');
     for (const prefix of ['', ")]}'\n\n"]) for (const suffix of ['', newline]) {
       const { value } = await run({ body: prefix + content + suffix });
       assert.equal(value.code, null);
-      assert.deepEqual(parseGemini(value.data), expected);
+      assert.deepEqual(parseGemini(quota(value)), expected);
     }
   }
 });
@@ -97,8 +99,8 @@ test('Gemini parses the user-observed redacted response with separator lengths a
   for (const body of [specimen, specimen.trimEnd()]) {
     const { value } = await run({ body });
     assert.equal(value.code, null);
-    assert.deepEqual(value.data, [null, [[null, 4.305e-4, 2, [[1792472727, 343404000]]], [null, 0.01, 1, [[1791983127, 343263000]]]]]);
-    const limits = parseGemini(value.data);
+    assert.deepEqual(quota(value), [null, [[null, 4.305e-4, 2, [[1792472727, 343404000]]], [null, 0.01, 1, [[1791983127, 343263000]]]]]);
+    const limits = parseGemini(quota(value));
     assert.deepEqual(limits.map(limit => limit.percent), [0.04305, 1]);
     assert.deepEqual(limits.map(limit => limit.resetsAt), ['2026-10-20T05:05:27.343Z', '2026-10-14T13:05:27.343Z']);
     assert(limits.every(limit => limit.remaining === null && limit.unit === null));
@@ -141,11 +143,11 @@ test('Gemini adjacent framing still rejects malformed tails and duplicate quota 
 
 test('Gemini accepts complete JSON or strict line-delimited frames without changing quota interpretation', async () => {
   const frames = [[row()], [['di', 42], ['af.httprm', 1]]];
-  const expected = parseGemini((await run()).value.data);
+  const expected = parseGemini(quota((await run()).value));
   for (const body of [JSON.stringify([row()], null, 2), frames.map(frame => JSON.stringify(frame)).join('\n'),
     ")]}'\n\n" + frames.map(frame => JSON.stringify(frame)).join('\r\n\r\n') + '\r\n']) {
     const { value } = await run({ body });
-    assert.equal(value.code, null); assert.deepEqual(parseGemini(value.data), expected);
+    assert.equal(value.code, null); assert.deepEqual(parseGemini(quota(value)), expected);
   }
 });
 

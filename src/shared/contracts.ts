@@ -3,14 +3,14 @@ import { record } from './validation';
 import { isSettings } from '../storage/settings';
 import { parseSnapshot } from '../storage/snapshots';
 import { canRefreshFromPage } from './display-policy';
-export type Message = { type: 'view' } | { type: 'enable'; provider: Provider } | { type: 'disable'; provider: Provider } | { type: 'strips'; strips: Settings['strips'] } | { type: 'refresh'; provider: Provider; trigger: 'manual' | 'event' } | { type: 'settings'; settings: Settings };
+export type Message = { type: 'view' } | { type: 'context'; provider: Provider } | { type: 'enable'; provider: Provider } | { type: 'disable'; provider: Provider } | { type: 'strips'; strips: Settings['strips'] } | { type: 'refresh'; provider: Provider; trigger: 'manual' | 'event' } | { type: 'settings'; settings: Settings };
 export type Reply = { ok: true; view: View } | { ok: false };
 export function parseMessage(input: unknown): Message | null {
   const r = record(input);
   if (!r) return null;
   const keys = Object.keys(r).sort().join(',');
   if (r.type === 'view' && keys === 'type') return { type: 'view' };
-  if ((r.type === 'enable' || r.type === 'disable') && keys === 'provider,type' && isProvider(r.provider)) return { type: r.type, provider: r.provider };
+  if ((r.type === 'enable' || r.type === 'disable' || r.type === 'context') && keys === 'provider,type' && isProvider(r.provider)) return { type: r.type, provider: r.provider };
   if (r.type === 'strips' && keys === 'strips,type') {
     const strips = record(r.strips);
     if (strips && Object.keys(strips).length === PAGE_PROVIDERS.length && PAGE_PROVIDERS.every(p => typeof strips[p] === 'boolean')) {
@@ -25,9 +25,9 @@ export function authorized(message: Message, sender: chrome.runtime.MessageSende
   if (sender.id !== extensionId) return false;
   if (sender.tab) {
     const p = providerFromUrl(sender.url);
-    return p !== null && providerFromUrl(sender.tab.url) === p && sender.frameId === 0 && (message.type === 'view' || (message.type === 'refresh' && canRefreshFromPage(p, message.provider) && message.trigger === 'event'));
+    return p !== null && providerFromUrl(sender.tab.url) === p && sender.frameId === 0 && (message.type === 'view' || (message.type === 'context' && canRefreshFromPage(p, message.provider)) || (message.type === 'refresh' && canRefreshFromPage(p, message.provider) && message.trigger === 'event'));
   }
-  return sender.url === `chrome-extension://${extensionId}/popup.html`;
+  return message.type !== 'context' && sender.url === `chrome-extension://${extensionId}/popup.html`;
 }
 function sameFields(left: unknown, right: unknown): boolean {
   if (left === right) return true;

@@ -58,6 +58,11 @@ try {
       ], collectedAt: Date.now(), checkedAt: Date.now(), nextAttemptAt: 0, failures: 0, errorCode: null }
     }
   };
+  for (const [provider, label] of Object.entries({ chatgpt: 'Pro 200', claude: 'Max 20x', gemini: 'AI Pro' })) {
+    const snapshot = fixture.snapshots[provider];
+    snapshot.plan = { label, checkedAt: snapshot.collectedAt };
+    if (snapshot.state === 'ok') snapshot.checkedAt = snapshot.collectedAt;
+  }
   await cdp('Page.addScriptToEvaluateOnNewDocument', { source: `window.__fixture=${JSON.stringify(fixture)};window.__runtimeListeners=[];window.__storageListeners=[];window.chrome={runtime:{id:'fixture',getManifest:()=>(${JSON.stringify(builtManifest)}),sendMessage:async m=>{if(m.type==='settings')window.__fixture.settings=m.settings;if(m.type==='strips')window.__fixture.settings.strips=m.strips;if(m.type==='disable')window.__fixture.settings.enabled[m.provider]=false;if(m.type==='enable')window.__fixture.settings.enabled[m.provider]=true;return {ok:true,view:structuredClone(window.__fixture)}},onMessage:{addListener(f){window.__runtimeListeners.push(f)},removeListener(f){window.__runtimeListeners=window.__runtimeListeners.filter(x=>x!==f)}}},storage:{onChanged:{addListener(f){window.__storageListeners.push(f)},removeListener(f){window.__storageListeners=window.__storageListeners.filter(x=>x!==f)}}},permissions:{request:async()=>true,remove:async()=>true}};` }, session);
   await cdp('Emulation.setTimezoneOverride', { timezoneId: 'Asia/Seoul' }, session);
   await cdp('Emulation.setDeviceMetricsOverride', { width: 800, height: 1000, deviceScaleFactor: 1, mobile: false }, session);
@@ -66,6 +71,8 @@ try {
   for (let i = 0; i < 100; i++) { state = await evaluate('({cards:document.querySelectorAll(".card").length,text:document.body?.textContent??"",width:document.documentElement?.scrollWidth??0,clientWidth:document.documentElement?.clientWidth??0})'); if (state.cards === 3) break; await pause(100); }
   assert.equal(state.cards, 3, JSON.stringify({state,exceptions})); assert.match(state.text, /42%/); assert.match(state.text, /0%/); assert.doesNotMatch(state.text, /오래된 데이터|오래된 정보|입력창에는|최근 수집 성공|Work \/ Codex 공유/); assert(state.width <= state.clientWidth);
   assert(await evaluate(`(()=>{const card=document.querySelector('[data-provider="claude"]');return card.querySelector('.percent').textContent==='사용량: 0%'&&card.querySelector('progress').value===0&&!card.querySelector('.status');})()`), 'Popup keeps a valid 15-minute-old cached value through one network failure without an age-only warning');
+  assert.deepEqual(await evaluate(`[...document.querySelectorAll('.card .plan-badge')].map(badge=>badge.textContent)`), ['Pro 200', 'AI Pro']);
+  assert(await evaluate(`Array.from(document.querySelectorAll('.card-heading')).every(heading=>{const title=heading.querySelector('h2'),badge=heading.querySelector('.plan-badge');if(!badge)return title.nextElementSibling===null;const a=title.getBoundingClientRect(),b=badge.getBoundingClientRect();return title.nextElementSibling===badge&&b.left-a.right>=7&&Math.abs((a.top+a.height/2)-(b.top+b.height/2))<1&&b.height<=22;})`), 'Each compact plan badge sits beside its service title without moving the existing usage layout');
   assert.equal(await evaluate('document.getElementById("extension-version").textContent'), `AI Gauge ${buildLabel}`);
   assert.equal(await evaluate('Math.round(document.body.getBoundingClientRect().width)'), 520);
   assert.equal(await evaluate(`document.querySelector('[data-provider="chatgpt"] .percent').textContent`), '사용량: 42%');
@@ -77,6 +84,14 @@ try {
     await cdp('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false }, session);
     assert(await evaluate('document.documentElement.scrollWidth <= document.documentElement.clientWidth'), `Popup overflow at ${width}px`);
   }
+  await evaluate(`window.__fixture.snapshots.gemini.plan=null;for(const fn of window.__storageListeners)fn({},'local');`);
+  for (let i = 0; i < 20; i++) { if (await evaluate(`document.querySelector('[data-provider="gemini"] .plan-badge')===null`)) break; await pause(50); }
+  assert.equal(await evaluate(`document.querySelector('[data-provider="gemini"] .plan-badge')===null`), true, 'A missing policy result removes the previous Gemini plan badge');
+  assert.deepEqual(await evaluate(`[...document.querySelectorAll('[data-provider="gemini"] progress')].map(bar=>bar.value)`), [0, 42], 'Plan failure does not clear or change successful quota values');
+  await evaluate(`{const s=window.__fixture.snapshots.gemini;s.collectedAt=s.checkedAt=Date.now();s.plan={label:'AI Ultra',checkedAt:s.collectedAt};for(const fn of window.__storageListeners)fn({},'local');}`);
+  for (let i = 0; i < 20; i++) { if (await evaluate(`document.querySelector('[data-provider="gemini"] .plan-badge')?.textContent`) === 'AI Ultra') break; await pause(50); }
+  assert.equal(await evaluate(`document.querySelector('[data-provider="gemini"] .plan-badge')?.textContent`), 'AI Ultra', 'A newly collected plan replaces the old label without duplicate badges');
+  assert.equal(await evaluate(`document.querySelectorAll('.plan-badge').length`), 2);
   await cdp('Emulation.setDeviceMetricsOverride', { width: 520, height: 1000, deviceScaleFactor: 1, mobile: false }, session);
   await evaluate('document.getElementById("preferences").open=true;document.getElementById("strip-claude").checked=false;document.getElementById("settings-form").dispatchEvent(new Event("submit",{bubbles:true,cancelable:true}))');
   for (let i = 0; i < 20; i++) { if (await evaluate('window.__fixture.settings.strips.claude') === false) break; await pause(100); }
@@ -313,7 +328,7 @@ try {
   assert.equal(await evaluate('window.__aiGaugeMounted'), false);
   assert.equal(await evaluate(`document.querySelector('rich-textarea [contenteditable]').textContent`), 'private Gemini prompt');
   assert.deepEqual(exceptions, []);
-  console.log(`PASS Chromium fixture UI: compact three-card 520px popup with Gemini windows, four display settings, build-minute display version, narrow overflow and fixed 30px strip checks, outside siblings after ChatGPT ComposerLayoutBody / Codex ComposerLayoutRoot / Claude ChatComposerChin, redirected Codex home/task and diagnostics, changing class suffixes and replaced anchors, preserved input/toolbar layout, countdown without 0d, shared ChatGPT/Codex usage, unchanged Gemini input-area-v2 placement, storage/runtime progress updates without replacing bars, valid cached usage past ten minutes and one temporary failure, reset/repeated/auth failure numeric clearing, stable strips over 76 timed checks, transient worker failure recovery, and OpenAI/Gemini denied-view revocation cleanup. Screenshot: ${screenshotPath}. Synthetic DOM/Chrome APIs; no live installation/account verification.`);
+  console.log(`PASS Chromium fixture UI: compact three-card 520px popup with Gemini windows and compact known plan badges with unknown plans hidden, plan replacement and failed-plan usage preservation, four display settings, build-minute display version, narrow overflow and fixed 30px strip checks, outside siblings after ChatGPT ComposerLayoutBody / Codex ComposerLayoutRoot / Claude ChatComposerChin, redirected Codex home/task and diagnostics, changing class suffixes and replaced anchors, preserved input/toolbar layout, countdown without 0d, shared ChatGPT/Codex usage, unchanged Gemini input-area-v2 placement, storage/runtime progress updates without replacing bars, valid cached usage past ten minutes and one temporary failure, reset/repeated/auth failure numeric clearing, stable strips over 76 timed checks, transient worker failure recovery, and OpenAI/Gemini denied-view revocation cleanup. Screenshot: ${screenshotPath}. Synthetic DOM/Chrome APIs; no live installation/account verification.`);
 } finally {
   ws?.close(); child.kill('SIGTERM');
   await new Promise(r => { if (child.exitCode !== null) r(); else { child.once('exit', r); setTimeout(() => { child.kill('SIGKILL'); r(); }, 3000).unref(); } });

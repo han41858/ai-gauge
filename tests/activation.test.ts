@@ -61,7 +61,7 @@ function worker(initialOrigins: string[] = [], initialStorage: Record<string, un
         const error = errors.get(provider); if (error) return [{ result: { ...error, code: null, data: null } }];
         return [{ result: { status: 200, code: null, retryAfter: null, data: provider === 'claude'
           ? { five_hour: { utilization: 23, resets_at: null } }
-          : provider === 'gemini' ? [null, [[null, 0.37, 1, [[1791983127, 343263000]]]]]
+          : provider === 'gemini' ? { usage: [null, [[null, 0.37, 1, [[1791983127, 343263000]]]]], plan: null }
           : { rate_limit: { primary_window: { used_percent: 15, limit_window_seconds: 604800, reset_at: null } } } } }];
       }
     }

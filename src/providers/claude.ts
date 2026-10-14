@@ -1,3 +1,7 @@
 import { collectFromTab } from './tab-transport';
 import { parseClaude } from './parsers';
-export async function collectClaude() { return parseClaude(await collectFromTab('claude')); }
+import { parseClaudePlan } from './openai-claude-plan';
+export async function collectClaude() {
+  const response = await collectFromTab('claude');
+  return { limits: parseClaude(response), plan: parseClaudePlan(response) };
+}
