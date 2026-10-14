@@ -66,12 +66,18 @@ export async function collectGeminiInPage(): Promise<TransportResult> {
         if (!prefix) return fail();
         const length = Number(prefix[1]);
         if (length <= 0 || length > 1_048_576) return fail();
-        // Public batchexecute parsers count the separator newline in the length;
+        // Observed lengths include both the separator and terminating newline;
         // also accept frames whose length counts only the JSON (UTF-16 units).
         let end = -1;
         for (const start of [cursor + prefix[1]!.length, cursor + prefix[0].length]) {
-          const candidateEnd = start + length;
-          if (candidateEnd > text.length || (candidateEnd < text.length && !/\s/.test(text[candidateEnd]!))) continue;
+          const declaredEnd = start + length;
+          // The final terminator may be absent at EOF. Only that single LF may
+          // be missing, and the complete remaining JSON must still parse.
+          const missingFinalLF = start === cursor + prefix[1]!.length && declaredEnd === text.length + 1;
+          const candidateEnd = missingFinalLF ? text.length : declaredEnd;
+          // A following frame may start immediately after this JSON. The next
+          // iteration validates its length marker; an extra newline is optional.
+          if (candidateEnd > text.length) continue;
           try {
             const frame: unknown = JSON.parse(text.slice(start, candidateEnd));
             if (!Array.isArray(frame)) continue;

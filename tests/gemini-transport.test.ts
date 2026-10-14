@@ -9,6 +9,10 @@ import type { TransportResult } from '../src/providers/tab-transport';
 const observed = () => JSON.parse(readFileSync(new URL('./fixtures/gemini-observed.json', import.meta.url), 'utf8'));
 const row = (payload: unknown = observed(), rpc: unknown = 'jSf9Qc') => ['wrb.fr', rpc, JSON.stringify(payload), null, null, null, 'generic'];
 const framed = (...frames: unknown[]) => ")]}'\n\n" + frames.map(frame => { const json = JSON.stringify(frame); return `${json.length}\n${json}\n`; }).join('');
+const adjacentFrames = (frames: unknown[], newline: string, includeSeparator: boolean) => frames.map(frame => {
+  const json = JSON.stringify(frame);
+  return `${json.length + (includeSeparator ? newline.length : 0)}${newline}${json}`;
+}).join('');
 const compiled = transformSync(readFileSync(new URL('../src/providers/gemini-transport.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs', target: 'chrome120' }).code;
 const module = { exports: {} as { collectGeminiInPage: () => Promise<TransportResult> } };
 runInNewContext(compiled, { module });
@@ -68,6 +72,70 @@ test('Gemini accepts lengths including the separator newline, multiple frames an
       const { value } = await run({ body });
       assert.equal(value.code, null); assert.deepEqual(parseGemini(value.data), expected);
     }
+  }
+});
+
+test('Gemini accepts adjacent length frames without whitespace between JSON and the next length marker', async () => {
+  const frames = [[['wrb.fr', 'unrelated', 'not JSON 🔒', null, null, null]], [row()], [['di', 42], ['af.httprm', 1]]];
+  const expected = parseGemini((await run()).value.data);
+  for (const newline of ['\n', '\r\n']) for (const includeSeparator of [false, true]) {
+    const content = adjacentFrames(frames, newline, includeSeparator);
+    assert.match(content, /\]\]\d+\r?\n\[/, 'fixture must have no whitespace between frame content and the next length');
+    for (const prefix of ['', ")]}'\n\n"]) for (const suffix of ['', newline]) {
+      const { value } = await run({ body: prefix + content + suffix });
+      assert.equal(value.code, null);
+      assert.deepEqual(parseGemini(value.data), expected);
+    }
+  }
+});
+
+test('Gemini parses the user-observed redacted response with separator lengths and a copied final newline omitted', async () => {
+  const specimen = readFileSync(new URL('./fixtures/gemini-batchexecute-observed-redacted.txt', import.meta.url), 'utf8');
+  const lines = specimen.trimEnd().split('\n');
+  assert.equal(lines[2], '207'); assert.equal(lines[3]!.length, 205);
+  assert.equal(lines[4], '25'); assert.equal(lines[5]!.length, 23);
+  for (const body of [specimen, specimen.trimEnd()]) {
+    const { value } = await run({ body });
+    assert.equal(value.code, null);
+    assert.deepEqual(value.data, [null, [[null, 4.305e-4, 2, [[1792472727, 343404000]]], [null, 0.01, 1, [[1791983127, 343263000]]]]]);
+    const limits = parseGemini(value.data);
+    assert.deepEqual(limits.map(limit => limit.percent), [0.04305, 1]);
+    assert.deepEqual(limits.map(limit => limit.resetsAt), ['2026-10-20T05:05:27.343Z', '2026-10-14T13:05:27.343Z']);
+    assert(limits.every(limit => limit.remaining === null && limit.unit === null));
+    assert.doesNotMatch(JSON.stringify(value), /af\.httprm|0000000000000000000|12090|594|generic/);
+  }
+});
+
+test('the final-newline exception does not accept truncated JSON or larger missing frame lengths', async () => {
+  const specimen = readFileSync(new URL('./fixtures/gemini-batchexecute-observed-redacted.txt', import.meta.url), 'utf8').trimEnd();
+  for (const body of [specimen.slice(0, -1), specimen.slice(0, -1) + '\n', specimen.replace('\n25\n', '\n26\n'), specimen.replace('\n25\n', '\n27\n')]) {
+    const { value } = await run({ body });
+    assert.deepEqual(value, { status: 200, code: 'gemini_frame_invalid', retryAfter: null, data: null });
+  }
+});
+
+test('Gemini parses every adjacent frame so later in-band errors override an earlier valid quota', async () => {
+  for (const newline of ['\n', '\r\n']) for (const includeSeparator of [false, true]) {
+    for (const rpc of ['jSf9Qc', null]) for (const status of [1037, 1060, 1097]) {
+      const body = ")]}'\n\n" + adjacentFrames([[row()], [['wrb.fr', rpc, null, null, null, [status]]]], newline, includeSeparator);
+      const { value } = await run({ body });
+      assert.deepEqual(value, status === 1097
+        ? { status: 200, code: 'unsupported', retryAfter: null, data: null }
+        : { status: 429, code: null, retryAfter: null, data: null });
+    }
+  }
+});
+
+test('Gemini adjacent framing still rejects malformed tails and duplicate quota records', async () => {
+  for (const newline of ['\n', '\r\n']) for (const includeSeparator of [false, true]) {
+    const content = adjacentFrames([[row()], [['di', 42]]], newline, includeSeparator);
+    for (const suffix of ['private-invalid-tail', '2junk\n[]', '999\n[]', '2\n[]private-invalid-tail']) {
+      const { value } = await run({ body: content + suffix });
+      assert.deepEqual(value, { status: 200, code: 'gemini_frame_invalid', retryAfter: null, data: null });
+      assert.doesNotMatch(JSON.stringify(value), /private-invalid-tail/);
+    }
+    const duplicate = await run({ body: adjacentFrames([[row()], [row()]], newline, includeSeparator) });
+    assert.deepEqual(duplicate.value, { status: 200, code: 'gemini_rpc_invalid', retryAfter: null, data: null });
   }
 });
 
