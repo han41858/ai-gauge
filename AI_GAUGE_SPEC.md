@@ -1,6 +1,6 @@
 # AI Gauge 개발 명세서
 
-- 버전: 1.1
+- 버전: 1.2
 - 작성일: 2026-10-14
 - 대상: Codex 구현 담당
 - 초기 배포: GitHub 소스 및 빌드 산출물을 통한 Chrome 개발자 모드 설치 (Chrome Web Store 등록은 후속 단계)
@@ -9,18 +9,18 @@
 
 **AI Gauge — AI 사용량을 한눈에**
 
-ChatGPT와 Claude의 계정별 사용량 제한 및 초기화 정보를 Chrome 확장 프로그램 하나에서 조회하고, 툴바 배지·팝업·각 서비스의 입력창 하단에 표시한다. 사용자 자신의 브라우저 로그인 세션만 이용하며 별도 백엔드, 사용자 계정, 광고, 추적, 원격 분석 기능을 두지 않는다.
+ChatGPT, Claude, Gemini의 계정별 사용량 제한 및 초기화 정보를 Chrome 확장 프로그램 하나에서 조회하고, 툴바 배지·팝업·각 서비스의 입력창 하단에 표시한다. 사용자 자신의 브라우저 로그인 세션만 이용하며 별도 백엔드, 사용자 계정, 광고, 추적, 원격 분석 기능을 두지 않는다.
 
 **핵심 원칙:** 조회 전용(Read-only), 로컬 우선(Local-only), 최소 기능(Minimal UI), 최소 권한(Least privilege), 정확하지 않은 정보는 표시하지 않음.
 
 ### 포함
 
-- ChatGPT와 Claude에서 **실제 제공되는** 사용량 제한 항목 수집 및 표시. Gemini는 v1.0에서 제외
+- ChatGPT, Claude, Gemini에서 **실제 제공되는** 사용량 제한 항목 수집 및 표시
 - 5시간·7일 등 실제 확인된 제한 항목을 표현하는 데이터 모델. **Codex는 별도 수집 대상으로 구분하지 않으며 ChatGPT 화면과 동일한 수집 데이터를 표시**
 - 툴바 배지: 사용자가 고른 기본 서비스/제한 항목의 사용률 표시
 - 옵션: 현재 활성 탭의 서비스로 배지 대상 자동 전환, 미지원 탭에서는 기본 선택으로 복귀
-- 클릭 팝업: 두 서비스 사용량, 갱신·초기화 시각, 오류/로그인/오래된 데이터 상태, 수동 새로고침
-- ChatGPT 일반 채팅·Codex·Claude 화면의 입력창 **하단**에 간결한 사용량 표시줄; Codex 화면에서도 ChatGPT와 **동일한 사용량** 표시. 화면별 DOM 탐지만 분리하며 별도 Codex 사용량을 수집하지 않음
+- 클릭 팝업: 세 서비스 사용량, 갱신·초기화 시각, 오류/로그인/오래된 데이터 상태, 수동 새로고침
+- ChatGPT 일반 채팅·Codex·Claude·Gemini 화면의 입력창 **하단**에 간결한 사용량 표시줄; Codex 화면에서도 ChatGPT와 **동일한 사용량** 표시. 화면별 DOM 탐지만 분리하며 별도 Codex 사용량을 수집하지 않음
 - 10분 기본 주기 갱신 + 팝업 열기/활성 탭 복귀/응답 완료 감지 후 조건부 갱신
 - 상태 및 설정 로컬 저장, 서비스를 별도로 활성화/비활성화, 서비스별 접근 권한 선택
 - 사용률 임계치에 따른 배지 색상 표시(기본값: 70%, 90%; 사용자 설정 가능하면 좋음)
@@ -28,7 +28,6 @@ ChatGPT와 Claude의 계정별 사용량 제한 및 초기화 정보를 Chrome �
 
 ### 제외
 
-- Gemini 수집·UI·관련 RPC 구현(v1.0 범위 밖; 비공개 모듈 의존성 때문에 추후 검토)
 - ChatGPT와 Codex의 사용량을 별도 수집·저장·집계하거나 팝업에 중복 카드로 표시하는 기능
 
 - 다른 AI에게 질문 전달 / 응답 교차 검증 / 프롬프트 읽기
@@ -43,7 +42,7 @@ ChatGPT와 Claude의 계정별 사용량 제한 및 초기화 정보를 Chrome �
 UI부터 만들지 말고 아래 항목을 검증하여 `docs/provider-feasibility.md`로 기록한다.
 
 1. 참고 저장소 `https://github.com/chaehyun2/claudetuner`에서 사용량 수집 관련 파일·라이선스·비공개 모듈 의존성을 살핀다. **원본 전체 복제/광고만 제거하는 포크는 지양한다.**
-2. ChatGPT, Claude 각각의 사용량 출처, 엔드포인트·요청 컨텍스트, 인증 메커니즘, 브라우저 권한, CORS 및 Manifest V3 적용 가능성을 확인한다.
+2. ChatGPT, Claude, Gemini 각각의 사용량 출처, 엔드포인트·요청 컨텍스트, 인증 메커니즘, 브라우저 권한, CORS 및 Manifest V3 적용 가능성을 확인한다.
 3. 실제 로그인 세션에서 성공 응답을 확인할 수 있다면, 개인 식별 정보 및 토큰을 제거한 최소 fixture로 응답 형태를 문서화한다. 실제 계정 정보·쿠키·토큰을 커밋하거나 로그에 기록하지 않는다.
 4. 사용량 제한 항목을 실제 API 응답 기준으로 기록한다. **ChatGPT와 Codex 화면에는 동일한 ChatGPT 수집 결과를 표시**하며, 화면별로 별도 제한 항목이나 데이터를 만들어내지 않는다.
 5. **로그인하지 않은 사용자·세션 만료·접근 권한 미허용·요청 한도(429)·네트워크 장애**를 구분할 수 있는지 확인한다.
@@ -51,6 +50,20 @@ UI부터 만들지 말고 아래 항목을 검증하여 `docs/provider-feasibili
 7. 서비스 약관 및 Chrome Web Store 정책 관련 위험은 문서화한다. 내부 API는 비공식이며 예고 없이 변경될 수 있다. Chrome Web Store 배포 적합성을 확정했다고 주장하지 않는다.
 
 **진행 기준:** 서비스별 데이터 수집의 성공/실패, 제공 필드, 한계를 문서화하고 테스트 가능한 파서 계약을 만든 뒤 나머지 구현을 진행한다. 일부 서비스가 막혀도 검증된 서비스부터 완성하며, 지원하지 않는 서비스를 지원한다고 표기하지 않는다.
+
+### Gemini 사용량 수집 계약 (2026-10-14 확인)
+
+- Gemini 웹앱의 실제 Network 요청에서 **`POST https://gemini.google.com/_/BardChatUi/data/batchexecute?rpcids=jSf9Qc&source-path=%2Fusage&rt=c`** 호출과 정상 응답을 확인했다. 이것은 **Gemini 웹앱에서 관찰한 사실**이며, AI Gauge 확장 프로그램의 독립 호출 성공까지 입증하지는 않는다.
+- RPC ID: `jSf9Qc`, 요청 파라미터 `[]`. 인증된 동일 출처의 브라우저 세션을 사용하되 CSRF/세션 토큰을 외부 전송·로그·별도 저장하지 않는다.
+- 참고 응답의 `wrb.fr` 내부 JSON 문자열(개인정보와 인증 정보 없음):
+  `[1,[[12096,0,2,[[1792472727,343404000]]],[600,0,1,[[1791983127,343263000]]]],false,[[true]]]`
+- 관찰된 제한 항목 형식: `[remaining, utilizationRatio, windowType, [[resetSeconds, resetNanos]]]`. `windowType=1`은 5시간, `2`는 주간. `utilizationRatio`는 0~1 범위이며 화면에서는 백분율로 변환한다. `remaining`은 남은 할당량으로 보고 있으나 **정확한 단위는 확인되지 않았으므로 메시지 횟수로 표시하지 않는다**.
+- 초기화 시각은 Unix 초(선택적 나노초)에서 파싱하고 시간대에 맞춰 표시한다. 미확인 필드(`planId`, 기타 부가 상태)의 뜻은 임의로 확정하지 않는다.
+- `batchexecute` 응답은 선택적 XSSI 접두어, 길이 프레임, `wrb.fr` 레코드, 이중 JSON 인코딩을 처리해야 한다. 다른 RPC 응답·상태 프레임이 섞이거나 필드가 빠진 경우도 안전하게 처리한다.
+- **비공개 `vendor-ai` 모듈에 의존하지 않고** 필요한 요청 및 파싱 범위만 독립 구현한다. `otAQ7b` 요금제 식별은 선택 기능이며 사용률 수집의 필수 조건이 아니다.
+- Google의 비공식 내부 API이므로 변경될 수 있다. 확장 프로그램에서 읽기 전용 호출을 실제 검증할 수 없다면 미지원/오류 상태를 사용하고 성공했다고 주장하지 않는다.
+- 제공된 응답으로 개인정보 제거 fixture와 파서 테스트를 작성한다. 추가로 오류·빈 응답·손상된 프레임·인증 실패·429·세션 만료·비로그인·시간대 테스트를 구현한다.
+- 참고 소스: https://github.com/chaehyun2/claudetuner/blob/main/bg/collect-gemini.js , https://github.com/chaehyun2/claudetuner/blob/main/bg/api-gemini.js , https://github.com/chaehyun2/claudetuner/blob/main/bg/parse-gemini.js , https://github.com/EricAndrechek/gemini-usage/blob/main/_docs/GEMINI_API_INTERNALS.md . 코드를 실제 복사한 경우 라이선스와 저작권 고지를 유지한다.
 
 ## 3. 기술 선택
 
@@ -67,7 +80,7 @@ UI부터 만들지 말고 아래 항목을 검증하여 `docs/provider-feasibili
 ```text
 Chrome service worker
   ├─ scheduler: alarms, request coalescing, per-provider cooldown/backoff
-  ├─ providers: chatgpt / claude (독립 어댑터; Codex는 chatgpt 데이터 재사용)
+  ├─ providers: chatgpt / claude / gemini (독립 어댑터; Codex는 chatgpt 데이터 재사용)
   ├─ storage: 설정·최종 성공 스냅샷·상태
   └─ action: 배지 표시 및 활성 탭 반영
 
@@ -87,8 +100,8 @@ Service worker
 ```text
 src/
   background/{index,scheduler,badge,messages}.ts
-  providers/{types,chatgpt,claude}.ts
-  content/{chatgpt,codex,claude,usage-strip}.ts
+  providers/{types,chatgpt,claude,gemini}.ts
+  content/{chatgpt,codex,claude,gemini,usage-strip}.ts
   popup/{index,popup.html,popup.css}.ts  # 실제 구성에 맞게 확장자 정리
   settings/{index,settings.html}.ts      # 설정 화면 필요 시
   storage/{settings,snapshots}.ts
@@ -102,7 +115,7 @@ README.md
 
 ## 5. 데이터 계약
 
-- Provider = `chatgpt | claude` (Codex는 표시 위치이며 별도 Provider가 아님)
+- Provider = `chatgpt | claude | gemini` (Codex는 표시 위치이며 별도 Provider가 아님)
 - CollectionState = `ok | stale | signed_out | permission_required | rate_limited | unsupported | error`
 - UsageSnapshot은 제공자 ID, 수집 성공 시각, 제한 항목 목록, 상태를 포함
 - 제한 항목은 **고유 식별자**, 화면용 명칭, 범주(시간·모델·제품 등), 사용률(0~100인 경우만), 가능한 경우 원본 수치/단위, 초기화 시각, 데이터의 성격(실측/API값·추정)을 표현
@@ -135,7 +148,7 @@ README.md
 
 ### 팝업
 
-- ChatGPT와 Claude 2개 제공자를 카드/행으로 표시. Codex를 별도 카드로 중복 표시하지 않음. 서비스별 비활성화 및 권한 상태 구분
+- ChatGPT, Claude, Gemini 3개 제공자를 카드/행으로 표시. Codex를 별도 카드로 중복 표시하지 않음. 서비스별 비활성화 및 권한 상태 구분
 - 사용률 바, 제한 명칭, 초기화 시각과 카운트다운, 마지막 수집 시각, 수동 갱신
 - API가 제공하지 않는 항목은 숨기거나 `확인 불가` 표시
 - 수집 실패 원인과 조치(로그인·권한 승인·나중에 재시도)를 간결하게 안내
@@ -144,7 +157,7 @@ README.md
 
 ### 입력창 하단 표시줄
 
-- ChatGPT 일반 채팅, Codex, Claude 화면에 표시; 사이트의 입력창·버튼 위를 가리지 않음. **Codex 표시줄은 ChatGPT와 동일한 사용량 스냅샷을 사용**
+- ChatGPT 일반 채팅, Codex, Claude, Gemini 화면에 표시; 사이트의 입력창·버튼 위를 가리지 않음. **Codex 표시줄은 ChatGPT와 동일한 사용량 스냅샷을 사용**
 - 페이지 이동(SPA), 스트리밍 렌더, 테마 변경, 입력창 재생성에 대응
 - 중복 노드/중복 이벤트 핸들러 방지; 확장 비활성화/권한 철회 때 정리
 - 기본 표시줄 높이 30px, 폰트 12px, 로고 20×20px(`assets/logo-20x20.png`), 수직 중앙 정렬. 좁은 화면에서는 부가 정보부터 생략
@@ -166,12 +179,12 @@ README.md
 
 ## 8. 테스트·수용 기준
 
-- 응답 fixture로 두 제공자의 정규화와 필드 누락·타임존·범위 밖 값 테스트
+- 응답 fixture로 세 제공자의 정규화와 필드 누락·타임존·범위 밖 값 테스트
 - 수집 실패 시 상태가 올바르고 마지막 성공 데이터가 오해 없이 표시됨
 - 3개 탭에서 갱신 신호가 동시에 와도 제공자별 중복 요청 없음
 - 429, 인증 만료, 권한 철회, 브라우저 재시작, 서비스 워커 재시작 동작 검증
 - 툴바 배지가 기본/활성 탭 전환에 따라 올바른 제공자·제한 항목을 표시
-- ChatGPT 일반 채팅·Codex·Claude 입력창 표시줄이 중복 삽입되지 않고 원래 입력 기능을 방해하지 않음. ChatGPT와 Codex는 **동일한 사용량 데이터**를 표시함
+- ChatGPT 일반 채팅·Codex·Claude·Gemini 입력창 표시줄이 중복 삽입되지 않고 원래 입력 기능을 방해하지 않음. ChatGPT와 Codex는 **동일한 사용량 데이터**를 표시함
 - 광고/백엔드/텔레메트리/요금제 변경/교차 질문 전송 기능이 빌드 결과물에 없음
 - `npm test`, `npm run build` 및 가능하다면 `npm run lint` 성공
 - README에 로컬 빌드·설치(`chrome://extensions` → 개발자 모드 → 압축 해제된 확장 프로그램 로드 → `dist`)·권한 부여·문제 해결 절차 기록
