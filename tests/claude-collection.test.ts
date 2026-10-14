@@ -10,14 +10,14 @@ import { runInNewContext } from 'node:vm';
 import { readFileSync } from 'node:fs';
 import type { TransportResult } from '../src/providers/tab-transport';
 
-test('Claude tab arrival triggers the real collector path after a no-tab attempt, with usage and reset normalized', async () => {
+test('Claude collects without a tab and later uses an opened tab with the same normalization', async () => {
   const previousChrome = globalThis.chrome, previousFetch = globalThis.fetch, previousLocation = Object.getOwnPropertyDescriptor(globalThis, 'location');
   let open = false, now = 100_000, snapshot = emptySnapshot('claude');
   const urls: string[] = [], tabIds: number[] = [];
   Object.defineProperty(globalThis, 'location', { value: { origin: 'https://claude.ai' }, configurable: true });
   globalThis.fetch = async (url, init) => {
     urls.push(String(url)); assert.equal(init?.method, 'GET'); assert.equal(init?.credentials, 'include');
-    const payload = urls.length === 1 ? [{ uuid: '00000000-0000-0000-0000-000000000001', name: 'private-org' }] : { five_hour: { utilization: 35, resets_at: '2026-10-14T12:00:00+09:00' }, email: 'private@example.invalid' };
+    const payload = String(url).endsWith('/organizations') ? [{ uuid: '00000000-0000-0000-0000-000000000001', name: 'private-org' }] : { five_hour: { utilization: 35, resets_at: '2026-10-14T12:00:00+09:00' }, email: 'private@example.invalid' };
     return new Response(JSON.stringify(payload), { headers: { 'content-type': 'application/json' } });
   };
   globalThis.chrome = {
@@ -28,14 +28,15 @@ test('Claude tab arrival triggers the real collector path after a no-tab attempt
   const scheduler = new Scheduler({ read: async () => snapshot, write: async next => { snapshot = next; }, enabled: async () => true, collect: collectClaude, now: () => now });
   try {
     await scheduler.refresh('claude', 'event');
-    assert.equal(snapshot.errorCode, 'open_tab'); assert.equal(urls.length, 0); assert.equal(snapshot.collectedAt, null);
-    open = true; now++;
+    assert.equal(snapshot.state, 'ok'); assert.equal(urls.length, 2); assert.equal(snapshot.collectedAt, now);
+    assert.deepEqual(tabIds, []);
+    open = true; now += 60_000;
     await scheduler.refresh('claude', 'tab');
     assert.equal(snapshot.state, 'ok'); assert.equal(snapshot.collectedAt, now); assert.equal(snapshot.limits[0]?.percent, 35);
     assert.equal(snapshot.limits[0]?.resetsAt, '2026-10-14T03:00:00.000Z');
-    assert.deepEqual(urls, ['https://claude.ai/api/organizations', 'https://claude.ai/api/organizations/00000000-0000-0000-0000-000000000001/usage']);
+    assert.deepEqual(urls, [...Array(2)].flatMap(() => ['https://claude.ai/api/organizations', 'https://claude.ai/api/organizations/00000000-0000-0000-0000-000000000001/usage?cedar_ember=1']));
     assert.deepEqual(tabIds, [0]); assert(!JSON.stringify(snapshot).includes('private')); assert(!JSON.stringify(snapshot).includes('00000000'));
-    await scheduler.refresh('claude', 'tab'); assert.equal(urls.length, 2);
+    await scheduler.refresh('claude', 'tab'); assert.equal(urls.length, 4);
   } finally {
     globalThis.chrome = previousChrome; globalThis.fetch = previousFetch;
     if (previousLocation) Object.defineProperty(globalThis, 'location', previousLocation); else Reflect.deleteProperty(globalThis, 'location');
@@ -80,7 +81,7 @@ test('serialized MAIN collectors keep requests on their fixed origin despite a f
     const usage = JSON.parse(readFileSync(new URL(`./fixtures/${provider === 'claude' ? 'claude' : 'chatgpt'}.json`, import.meta.url), 'utf8'));
     const isolatedPage = {
       location: { origin }, document,
-      AbortController, setTimeout, clearTimeout,
+      AbortController, Response, setTimeout, clearTimeout,
       fetch: async (url: string, init: RequestInit) => {
         // Browser fetch resolves relative strings against document.baseURI.
         assert.equal(new URL(url, document.baseURI).origin, origin);

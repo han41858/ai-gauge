@@ -3,9 +3,10 @@ import { resetLabel, statusText, usagePercentLabel } from '../shared/format';
 import { percent } from '../shared/validation';
 import { currentPlanLabel } from '../shared/plan';
 import { effectiveSnapshot } from '../storage/snapshots';
+import { ticketDisplay } from '../shared/ticket-presentation';
 export interface Actions { enable(p: Provider): void; disable(p: Provider): void; revoke(p: Provider): void; refresh(p: Provider): void; select?(p: Provider, id: string | null): void }
 const limitLabel = (provider: Provider, label: string) => provider === 'chatgpt'
-  ? label.replace(/^Work\s*\/\s*Codex\s*공유\s*(?:[·:–—-]\s*)?/, '').trim() || '사용량' : label;
+  ? label.replace(/^(?:ChatGPT\s*·\s*|Work\s*\/\s*Codex\s*공유\s*(?:[·:–—-]\s*)?)/, '').trim() || '사용량' : label;
 export function renderCards(container: HTMLElement, view: View, actions: Actions, now = Date.now()) {
   const d = container.ownerDocument;
   const el = <K extends keyof HTMLElementTagNameMap>(tag: K, text?: string, cls?: string) => { const e = d.createElement(tag); if (text) e.textContent = text; if (cls) e.className = cls; return e; };
@@ -16,13 +17,15 @@ export function renderCards(container: HTMLElement, view: View, actions: Actions
     const title = NAMES[p];
     card.setAttribute('aria-label', `${title} 사용량`);
     const heading = el('div', undefined, 'card-heading');
+    const identity = el('div', undefined, 'provider-name');
     const plan = enabled && view.permissions[p] ? currentPlanLabel(view.snapshots[p], now) : '확인 불가';
-    heading.append(el('h2', title));
+    identity.append(el('h2', title));
     if (plan !== '확인 불가') {
       const badge = el('span', plan, 'plan-badge');
       badge.setAttribute('aria-label', `${title} 요금제: ${plan}`);
-      heading.append(badge);
+      identity.append(badge);
     }
+    heading.append(identity);
     card.append(heading);
     if (!enabled || s.state !== 'ok') card.append(el('p', enabled ? statusText(s) : '꺼짐', 'status'));
     else if (!s.limits.length) card.append(el('p', '사용량 확인 불가', 'status'));
@@ -38,6 +41,16 @@ export function renderCards(container: HTMLElement, view: View, actions: Actions
         row.append(el('div', resetLabel(limit.resetsAt, now), 'reset')); card.append(row);
       }
     }
+    const tickets = enabled && view.permissions[p] ? ticketDisplay(view.snapshots[p], now) : null;
+    if (tickets) {
+      const link = el('a', undefined, 'ticket-info');
+      link.href = tickets.href; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.title = tickets.details;
+      link.setAttribute('aria-label', tickets.popupAccessible);
+      link.setAttribute('aria-description', tickets.details);
+      link.append(el('span', tickets.count, 'ticket-count'));
+      for (const entry of tickets.entries) link.append(el('span', entry, 'ticket-expiry'));
+      card.append(link);
+    }
     const controls = el('div', undefined, 'actions');
     const button = (parent: HTMLElement, text: string, fn: () => void, cls?: string) => { const b = el('button', text, cls); b.type = 'button'; b.addEventListener('click', fn); parent.append(b); return b; };
     if (!enabled || !view.permissions[p]) button(controls, view.permissions[p] ? '켜기' : '권한 승인 및 켜기', () => actions.enable(p), 'grant');
@@ -48,7 +61,7 @@ export function renderCards(container: HTMLElement, view: View, actions: Actions
     }
     if (view.permissions[p]) button(controls, '권한 철회', () => actions.revoke(p));
     const link = el('a', '사이트 열기'); link.href = HOME_URLS[p]; link.target = '_blank'; link.rel = 'noopener noreferrer'; controls.append(link);
-    card.append(controls); return card;
+    heading.append(controls); return card;
   });
   container.replaceChildren(...cards);
 }

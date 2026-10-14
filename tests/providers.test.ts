@@ -56,7 +56,7 @@ test('transport maps network failure without leaking exception details', async (
 });
 test('ChatGPT uses one shared pool collector from an ordinary chat tab', async () => {
   const oldChrome = globalThis.chrome;
-  globalThis.chrome = { permissions: { contains: async () => true }, tabs: { query: async () => [{ id: 1, url: 'https://chatgpt.com/' }] }, scripting: { executeScript: async (details: { args: string[] }) => { assert.deepEqual(details.args, ['chatgpt']); return [{ result: { status: 200, code: null, retryAfter: null, data: fixture('chatgpt') } }]; } } } as unknown as typeof chrome;
+  globalThis.chrome = { permissions: { contains: async () => true }, tabs: { query: async () => [{ id: 1, url: 'https://chatgpt.com/' }] }, scripting: { executeScript: async (details: { args: string[] }) => { assert.equal(details.args[0], 'chatgpt'); assert.match(details.args[1]!, /^[a-f0-9]{64}$/); return [{ result: { status: 200, code: null, retryAfter: null, data: fixture('chatgpt') } }]; } } } as unknown as typeof chrome;
   try { assert.deepEqual(await collectChatGPT(), { limits: parseChatGPT(fixture('chatgpt')), plan: null }); }
   finally { globalThis.chrome = oldChrome; }
 });
@@ -72,7 +72,7 @@ test('availability and credit-unlock flags are never converted into ordinary-cha
 test('MAIN-world Claude normalizes a single-organization usage response without account data', async () => {
   const old = globalThis.fetch; let count = 0;
   Object.defineProperty(globalThis, 'location', { value: { origin: 'https://claude.ai' }, configurable: true });
-  globalThis.fetch = async (url) => { count++; if (count === 2) assert.equal(String(url), 'https://claude.ai/api/organizations/00000000-0000-0000-0000-000000000001/usage'); return new Response(JSON.stringify(count === 1 ? [{ uuid: '00000000-0000-0000-0000-000000000001', name: 'private-org' }] : fixture('claude')), { headers: { 'content-type': 'application/json' } }); };
+  globalThis.fetch = async (url) => { count++; if (count === 2) assert.equal(String(url), 'https://claude.ai/api/organizations/00000000-0000-0000-0000-000000000001/usage?cedar_ember=1'); return new Response(JSON.stringify(count === 1 ? [{ uuid: '00000000-0000-0000-0000-000000000001', name: 'private-org' }] : fixture('claude')), { headers: { 'content-type': 'application/json' } }); };
   try { const r = await collectInPage('claude'); assert.equal(r.status, 200); assert(validLimits(parseClaude(r.data))); assert(!JSON.stringify(r).includes('private-org')); assert(!JSON.stringify(r).includes('email')); }
   finally { globalThis.fetch = old; Reflect.deleteProperty(globalThis, 'location'); }
 });

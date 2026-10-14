@@ -22,7 +22,7 @@ interface Options { body?: string; status?: number; contentType?: string; retryA
 async function run(options: Options = {}) {
   const calls: Array<{ url: string; options: RequestInit }> = [];
   const sandbox = {
-    URL, URLSearchParams, AbortController, TextDecoder, setTimeout: options.timeout ? (callback: () => void) => setTimeout(callback, 0) : setTimeout, clearTimeout,
+    URL, URLSearchParams, AbortController, AbortSignal, TextDecoder, setTimeout: options.timeout ? (callback: () => void) => setTimeout(callback, 0) : setTimeout, clearTimeout,
     location: new URL(options.url ?? 'https://gemini.google.com/app'),
     window: { WIZ_global_data: { SNlM0e: Object.hasOwn(options, 'token') ? options.token : 'synthetic-private-token' } },
     document: new Proxy({}, { get() { throw new Error('DOM must not be read'); } }),

@@ -19,7 +19,33 @@ export interface UsageLimit {
   unit: string | null;
   source: 'api';
 }
-export interface CollectionResult { limits: UsageLimit[]; plan: string | null }
+export type ResetTicketKind = 'full' | 'five_hour' | 'weekly' | 'unspecified';
+export interface ResetTicketGrant {
+  kind: ResetTicketKind;
+  count: number;
+  startsAt: string | null;
+  expiresAt: string | null;
+  usableNow: boolean | null;
+  clears: string[];
+  requiresLimit: boolean | null;
+  blocked: boolean | null;
+  selected: boolean | null;
+}
+export interface ResetTicketInventory {
+  mode: 'summary' | 'detail';
+  grants: ResetTicketGrant[];
+  usableCount: number | null;
+  cooldownUntil: string | null;
+}
+export interface TicketCollection {
+  state: 'ok' | 'unavailable' | 'error' | 'auth' | 'context_changed';
+  inventory?: ResetTicketInventory;
+  // Per-worker salted proof, used only in memory and never persisted or sent to UI.
+  scope: string | null;
+  fallback?: ResetTicketInventory;
+}
+export interface TicketCache { inventory: ResetTicketInventory; checkedAt: number; failures: number }
+export interface CollectionResult { limits: UsageLimit[]; plan: string | null; tickets?: TicketCollection }
 export interface PlanInfo { label: string; checkedAt: number }
 export interface Snapshot {
   provider: Provider;
@@ -32,6 +58,8 @@ export interface Snapshot {
   errorCode: ErrorCode | null;
   plan?: PlanInfo | null;
   planRefreshPending?: boolean;
+  tickets?: TicketCache | null;
+  ticketRefreshPending?: boolean;
 }
 export interface Settings {
   enabled: Record<Provider, boolean>;

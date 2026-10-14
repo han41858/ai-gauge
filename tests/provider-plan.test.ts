@@ -107,9 +107,9 @@ test('Claude uses current organization metadata without a new subscription or bi
     const missing = await collectInPage('claude');
     assert.equal(parseClaudePlan(missing.data), null); assert.deepEqual(parseClaude(missing.data), parseClaude(claudeUsage));
     assert.deepEqual(calls, [
-      'https://claude.ai/api/organizations', 'https://claude.ai/api/organizations/00000000-0000-0000-0000-000000000001/usage',
-      'https://claude.ai/api/organizations', 'https://claude.ai/api/organizations/00000000-0000-0000-0000-000000000002/usage',
-      'https://claude.ai/api/organizations', 'https://claude.ai/api/organizations/00000000-0000-0000-0000-000000000002/usage'
+      'https://claude.ai/api/organizations', 'https://claude.ai/api/organizations/00000000-0000-0000-0000-000000000001/usage?cedar_ember=1',
+      'https://claude.ai/api/organizations', 'https://claude.ai/api/organizations/00000000-0000-0000-0000-000000000002/usage?cedar_ember=1',
+      'https://claude.ai/api/organizations', 'https://claude.ai/api/organizations/00000000-0000-0000-0000-000000000002/usage?cedar_ember=1'
     ]);
     for (const result of [initial, switched, missing]) {
       assert(!JSON.stringify(result).includes('private')); assert(!JSON.stringify(result).includes('00000000'));

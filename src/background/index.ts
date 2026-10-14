@@ -1,14 +1,18 @@
 import { ORIGINS, PROVIDERS, SITE_GROUPS, providerFromUrl, type Provider, type Settings, type View } from '../shared/types';
 import { authorized, parseMessage, type Reply } from '../shared/contracts';
-import { readSettings, writeSettings, migrateStorage, readSnapshot, writeSnapshot, readView } from '../storage/snapshots';
+import { readSettings, writeSettings, migrateStorage, readSnapshot, writeSnapshot, readView as storedView } from '../storage/snapshots';
 import { parseSettings } from '../storage/settings';
 import { collect } from '../providers';
 import { Scheduler, type Trigger } from './scheduler';
 import { updateBadge } from './badge';
 import { reconcileContent } from './content-registration';
 import { displayProvider } from '../shared/display-policy';
+import { readTicketTrust, writeTicketTrust } from '../storage/ticket-trust';
 
-const scheduler = new Scheduler({ read: readSnapshot, write: writeSnapshot, collect, now: Date.now, enabled: async p => (await readSettings()).enabled[p] && await chrome.permissions.contains({ origins: [ORIGINS[p]] }) });
+const scheduler = new Scheduler({ read: readSnapshot, write: writeSnapshot, collect, readTicketTrust, writeTicketTrust,
+  now: Date.now, enabled: async p => (await readSettings()).enabled[p] && await chrome.permissions.contains({ origins: [ORIGINS[p]] }) });
+const ticketReadiness = scheduler.prepareTickets();
+async function readView(): Promise<View> { await ticketReadiness; return storedView(); }
 const ALARM = 'ai-gauge-refresh';
 let setupFlight: Promise<void> | null = null;
 let setupDirty = false;
@@ -31,7 +35,7 @@ async function publish(): Promise<View> {
   }));
   return view;
 }
-async function refresh(p: Provider, trigger: Trigger) { await scheduler.refresh(p, trigger); }
+async function refresh(p: Provider, trigger: Trigger) { await ticketReadiness; await scheduler.refresh(p, trigger); }
 async function refreshAll(trigger: Trigger) { await Promise.all(PROVIDERS.map(p => refresh(p, trigger))); await publish(); }
 let settingsWrites = Promise.resolve();
 function queueSettingsWrite(write: () => Promise<void>): Promise<void> {
@@ -46,15 +50,19 @@ function changeSettings(change: (settings: Settings) => void | Promise<void>): P
     await writeSettings(parseSettings(settings));
   });
 }
-async function enableProvider(provider: Provider) {
-  let granted = false;
+async function enableProviders(providers: Provider[]) {
+  const granted: Provider[] = [];
   await changeSettings(async settings => {
-    granted = await chrome.permissions.contains({ origins: [ORIGINS[provider]] });
-    if (granted) settings.enabled[provider] = true;
+    for (const provider of providers) {
+      if (await chrome.permissions.contains({ origins: [ORIGINS[provider]] })) {
+        settings.enabled[provider] = true;
+        granted.push(provider);
+      }
+    }
   });
-  if (!granted) return;
+  if (!granted.length) return;
   await reconcile();
-  await refresh(provider, 'manual');
+  await Promise.all(granted.map(provider => refresh(provider, 'manual')));
 }
 async function initialize() {
   // Check retry/reset deadlines each minute; the scheduler keeps normal
@@ -81,9 +89,12 @@ chrome.runtime.onMessage.addListener((input: unknown, sender, sendResponse: (rep
         else if (message.type === 'disable') settings.enabled[message.provider] = false;
         else Object.assign(settings, parseSettings(message.settings));
       });
+      const settings = await readSettings();
+      await Promise.all(PROVIDERS.filter(provider => !settings.enabled[provider]).map(provider => scheduler.invalidateTickets(provider)));
       await reconcile();
     }
-    if (message.type === 'enable') await enableProvider(message.provider);
+    if (message.type === 'enable') await enableProviders([message.provider]);
+    if (message.type === 'enable-many') await enableProviders(message.providers);
     if (message.type === 'context') await refresh(message.provider, 'event');
     if (message.type === 'refresh') await refresh(message.provider, message.trigger);
     if (message.type === 'view' && !sender.tab) void refreshAll('event').catch(() => undefined);
@@ -117,7 +128,7 @@ chrome.permissions.onAdded.addListener(added => {
   // the granted site's activation in the worker instead of relying on that UI.
   const providers = PROVIDERS.filter(provider => added.origins?.includes(ORIGINS[provider]));
   void (async () => {
-    await Promise.all(providers.map(enableProvider));
+    await enableProviders(providers);
     await reconcile();
     await publish();
   })().catch(() => undefined);
@@ -126,7 +137,8 @@ chrome.permissions.onRemoved.addListener(removed => {
   // A revoked host no longer exposes its tab URL. Notify tab IDs without reading URLs/history.
   const origins = (removed?.origins ?? []).filter(origin => SITE_GROUPS.some(site => site.origin === origin));
   void chrome.tabs.query({}).then(tabs => Promise.all(tabs.filter(t => typeof t.id === 'number').map(t => chrome.tabs.sendMessage(t.id!, { type: 'permissions-revoked', origins }).catch(() => undefined)))).catch(() => undefined);
-  void reconcile().then(publish).catch(() => undefined);
+  void Promise.all(PROVIDERS.filter(provider => origins.includes(ORIGINS[provider])).map(provider => scheduler.invalidateTickets(provider)))
+    .then(reconcile).then(publish).catch(() => undefined);
 });
 // Top-level repair handles worker restart too, rather than relying only on onStartup.
 void initialize().catch(() => undefined);

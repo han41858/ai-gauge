@@ -15,20 +15,23 @@ const result = { status: 200, code: null, retryAfter: null, data: raw };
 type Tab = { id: number; url: string; active?: boolean; discarded?: boolean; frozen?: boolean };
 type Injection = { target: { tabId: number }; world: string; func: unknown; args?: string[] };
 async function transport(options: { permission?: boolean; tabs?: Tab[]; result?: unknown; reject?: boolean }, run: (calls: { queries: number; injections: Injection[] }) => Promise<void>) {
-  const previous = globalThis.chrome, calls = { queries: 0, injections: [] as Injection[] };
+  const previous = globalThis.chrome, previousFetch = globalThis.fetch, calls = { queries: 0, injections: [] as Injection[] };
+  globalThis.fetch = async url => new Response(JSON.stringify(String(url).endsWith('/session') ? { accessToken: 'synthetic-token' } : raw), { headers: { 'Content-Type': 'application/json' } });
   globalThis.chrome = {
     permissions: { contains: async () => options.permission ?? true },
     tabs: { query: async () => { calls.queries++; return options.tabs ?? [{ id: 1, url: 'https://chatgpt.com/' }]; } },
     scripting: { executeScript: async (injection: Injection) => { calls.injections.push(injection); if (options.reject) throw new Error('private tab details'); return [{ result: options.result ?? result }]; } }
   } as unknown as typeof chrome;
-  try { await run(calls); } finally { globalThis.chrome = previous; }
+  try { await run(calls); } finally { globalThis.chrome = previous; globalThis.fetch = previousFetch; }
 }
 for (const url of ['https://chatgpt.com/', 'https://chatgpt.com/codex', 'https://chatgpt.com/codex/tasks/synthetic']) {
   test(`the same shared ChatGPT collection runs from ${new URL(url).pathname}`, async () => transport({ tabs: [{ id: 7, url }] }, async calls => {
     assert.deepEqual(await collectChatGPT(), { limits: parseChatGPT(raw), plan: null });
     assert.equal(calls.injections.length, 1); assert.equal(calls.injections[0]?.target.tabId, 7);
     assert.equal(calls.injections[0]?.world, 'MAIN'); assert.equal(calls.injections[0]?.func, collectInPage);
-    assert.deepEqual(calls.injections[0]?.args, ['chatgpt']);
+    assert.equal(calls.injections[0]?.args?.[0], 'chatgpt');
+    assert.match(calls.injections[0]?.args?.[1] ?? '', /^[a-f0-9]{64}$/, 'only a random worker salt accompanies the provider, never credentials');
+    assert.equal(calls.injections[0]?.args?.length, 2);
   }));
 }
 test('unavailable tabs are skipped and collection never tries another tab after failure', async () => transport({ tabs: [
@@ -40,13 +43,13 @@ test('unavailable tabs are skipped and collection never tries another tab after 
   await assert.rejects(collectChatGPT, (error: unknown) => error instanceof CollectionError && error.code === 'tab_access_failed' && !error.message.includes('private'));
   assert.deepEqual(calls.injections.map(value => value.target.tabId), [3]);
 }));
-test('no permission stops before tab access; no eligible tab is a separate condition', async () => {
+test('no permission stops before tab access; an absent service tab uses the worker session', async () => {
   await transport({ permission: false }, async calls => {
     await assert.rejects(collectChatGPT, (error: unknown) => error instanceof CollectionError && error.code === 'permission_required');
     assert.equal(calls.queries, 0); assert.equal(calls.injections.length, 0);
   });
   await transport({ tabs: [] }, async calls => {
-    await assert.rejects(collectChatGPT, (error: unknown) => error instanceof CollectionError && error.code === 'open_tab');
+    assert.deepEqual((await collectChatGPT()).limits, parseChatGPT(raw));
     assert.equal(calls.injections.length, 0);
   });
 });
