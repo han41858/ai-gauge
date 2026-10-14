@@ -29,9 +29,12 @@ export function ticketDisplay(snapshot: Snapshot, now = Date.now()) {
   if (!href || !summary) return null;
   const expiry = summary.expiresAt ? `${ticketDate(summary.expiresAt)} 만료` : null;
   const count = `🎫 초기화 티켓 ${summary.held}개`;
-  const usable = `지금 사용 가능: ${summary.usable === null ? '확인 불가' : `${summary.usable}개`}`;
   const inline = expiry ? `🎫 초기화 티켓 ×${summary.held} · ${expiry}` : count;
+  const entries = summary.grants.length === 1 && !summary.grants[0]!.expiresAt ? []
+    : summary.grants.map(grant => `${grant.count}개${grant.expiresAt ? ` · ${ticketDate(grant.expiresAt)} 만료` : ''}`);
   const details = summary.grants.map(grant => grantDetail(grant, now)).join('\n');
-  return { href, count, usable, expiry, inline, details,
-    accessible: `${count}, ${usable}${expiry ? `, ${expiry}` : ''}. 공식 사용량 관리 화면 열기 (새 탭)` };
+  const action = '공식 사용량 관리 화면 열기 (새 탭)';
+  return { href, count, entries, expiry, inline, details,
+    accessible: `${count}${expiry ? `, ${expiry}` : ''}. ${action}`,
+    popupAccessible: `${[count, ...entries].join(', ')}. ${action}` };
 }

@@ -43,10 +43,10 @@ export function renderCards(container: HTMLElement, view: View, actions: Actions
     if (tickets) {
       const link = el('a', undefined, 'ticket-info');
       link.href = tickets.href; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.title = tickets.details;
-      link.setAttribute('aria-label', tickets.accessible);
+      link.setAttribute('aria-label', tickets.popupAccessible);
       link.setAttribute('aria-description', tickets.details);
-      link.append(el('span', `${tickets.count} · ${tickets.usable}`, 'ticket-count'));
-      if (tickets.expiry) link.append(el('span', tickets.expiry, 'ticket-expiry'));
+      link.append(el('span', tickets.count, 'ticket-count'));
+      for (const entry of tickets.entries) link.append(el('span', entry, 'ticket-expiry'));
       card.append(link);
     }
     const controls = el('div', undefined, 'actions');

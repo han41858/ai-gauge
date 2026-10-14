@@ -1,6 +1,6 @@
 # 구현 및 검증 결과
 
-검증일: 2026-10-14 (Asia/Seoul). 초기화 티켓 검토 빌드 **202610142231**, Chrome 내부 버전 **2026.10.14.2231**. 별도 `feat/reset-ticket-display` 브랜치에서 개발하며 소스를 main에 직접 병합하지 않습니다.
+검증일: 2026-10-14 (Asia/Seoul). 초기화 티켓 검토 빌드 **202610142258**, Chrome 내부 버전 **2026.10.14.2258**. 별도 `feat/reset-ticket-display` 브랜치에서 개발하며 소스를 main에 직접 병합하지 않습니다.
 
 ## 초기화 티켓
 
@@ -10,13 +10,14 @@
 | 수집·파서 | src/providers/reset-tickets.ts, tab-transport.ts, chatgpt.ts, claude.ts | ChatGPT 요약/상세·계정 재확인, Claude cedar query·기본 사용량 복구·조직 재확인. 추가 조회 3초 제한, 사용량과 독립 실패 |
 | 저장·현재 유효성 | src/shared/types.ts, tickets.ts, src/storage/snapshots.ts, ticket-trust.ts | 선택적 티켓 캐시·종류/조건 보존, 만료 제거·미래 시작 분리, 안전한 합산, 브라우저 세션 검증 boolean |
 | 갱신 | src/background/scheduler.ts, index.ts | 기존 갱신/중복 병합/백오프 재사용, 신뢰할 수 있는 같은 사용자 캐시만 실패 시 유지, 계정/문서 변경·인증/권한 문제 처리 |
-| 표시 | src/shared/ticket-presentation.ts, src/content/usage-strip.ts, src/popup/render.ts, popup.css | 팝업 보유/사용 가능/만료, 표시줄 네이티브 링크, 현지 시각, 티켓 우선 숨김·키보드/접근성 설명 |
+| 표시 | src/shared/ticket-presentation.ts, src/content/usage-strip.ts, src/popup/render.ts, popup.css | 팝업 총 보유량·티켓별 수량/만료, 표시줄 네이티브 링크, 현지 시각, 티켓 우선 숨김·키보드/접근성 설명 |
 | 검증 | tests/provider-tickets.test.ts, ticket-cache.test.ts, ticket-ui.test.ts, 기존 회귀와 scripts/browser-fixture.mjs | 응답/실패/전환/만료/세션/반응형/공식 링크와 기존 세 서비스 회귀 |
 
 - `npm run check`: **460개 테스트 통과**, 실패·취소·스킵 0. TypeScript strict, 개발 빌드, 산출물 권한·출처 검사 통과.
 - 정상·0장·복수 종류·미래 시작·서로 다른 만료·수량만 있는 요약·손상/누락·사용 조건·401/403/429/네트워크/3초 제한을 합성 응답으로 검증했습니다. ChatGPT/Codex는 같은 스냅샷이며 Gemini에는 티켓이 생성되지 않습니다.
 - 같은 브라우저 세션에서 1분마다 워커를 새로 만드는 9회 검사에서도 티켓 표시와 10분 수집 주기가 유지됩니다. 새 브라우저 세션에서 검증이 없으면 이전 티켓을 재확인하며, 동일 계정 증거 없는 실패에 이전 캐시를 재사용하지 않습니다.
-- Chromium fixture도 동일 `202610142231` 빌드에서 통과했습니다. 넓은 화면의 30px/12px/20px 유지, 900px 이하에서 티켓 먼저 숨김, 320px 가로 넘침 없음, 네이티브 링크 Enter 활성화를 확인했습니다. 실제 15초 표시 시계가 추가 요청 없이 만료 티켓과 링크 속성을 제거하는 검사도 통과했습니다.
+- 팝업의 `지금 사용 가능` 문구와 접근성 이름을 제거하고 각 티켓의 수량·만료를 별도 행으로 표시했습니다. 같은 grant의 복수 장수, 서로 다른 만료, 만료 후 해당 행 제거, 만료 미확인 시 개수만 표시하는 회귀를 확인했습니다. 입력창은 가장 빠른 만료 시각으로 요약합니다.
+- Chromium fixture도 동일 `202610142258` 빌드에서 통과했습니다. 넓은 화면의 30px/12px/20px 유지, 900px 이하에서 티켓 먼저 숨김, 320px 가로 넘침 없음, 네이티브 링크 Enter 활성화를 확인했습니다. 실제 15초 표시 시계가 추가 요청 없이 만료 티켓과 링크 속성을 제거하는 검사도 통과했습니다.
 - 원본 티켓/계정/조직 ID·인증정보·원본 응답은 저장하지 않습니다. 세션 저장소는 서비스별 검증 여부 boolean만 담고 동일 계정 비교값은 워커 메모리에만 있습니다.
 
 **실제 로그인 API 응답은 미검증입니다.** 공개 참고 저장소에는 주석이 인용하는 실제 응답 fixture가 없으며 이번 테스트는 공개 계약에 맞춘 합성 응답입니다. 보유량·적용 가능 수량·만료 시각의 웹앱 대조, 실제 계정/조직 전환과 공식 링크의 로그인 후 도달 화면은 실사용 확인이 필요합니다. Claude 조직만으로 현재 사용자를 확정할 수 없어 티켓 조회 실패 때 이전 티켓은 숨기지만 사용량은 유지합니다. 문서/인증 이벤트 없는 계정 변경은 다음 수집까지 즉시 감지하지 못합니다. 상세 제약은 [reset-tickets.md](reset-tickets.md)를 참고하세요.
@@ -90,12 +91,12 @@ Gemini 전송 파서는 사용자가 제공한 HTTP 200 JSON 응답으로 재현
 
 ## 설치 결과물
 
-초기화 티켓 검토 ZIP `ai-gauge-202610142231.zip`을 로컬에 생성했습니다. GitHub 게시와 PR 생성은 아직 완료하지 않았습니다.
+[초기화 티켓 검토 ZIP — 202610142258](https://github.com/han41858/ai-gauge/raw/refs/heads/main/downloads/ai-gauge-202610142258.zip)
 
-- 크기: 79,546 bytes
-- SHA-256: f28632cca25ea01c02ab87bc35ec05e72ce932d28858c41b1a1ca167bd09ed42
+- 크기: 79,647 bytes
+- SHA-256: b9fe74efbc46cc680ba657fa1b9f9d8348a8be71d36531a9068faa15014c9815
 - 루트 manifest와 실행 파일·로컬 PNG만 포함하며 docs/INSTALL/상위 폴더는 없습니다.
-- 검토 소스는 별도 PR, 설치 ZIP은 기존 main/downloads에 게시할 예정입니다. 현재 환경의 GitHub 인증이 HTTP 401로 거부되어 게시를 보류했습니다. 소스를 main에 직접 병합하지 않습니다.
+- 원격 커밋 `02ab459a`는 기존 main/downloads에 설치 ZIP 한 파일만 추가했습니다. GitHub 다운로드 HTTP 200, 원본 바이트·SHA-256 일치와 ZIP 무결성을 확인했습니다. 검토 소스는 별도 PR로 제출하며 main에 직접 병합하지 않습니다.
 
 아래는 이전 요금제 표시 수정 배포본입니다.
 

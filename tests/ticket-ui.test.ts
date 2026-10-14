@@ -46,9 +46,10 @@ function stripFixture(provider: PageProvider = 'chatgpt') {
   return { dom, doc, strip, root, link: () => root().querySelector<HTMLAnchorElement>('.tickets')! };
 }
 
-test('popup ticket links distinguish held and usable counts with earliest local expiry and per-type conditions', () => {
+test('popup ticket links show held counts and every local expiry without current availability', () => {
   const { dom, cards } = popup(), v = view();
   try {
+    v.snapshots.chatgpt.tickets!.inventory.grants = [grant(), grant({ kind: 'five_hour', expiresAt: iso(48 * hour) })];
     v.snapshots.claude.tickets!.inventory.grants = [grant(), grant({ kind: 'weekly', count: 2,
       startsAt: iso(hour), expiresAt: iso(48 * hour), usableNow: false, clears: ['seven_day'], requiresLimit: true })];
     renderCards(cards, v, noop, now);
@@ -56,14 +57,23 @@ test('popup ticket links distinguish held and usable counts with earliest local 
     assert.equal(links.length, 2, 'Gemini is excluded even with injected ticket data');
     assert.equal(links[0]!.href, 'https://chatgpt.com/settings/usage?tab=overview');
     assert.equal(links[1]!.href, 'https://claude.ai/new#settings/usage');
-    assert.equal(links[1]!.querySelector('.ticket-count')!.textContent, '🎫 초기화 티켓 3개 · 지금 사용 가능: 1개');
-    assert.equal(links[1]!.querySelector('.ticket-expiry')!.textContent, `${ticketDate(iso(24 * hour))} 만료`);
+    assert.equal(links[0]!.querySelector('.ticket-count')!.textContent, '🎫 초기화 티켓 2개');
+    assert.equal(links[1]!.querySelector('.ticket-count')!.textContent, '🎫 초기화 티켓 3개');
+    assert.deepEqual([...links[0]!.querySelectorAll('.ticket-expiry')].map(row => row.textContent), [
+      `1개 · ${ticketDate(iso(24 * hour))} 만료`, `1개 · ${ticketDate(iso(48 * hour))} 만료`
+    ]);
+    assert.deepEqual([...links[1]!.querySelectorAll('.ticket-expiry')].map(row => row.textContent), [
+      `1개 · ${ticketDate(iso(24 * hour))} 만료`, `2개 · ${ticketDate(iso(48 * hour))} 만료`
+    ]);
+    assert.doesNotMatch(cards.textContent!, /지금 사용 가능/);
     assert.match(links[1]!.title, /전체 한도 1개/);
     assert.match(links[1]!.title, /주간 한도 2개.*부터.*한도 도달 조건.*현재 사용 불가/);
     assert.equal(links[1]!.getAttribute('aria-description'), links[1]!.title);
     for (const link of links) {
       assert.equal(link.target, '_blank'); assert.equal(link.rel, 'noopener noreferrer');
       assert.equal(link.tabIndex, 0); assert.match(link.getAttribute('aria-label')!, /공식 사용량 관리 화면 열기 \(새 탭\)/);
+      assert.doesNotMatch(link.getAttribute('aria-label')!, /지금 사용 가능/);
+      for (const row of link.querySelectorAll('.ticket-expiry')) assert(link.getAttribute('aria-label')!.includes(row.textContent!));
     }
     assert.equal(cards.querySelectorAll('progress').length, 3);
     assert.equal(cards.querySelector('details,select'), null);
@@ -91,8 +101,16 @@ test('ticket summary without verified expiry shows count only and never invents 
     expiresAt: null, usableNow: null, clears: [], requiresLimit: null, blocked: null })], usableCount: null, cooldownUntil: null };
   const display = ticketDisplay(s, now)!;
   assert.equal(display.inline, '🎫 초기화 티켓 2개');
-  assert.equal(display.expiry, null); assert.equal(display.usable, '지금 사용 가능: 확인 불가');
+  assert.equal(display.expiry, null); assert.deepEqual(display.entries, []);
   assert.doesNotMatch(display.accessible, /0개|만료/);
+  const { dom, cards } = popup();
+  try {
+    renderCards(cards, v, noop, now);
+    const link = cards.querySelector('[data-provider="chatgpt"] .ticket-info')!;
+    assert.equal(link.textContent, '🎫 초기화 티켓 2개');
+    assert.equal(link.querySelector('.ticket-expiry'), null);
+    assert.doesNotMatch(link.getAttribute('aria-label')!, /사용 가능|만료/);
+  } finally { dom.window.close(); }
 });
 
 test('disabled, revoked, signed-out and invalidated contexts hide previous tickets', () => {
@@ -117,8 +135,10 @@ test('popup local clock excludes expired grants and recalculates held count with
     v.snapshots.chatgpt.tickets!.inventory.grants = [grant({ expiresAt: iso(10_000) }), grant({ expiresAt: iso(60_000) })];
     renderCards(cards, v, noop, now);
     assert.match(cards.querySelector('[data-provider="chatgpt"] .ticket-count')!.textContent!, /티켓 2개/);
+    assert.equal(cards.querySelectorAll('[data-provider="chatgpt"] .ticket-expiry').length, 2);
     renderCards(cards, v, noop, now + 15_000);
     assert.match(cards.querySelector('[data-provider="chatgpt"] .ticket-count')!.textContent!, /티켓 1개/);
+    assert.deepEqual([...cards.querySelectorAll('[data-provider="chatgpt"] .ticket-expiry')].map(row => row.textContent), [`1개 · ${ticketDate(iso(60_000))} 만료`]);
     renderCards(cards, v, noop, now + 60_000);
     assert.equal(cards.querySelector('[data-provider="chatgpt"] .ticket-info'), null);
     assert.equal(cards.querySelector('[data-provider="chatgpt"] progress')!.getAttribute('value'), '42');
@@ -137,7 +157,8 @@ test('ChatGPT and Codex share the same ticket link and Claude opens its own offi
       assert.equal(f.link().href, provider === 'claude' ? 'https://claude.ai/new#settings/usage' : 'https://chatgpt.com/settings/usage?tab=overview');
       assert.equal(f.link().tagName, 'A'); assert.equal(f.link().tabIndex, 0);
       assert.equal(f.link().target, '_blank'); assert.equal(f.link().rel, 'noopener noreferrer');
-      assert.match(f.link().getAttribute('aria-label')!, /지금 사용 가능: 1개.*새 탭/);
+      assert.match(f.link().getAttribute('aria-label')!, /초기화 티켓 1개.*새 탭/);
+      assert.doesNotMatch(f.link().getAttribute('aria-label')!, /지금 사용 가능/);
       assert.equal(f.root().querySelector('progress')!.value, 42);
     } finally { f.dom.window.close(); }
   }
