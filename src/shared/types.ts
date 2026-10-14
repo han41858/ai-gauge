@@ -19,7 +19,8 @@ export interface UsageLimit {
   unit: string | null;
   source: 'api';
 }
-export type CollectionResult = UsageLimit[];
+export interface CollectionResult { limits: UsageLimit[]; plan: string | null }
+export interface PlanInfo { label: string; checkedAt: number }
 export interface Snapshot {
   provider: Provider;
   state: CollectionState;
@@ -29,6 +30,8 @@ export interface Snapshot {
   nextAttemptAt: number;
   failures: number;
   errorCode: ErrorCode | null;
+  plan?: PlanInfo | null;
+  planRefreshPending?: boolean;
 }
 export interface Settings {
   enabled: Record<Provider, boolean>;

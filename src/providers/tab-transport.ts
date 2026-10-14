@@ -5,7 +5,7 @@ import { collectGeminiInPage } from './gemini-transport';
 export interface TransportResult { status: number; code: string | null; retryAfter: string | null; data: unknown }
 
 // Chrome serializes this function. It must contain its helpers and must never return credentials,
-// account metadata, error bodies, arbitrary API fields, or the raw session response.
+// account identifiers, error bodies, arbitrary API fields, or the raw session response.
 export async function collectInPage(provider: 'chatgpt' | 'claude'): Promise<TransportResult> {
   const origin = provider === 'chatgpt' ? 'https://chatgpt.com' : 'https://claude.ai';
   if (location.origin !== origin) return { status: 0, code: 'open_tab', retryAfter: null, data: null };
@@ -15,6 +15,7 @@ export async function collectInPage(provider: 'chatgpt' | 'claude'): Promise<Tra
   const object = (v: unknown): Record<string, unknown> | null => v !== null && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : null;
   const numeric = (v: unknown): number | null => typeof v === 'number' && Number.isFinite(v) ? v : null;
   const text = (v: unknown): string | null => typeof v === 'string' && v.length <= 120 ? v : null;
+  const planCode = (v: unknown): string | null => typeof v === 'string' && /^[a-z][a-z0-9_]{0,63}$/i.test(v) ? v.toLowerCase() : null;
   // Absolute URLs prevent a page's <base> from redirecting credentialed reads.
   const get = (path: string, headers: Record<string, string> = {}) => fetch(`${origin}${path}`, { method: 'GET', credentials: 'include', cache: 'no-store', redirect: 'error', signal: controller.signal, headers: { Accept: 'application/json', ...headers } });
   const errorResult = (r: Response) => result(r.status, null, r.headers.get('Retry-After'));
@@ -40,7 +41,7 @@ export async function collectInPage(provider: 'chatgpt' | 'claude'): Promise<Tra
       if (!usageResp.ok) return errorResult(usageResp);
       const raw = object(await read(usageResp));
       if (!raw) return result(200, 'invalid_response');
-      return result(200, null, null, { rate_limit: chatRate(raw.rate_limit), additional_rate_limits: Array.isArray(raw.additional_rate_limits) ? raw.additional_rate_limits.slice(0, 50).map(v => { const r = object(v); return { limit_name: text(r?.limit_name), metered_feature: text(r?.metered_feature), rate_limit: chatRate(r?.rate_limit) }; }) : [] });
+      return result(200, null, null, { plan_type: planCode(raw.plan_type), rate_limit: chatRate(raw.rate_limit), additional_rate_limits: Array.isArray(raw.additional_rate_limits) ? raw.additional_rate_limits.slice(0, 50).map(v => { const r = object(v); return { limit_name: text(r?.limit_name), metered_feature: text(r?.metered_feature), rate_limit: chatRate(r?.rate_limit) }; }) : [] });
     }
     const orgResp = await get('/api/organizations');
     if (!orgResp.ok) return errorResult(orgResp);
@@ -48,7 +49,7 @@ export async function collectInPage(provider: 'chatgpt' | 'claude'): Promise<Tra
     if (!Array.isArray(orgs)) return result(200, 'invalid_response');
     if (!orgs.length) return result(200, 'invalid_response');
     if (orgs.length !== 1) return result(200, 'ambiguous_account');
-    const uuid = object(orgs[0])?.uuid;
+    const org = object(orgs[0]), uuid = org?.uuid;
     if (typeof uuid !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid)) return result(200, 'invalid_response');
     const usageResp = await get(`/api/organizations/${uuid}/usage`);
     if (!usageResp.ok) return errorResult(usageResp);
@@ -60,6 +61,11 @@ export async function collectInPage(provider: 'chatgpt' | 'claude'): Promise<Tra
       if (w && ('utilization' in w || 'resets_at' in w)) out[key] = { utilization: numeric(w.utilization), resets_at: text(w.resets_at) };
     }
     out.limits = Array.isArray(raw.limits) ? raw.limits.slice(0, 50).map(v => { const w = object(v); return { kind: text(w?.kind), percent: numeric(w?.percent), resets_at: text(w?.resets_at), scope: { model: { display_name: text(object(object(w?.scope)?.model)?.display_name) } } }; }) : [];
+    out.plan_metadata = {
+      capabilities: Array.isArray(org?.capabilities) ? org.capabilities.slice(0, 100).filter(v => ['chat', 'claude_pro', 'claude_max', 'pro', 'free', 'raven', 'raven_enterprise'].includes(v)) : [],
+      rate_limit_tier: planCode(org?.rate_limit_tier),
+      raven_type: org?.raven_type === 'team' || org?.raven_type === 'enterprise' ? org.raven_type : null
+    };
     return result(200, null, null, out);
   } catch (e) {
     return result(0, e instanceof Error && e.message === 'invalid_response' ? 'invalid_response' : 'network');

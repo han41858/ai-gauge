@@ -63,7 +63,7 @@ async function harness(provider: 'claude' | 'gemini' = 'claude') {
     now: () => now, read: async provider => view.snapshots[provider],
     write: async snapshot => { view.snapshots[snapshot.provider] = snapshot; notifyStorage(); },
     enabled: async provider => view.settings.enabled[provider] && view.permissions[provider],
-    collect: async requested => { assert.equal(requested, provider); collections.push(now); return collectedLimits(servedPercent); }
+    collect: async requested => { assert.equal(requested, provider); collections.push(now); return { limits: collectedLimits(servedPercent), plan: null }; }
   });
   Object.assign(dom.window, { chrome: {
     runtime: { id: 'fixture', sendMessage: async (message: Message) => {

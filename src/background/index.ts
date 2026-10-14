@@ -33,6 +33,12 @@ async function publish(): Promise<View> {
 }
 async function refresh(p: Provider, trigger: Trigger) { await scheduler.refresh(p, trigger); }
 async function refreshAll(trigger: Trigger) { await Promise.all(PROVIDERS.map(p => refresh(p, trigger))); await publish(); }
+async function refreshContext(provider: Provider, trigger: Trigger = 'tab') {
+  // A tab may now use another account. Keep usage/cooldowns, but do not carry
+  // its previous plan into the new context while a fresh request is pending.
+  await scheduler.invalidatePlan(provider);
+  await refresh(provider, trigger);
+}
 let settingsWrites = Promise.resolve();
 function queueSettingsWrite(write: () => Promise<void>): Promise<void> {
   const task = settingsWrites.then(write);
@@ -84,6 +90,7 @@ chrome.runtime.onMessage.addListener((input: unknown, sender, sendResponse: (rep
       await reconcile();
     }
     if (message.type === 'enable') await enableProvider(message.provider);
+    if (message.type === 'context') await refreshContext(message.provider, 'event');
     if (message.type === 'refresh') await refresh(message.provider, message.trigger);
     if (message.type === 'view' && !sender.tab) void refreshAll('event').catch(() => undefined);
     const view = message.type === 'view' ? await readView() : await publish();
@@ -95,13 +102,22 @@ chrome.alarms.onAlarm.addListener(a => { if (a.name === ALARM) void refreshAll('
 chrome.runtime.onInstalled.addListener(() => { void initialize().catch(() => undefined); });
 chrome.runtime.onStartup.addListener(() => { void initialize().catch(() => undefined); });
 chrome.tabs.onActivated.addListener(({ tabId }) => {
-  void chrome.tabs.get(tabId).then(async tab => { const p = providerFromUrl(tab.url); if (p) await refresh(displayProvider(p), 'tab'); await publish(); }).catch(() => undefined);
+  void chrome.tabs.get(tabId).then(async tab => { const p = providerFromUrl(tab.url); if (p) await refreshContext(displayProvider(p)); await publish(); }).catch(() => undefined);
 });
 chrome.tabs.onUpdated.addListener((_tabId, change, tab) => {
-  if (change.status === 'complete' || change.url) void (async () => { const p = providerFromUrl(tab.url); if (p && tab.active) await refresh(displayProvider(p), 'tab'); await publish(); })().catch(() => undefined);
+  if (change.status === 'loading' || change.status === 'complete' || change.url) void (async () => {
+    const p = providerFromUrl(change.url ?? tab.url);
+    if (p) {
+      // Inactive tabs can switch accounts too. Loading/URL signals invalidate
+      // immediately; completion only retries once the new document is ready.
+      if (change.status === 'loading' || change.url) await scheduler.invalidatePlan(displayProvider(p));
+      if (tab.active && change.status !== 'loading') await refresh(displayProvider(p), 'tab');
+    }
+    await publish();
+  })().catch(() => undefined);
 });
-chrome.windows.onFocusChanged.addListener(() => { void updateBadgeFromFocus().catch(() => undefined); });
-async function updateBadgeFromFocus() { const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true }); const p = providerFromUrl(tabs[0]?.url); if (p) await refresh(displayProvider(p), 'tab'); await publish(); }
+chrome.windows.onFocusChanged.addListener(windowId => { if (windowId !== -1) void updateBadgeFromFocus().catch(() => undefined); });
+async function updateBadgeFromFocus() { const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true }); const p = providerFromUrl(tabs[0]?.url); if (p) await refreshContext(displayProvider(p)); await publish(); }
 chrome.permissions.onAdded.addListener(added => {
   // Chrome may close the popup while showing its permission dialog. Complete
   // the granted site's activation in the worker instead of relying on that UI.

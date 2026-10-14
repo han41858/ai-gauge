@@ -84,6 +84,21 @@ async function page(view: View, path = '/') {
   };
 }
 
+test('initial and same-document navigation notify context once without adding periodic requests', async () => {
+  const tab = await page(sharedView(collected(37, base, base + 3_600_000)));
+  try {
+    assert.deepEqual(tab.requests, [{ type: 'context', provider: 'chatgpt' }]);
+    tab.dom.window.history.pushState({}, '', '/c/another-synthetic-context');
+    await tab.tick(base + 15_000);
+    assert.deepEqual(tab.requests, [
+      { type: 'context', provider: 'chatgpt' }, { type: 'context', provider: 'chatgpt' }
+    ]);
+    await tab.tick(base + 30_000);
+    assert.equal(tab.requests.length, 2);
+    assert.equal(tab.fetches(), 0);
+  } finally { tab.close(); }
+});
+
 test('a quiet content clock keeps successful cache older than ten minutes without requesting a refresh', async () => {
   const view = sharedView(collected(37, base - 20 * 60_000, base + 60 * 60_000));
   const tab = await page(view);

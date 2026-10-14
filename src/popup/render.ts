@@ -1,6 +1,7 @@
 import { HOME_URLS, NAMES, PROVIDERS, type Provider, type View } from '../shared/types';
 import { resetLabel, statusText, usagePercentLabel } from '../shared/format';
 import { percent } from '../shared/validation';
+import { currentPlanLabel } from '../shared/plan';
 import { effectiveSnapshot } from '../storage/snapshots';
 export interface Actions { enable(p: Provider): void; disable(p: Provider): void; revoke(p: Provider): void; refresh(p: Provider): void; select?(p: Provider, id: string | null): void }
 const limitLabel = (provider: Provider, label: string) => provider === 'chatgpt'
@@ -14,7 +15,12 @@ export function renderCards(container: HTMLElement, view: View, actions: Actions
     card.dataset.provider = p;
     const title = NAMES[p];
     card.setAttribute('aria-label', `${title} 사용량`);
-    card.append(el('h2', title));
+    const heading = el('div', undefined, 'card-heading');
+    const plan = enabled && view.permissions[p] ? currentPlanLabel(view.snapshots[p], now) : '확인 불가';
+    const badge = el('span', plan, `plan-badge${plan === '확인 불가' ? ' unknown' : ''}`);
+    badge.setAttribute('aria-label', `${title} 요금제: ${plan}`);
+    heading.append(el('h2', title), badge);
+    card.append(heading);
     if (!enabled || s.state !== 'ok') card.append(el('p', enabled ? statusText(s) : '꺼짐', 'status'));
     else if (!s.limits.length) card.append(el('p', '사용량 확인 불가', 'status'));
     if (enabled && s.limits.length) {

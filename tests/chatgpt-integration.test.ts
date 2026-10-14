@@ -8,7 +8,7 @@ import { CollectionError } from '../src/shared/errors';
 import { emptySnapshot } from '../src/storage/snapshots';
 import { displayProvider } from '../src/shared/display-policy';
 import { authorized, parseMessage } from '../src/shared/contracts';
-import { ORIGINS, PROVIDERS, providerFromUrl } from '../src/shared/types';
+import { ORIGINS, PROVIDERS, providerFromUrl, type CollectionResult } from '../src/shared/types';
 
 const raw = { rate_limit: { primary_window: { used_percent: 15, reset_at: 1792472727, limit_window_seconds: 604800 } } };
 const result = { status: 200, code: null, retryAfter: null, data: raw };
@@ -25,7 +25,7 @@ async function transport(options: { permission?: boolean; tabs?: Tab[]; result?:
 }
 for (const url of ['https://chatgpt.com/', 'https://chatgpt.com/codex', 'https://chatgpt.com/codex/tasks/synthetic']) {
   test(`the same shared ChatGPT collection runs from ${new URL(url).pathname}`, async () => transport({ tabs: [{ id: 7, url }] }, async calls => {
-    assert.deepEqual(await collectChatGPT(), parseChatGPT(raw));
+    assert.deepEqual(await collectChatGPT(), { limits: parseChatGPT(raw), plan: null });
     assert.equal(calls.injections.length, 1); assert.equal(calls.injections[0]?.target.tabId, 7);
     assert.equal(calls.injections[0]?.world, 'MAIN'); assert.equal(calls.injections[0]?.func, collectInPage);
     assert.deepEqual(calls.injections[0]?.args, ['chatgpt']);
@@ -55,7 +55,7 @@ test('retired experimental observations are not accepted as shared usage respons
 }));
 test('simultaneous ordinary-chat and Codex refreshes merge into a single ChatGPT collection', async () => {
   let snapshot = emptySnapshot('chatgpt'), calls = 0;
-  const scheduler = new Scheduler({ read: async () => snapshot, write: async value => { snapshot = value; }, collect: async () => { calls++; return parseChatGPT(raw); }, enabled: async () => true, now: () => 1_000_000 });
+  const scheduler = new Scheduler({ read: async () => snapshot, write: async value => { snapshot = value; }, collect: async () => { calls++; return { limits: parseChatGPT(raw), plan: null }; }, enabled: async () => true, now: () => 1_000_000 });
   const pages = ['https://chatgpt.com/', 'https://chatgpt.com/codex', 'https://chatgpt.com/work'];
   await Promise.all(pages.map(url => {
     const source = displayProvider(providerFromUrl(url)!);
@@ -67,9 +67,9 @@ test('simultaneous ordinary-chat and Codex refreshes merge into a single ChatGPT
   assert.deepEqual(PROVIDERS, ['chatgpt', 'claude', 'gemini']);
 });
 test('empty or malformed collection results preserve the prior successful snapshot', async () => {
-  for (const invalid of [[], [{ percent: 999 }]]) {
+  for (const invalid of [{ limits: [], plan: null }, { limits: [{ percent: 999 }], plan: null }, [], null]) {
     let snapshot = success(emptySnapshot('chatgpt'), parseChatGPT(raw), 1_000_000);
-    await new Scheduler({ read: async () => snapshot, write: async value => { snapshot = value; }, collect: async () => invalid as ReturnType<typeof parseChatGPT>, enabled: async () => true, now: () => 1_100_000 }).refresh('chatgpt', 'manual');
+    await new Scheduler({ read: async () => snapshot, write: async value => { snapshot = value; }, collect: async () => invalid as CollectionResult, enabled: async () => true, now: () => 1_100_000 }).refresh('chatgpt', 'manual');
     assert.equal(snapshot.errorCode, 'invalid_response'); assert.equal(snapshot.collectedAt, 1_000_000);
     assert.equal(snapshot.limits[0]?.percent, 15); assert.equal(snapshot.checkedAt, 1_100_000);
   }

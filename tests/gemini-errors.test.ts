@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { GEMINI_RESPONSE_ERRORS, type Snapshot, type View } from '../src/shared/types';
+import { GEMINI_RESPONSE_ERRORS, type CollectionResult, type Snapshot, type View } from '../src/shared/types';
 import { CollectionError, ERROR_TEXT } from '../src/shared/errors';
 import { statusText } from '../src/shared/format';
 import { unwrapTransport } from '../src/providers/tab-transport';
@@ -28,7 +28,7 @@ test('fixed Gemini response errors survive transport, storage, worker restart an
       await writeSnapshot(before);
       let now = 1_100_000, collections = 0;
       const io = { read: readSnapshot, write: writeSnapshot, enabled: async () => true, now: () => now,
-        collect: async (): Promise<Snapshot['limits']> => {
+        collect: async (): Promise<CollectionResult> => {
           collections++;
           unwrapTransport({ status: 200, code, retryAfter: null, data: { token: 'private-token', body: 'private-response' }, mime: 'private-mime', url: 'https://private.invalid/' });
           throw new Error('The error envelope must reject before returning data');
@@ -47,7 +47,7 @@ test('fixed Gemini response errors survive transport, storage, worker restart an
       await new Scheduler(io).refresh('gemini', 'manual');
       assert.equal(collections, 1, 'a restarted worker respects the saved cooldown');
       now = failed.nextAttemptAt + 1;
-      await new Scheduler({ ...io, collect: async () => limits }).refresh('gemini', 'manual');
+      await new Scheduler({ ...io, collect: async () => ({ limits, plan: null }) }).refresh('gemini', 'manual');
       const recovered = await readSnapshot('gemini');
       assert.equal(recovered.state, 'ok'); assert.equal(recovered.errorCode, null); assert.equal(recovered.collectedAt, now);
       assert.equal(createDiagnosticReport(view(recovered), 'fixture').providers.gemini.errorCode, null);
