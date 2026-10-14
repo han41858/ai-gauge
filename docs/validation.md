@@ -1,68 +1,67 @@
-# 구현 단계 및 검증 결과
+# 구현 및 검증 결과
 
-검증일: 2026-10-14 (Asia/Seoul). 설치 빌드는 빌드 시작 시각 **YYYYMMDDHHmm**으로 식별합니다. 이번 개발 빌드는 **202610141946**, Chrome 내부 버전은 **2026.10.14.1946**입니다.
+검증일: 2026-10-14 (Asia/Seoul). 최종 개발 빌드 **202610142007**, Chrome 내부 버전 **2026.10.14.2007**.
 
-## 사용자 확인과 이번 변경
+## 이번 변경
 
-- 사용자는 Work / Codex 사용량 15%, Claude 사용량과 초기화 시각을 확인했습니다.
-- `202610141801`에서 ChatGPT·Claude의 홈/개별 채팅 위치가 정상이라고 확인했습니다. 당시 Codex 홈/작업에서는 표시되지 않았고, `/codex/cloud`가 루트 `chatgpt.com`으로 이동하는 사실을 알려 주었습니다. 루트의 명시적인 Codex footer를 탐색하는 보완은 유지합니다.
-- 사용자는 서비스 탭에 따른 배지 표시, 새 아이콘과 서비스별 배지 배경색을 확인했습니다. 이번에는 흰색 배지 숫자와 아이콘 분위기에 맞는 팝업 디자인을 요청했습니다.
-- 권한 승인 후 다시 켜기를 눌러야 한다는 보고에 따라 승인 이벤트를 워커가 처리하도록 변경했습니다. 실제 권한창 때문에 팝업이 닫혔는지는 이 환경에서 재현하지 못했고, 팝업 종료를 가정한 테스트로 코드 경로를 검증했습니다.
-- Claude 사용 후 진행 막대 변화가 눈에 띄지 않는다는 보고에 따라 수집 지연과 화면 갱신 경로를 검증했습니다.
-- 배지 숫자를 흰색 `#FFFFFF`으로 바꾸고, 기존 대표 색조를 조금 짙게 조정했습니다. 정상 배경은 ChatGPT/Codex `#0D8669`, Claude `#B16046`이며 흰색과의 sRGB 대비는 각각 4.5345:1 / 4.5346:1입니다. 사용률에 따라 경고색으로 바꾸지 않습니다. 오류·미확인에는 기존 회색 배경·흰색 글자를 유지합니다.
-- 팝업은 아이콘의 청록·파랑을 따라 밝은 하늘색/짙은 남색 배경, 둥근 카드, 파랑→청록 진행 막대와 작은 서비스 색상 점을 적용했습니다. ChatGPT/Claude 두 제목, 520px 폭, 실제 제한별 표시와 관리 기능을 유지합니다. 이전 값의 막대는 중립색으로 구분하며 문구 전체를 흐리게 하지 않습니다.
-- 입력창·팝업의 문구를 `사용량: N%`와 `🕒 사용량 초기화: M/D(요일) HH:mm, [Xd ]Yh 남음`으로 통일했습니다. 입력창 텍스트만 80% 농도로 표시하며 로고·부모 행에는 opacity를 적용하지 않습니다.
-- 로고는 사용자 지정 GitHub main 커밋 `8392550a4d8eb6773a603a49ea76773efc9791d5`에서 가져왔습니다. 앱용 `assets/logo.png`(1254×1254)는 Lanczos 필터로 16/32/48/128px 투명 PNG를 준비하고, 입력창용 `assets/logo-20x20.png`는 그대로 번들에 포함합니다.
-- 원본 SHA-256: logo.png `8cc9e902afa9e1de5dc6a178697f7eae885ceaa0c6591a79ee3949c441fa7f61`, logo-20x20.png `a1f2264dfd2bee9ad56699c36a9620827dada9ab57e93cb7de9e9ab244517431`.
+| 영역 | 주요 파일 | 구현 내용 |
+| --- | --- | --- |
+| Gemini 수집 | src/providers/gemini.ts, gemini-parser.ts, gemini-transport.ts | jSf9Qc 동일 출처 RPC, 제한된 페이지 내부 토큰 사용, XSSI·길이 프레임·wrb.fr·중첩 JSON, 5시간/주간 비율·초기화 검증 |
+| 공통 수집·저장 | src/shared/types.ts, display-policy.ts, contracts.ts, src/storage/settings.ts, snapshots.ts, src/background/index.ts, content-registration.ts, scheduler.ts | Provider 세 개와 표시 위치 네 개 분리, 기존 공유 플랜 설정·스냅샷 일회성 이전, Gemini 독립 권한·백오프·재시작 복구 |
+| UI | src/popup/*, src/background/badge.ts, src/content/* | Gemini 세 번째 카드·네 번째 표시 토글·탭별 파랑 배지, 공통 30px/12px/20px 표시줄, 기존 테마·최대 사용률 정책 유지 |
+| 빌드 | manifest.json, scripts/build.mjs, audit-build.mjs, package.mjs | Gemini 선택 호스트 하나 추가, 폐기 관찰기 번들 제외, 로컬 런타임 6개+아이콘 4개 ZIP |
+| 문서 | AI_GAUGE_SPEC.md, AGENTS.md, README.md, docs/installation.md, permissions.md, provider-feasibility.md | 실제 구현 기준 정리, 폐기 설정 삭제, Gemini 개발·미검증 상태와 배포 범위 명시 |
+| 검증 | tests/gemini-*.test.ts, tests/storage-migration.test.ts 및 기존 회귀, scripts/browser-fixture.mjs | RPC·오류·마이그레이션·표시·권한·Chrome API mock 회귀 |
 
-개발 환경에는 사용자의 계정·Chrome 세션·실제 페이지 DOM이 없습니다. 합성 응답·DOM 검증을 실제 사이트 수집이나 배치 확인으로 보고하지 않습니다.
+ChatGPT 일반 채팅과 Codex는 기존 플랜 수집 결과 하나를 사용합니다. 일반 채팅 모델별 사용률이나 별도 Codex 수집을 추가하지 않았습니다. 과거 실험 관찰기는 제거하고 기존 등록·열린 탭 정리만 호환 처리합니다.
 
-## 단계별 구현과 검증
+Gemini의 remaining은 단위가 불명확하므로 표시·저장 결과에 메시지 수로 넣지 않습니다. 확인된 비율과 초기화 시각만 사용하며 누락된 값은 null로 유지합니다.
 
-| 단계 | 구현 | 검증 | 미검증 |
-| --- | --- | --- | --- |
-| 권한 승인과 켜기 | 새 선택 호스트 승인 시 워커가 해당 카드 소스를 활성화·갱신. 이미 권한이 있는 켜기도 워커에서 처리. 실험 일반 ChatGPT 관찰 자동 활성화 없음 | 팝업 종료, 직접 사용자 동작, 거부, 동시 승인, 기존 권한, 활성화 중 끄기/철회 검사. 표시 설정은 strips만, 끄기는 해당 provider만 갱신해 다른 설정 보존 | 실제 Chrome 권한창과 설치 |
-| 탭별 배지 | 전역 배지는 비우고 tabId별 ChatGPT/Claude 소스·대표색 사용. 무관 사이트·URL 미확인 탭은 빈 배지 | 서로 다른 탭 값/배경/글자색 유지, 70/90/100%와 이전 임계치에 영향 없음, 다른 사이트 이동·권한 철회·닫힌 탭·늦은 쓰기 경쟁 | 실제 다중 창 툴바 표시 |
-| 팝업 디자인 | 아이콘 기반 청록·파랑 테마, 흰색/남색 카드, 둥근 버튼, 실제 값만 반영하는 진행 막대 | Chromium 밝은/어두운 테마 스크린샷 확인, 520/390/320px 가로 넘침 검사, 제목·설정·진단·갱신 기능 회귀 | 실제 설치 팝업에서 OS별 렌더링 |
-| 응답 후 갱신 | 직전 수집 60초 안의 완료 신호를 다음 허용 시각까지 병합 보류. Claude 중지 버튼 표기·속성 변경 감지 보강 | 실제 Scheduler와 Claude 파서를 사용한 가상 시각 테스트. 최소 간격·Retry-After·비활성화/철회/경로 이동/자동 정지 상태의 보류 취소 | 실제 Claude 중지 버튼 DOM, 서버 반영 지연 |
-| 진행 막대 | 새 스냅샷을 같은 progress 노드에 소수점 그대로 적용. 정상 값만 표시 | 저장소 변경과 runtime invalidation으로 **17 → 17.25 → 63** 갱신. 정수 문구가 그대로여도 progress.value는 변경. Chromium에서 80×6px·간격·줄바꿈 검사 | 실제 계정 사용 직후 API 수치 변화 |
-| 표시 형식·톤 | 팝업/입력창 공통 포맷터, 사용량 문구 단축, 하루 미만 0d 생략, 텍스트 강조 완화 | 동일 데이터의 두 UI 문구 일치, 실제 0/미확인/이전 값 구분, 타임존·날짜 경계 검사. Chromium 밝은/어두운 테마 전환 시 텍스트 색 변경과 로고 opacity 유지 | 실제 사이트 테마/CSP |
-| 로고 | 새 앱 로고에서 16/32/48/128px 생성, 표시줄은 제공된 20px PNG 그대로 사용 | PNG 크기·alpha 유지, 준비된 앱 파일/산출물 바이트 일치, 표시줄 data URL 원본 일치·디코딩·위치. 팝업 28px 표시 | 실제 Chrome 툴바 크기별 표시 |
-| 설치 ZIP | 루트 manifest와 실행 파일 7개, assets/의 앱 아이콘 4개. docs/INSTALL/상위 폴더 없음 | release 진단 제외, ZIP 엔트리·무결성·원본 바이트·버전 일치와 중복 출력 거부 | ZIP 직접 드래그 설치 |
+## 문서 정리
 
-진행 막대는 폭 80px이므로 **1% 차이가 0.8px**입니다. 숫자 문구는 정수 반올림하고 막대는 원본 소수점을 사용합니다. 서버가 같은 값을 돌려주면 가짜 변화나 애니메이션을 만들지 않습니다. 응답 완료 감지가 되지 않는 화면에서는 팝업 갱신·탭 복귀·기본 10분 갱신 경로를 사용합니다.
+- 배지 대상 선택, 사용률 임계치 색상 전환, 수집 시각·갱신 주기 사용자 설정을 요구사항에서 제거했습니다.
+- 현재 팝업·탭별 자동 배지·서비스 대표색·자동 최대 사용률·공통 표시 문구로 명세를 맞췄습니다.
+- 내부 수집/재시도 시각과 고정 10분 갱신은 동작을 위해 유지하며 사용자 설정과 구분했습니다. 저장 호환용 과거 설정 필드도 UI 기능으로 설명하지 않습니다.
+- 사용자 확인, 합성 fixture 통과, 실제 로그인 미검증을 구분하고 폐기된 계획을 정리했습니다.
+- 원격 main의 최신 README에 추가된 로고·간결한 소개를 보존하고 자세한 설치·사용 안내는 로컬 docs/installation.md로 분리했습니다.
+- 코드·문서 원격 반영과 PR 생성은 최신 사용자 지시에 따라 보류합니다. 승인된 설치 ZIP만 기존 main/downloads에 게시합니다.
 
-선택 호스트 권한을 Chrome 설정에서 새로 승인하는 경우도 해당 카드 소스를 켭니다. 단순 워커 재시작이나 기존 권한이 있는 서비스의 꺼짐 상태는 이 동작을 유발하지 않습니다. 권한은 storage/alarms/scripting 및 기존 두 optional 호스트로 유지하며 tabs/쿠키/전체 사이트 권한을 추가하지 않았습니다.
-
-## 실행 결과
+## 자동 검사 결과
 
 | 검사 | 결과 |
 | --- | --- |
-| `npm run check` | 통과: TypeScript strict, **286개 테스트**, 개발 빌드·산출물 audit. 실패/취소/스킵 0. release 진단 제외·새 로고·ZIP 검사는 테스트에 포함 |
-| `node scripts/browser-fixture.mjs` | 통과: 최종 **202610141946**의 새 팝업 테마, 팝업/입력창 문구, 앱 아이콘/20px 로고 디코딩, 밝은·어두운 테마 전환, 기존 위치·수집 갱신 회귀 |
-| `git diff --check` | 통과 |
-| 설치 ZIP 및 GitHub 다운로드 | 통과: 루트 manifest 포함 실행 파일 7개 + 앱 아이콘 4개, ZIP 무결성 정상. GitHub HTTP 200 및 원본 바이트 일치 |
+| npm run check | 통과: TypeScript strict, **317개 테스트**, 개발 빌드, 산출물 권한·목적지 검사. 실패/취소/스킵 0 |
+| node scripts/browser-fixture.mjs | 최종 **202610142007** 빌드 통과. 세 카드·네 표시 토글, 밝은/어두운 테마, 520/390/320px 팝업, 30px 표시줄, 64회 시간 간격 DOM 변경에서 안정성 |
+| Gemini 파서·전송 | 사용자 제공 내부 JSON과 합성 외부 프레임 구분. 실제 0/null, 5시간/주간, 초·나노초/UTC, 누락·손상·중복·잘못된 비율·RPC 내부 오류·401/403/429·timeout·1MiB 상한 |
+| Gemini 권한·수명 | 승인 후 팝업 종료에도 활성화, 거부, 진행 중 비활성/철회, Retry-After의 새 워커 복원, 중복 갱신 병합 |
+| 저장 이전 | 기존 work_codex의 정상 값·꺼짐 상태·ChatGPT/Codex 표시 설정 보존, Claude 캐시 유지, Gemini 기본 off. 실험 ChatGPT 데이터는 읽거나 승격하지 않음 |
+| 표시 회귀 | ChatGPT/Codex 동일 데이터, Claude 기존 위치·진행 막대 17→17.25→63, Gemini 같은 막대 42→42.25→63·중복 방지·기존 입력 불변·권한 철회 |
+| 전송 경계 | Chrome120 변환 함수를 빈 VM에 직렬화하여 closure 없이 실행. 세 서비스 모두 고정 절대 URL을 사용해 외부 document base가 요청 대상을 바꾸지 못함 |
+| 정식 빌드·ZIP | 테스트에서 진단 UI/응답 제외, 루트 manifest와 런타임 6개+로컬 PNG 4개, 버전/바이트/무결성/기존 파일 덮어쓰기 거부 검사 |
+| git diff --check | 통과 |
 
-[설치 ZIP 다운로드](https://github.com/han41858/ai-gauge/raw/refs/heads/main/downloads/ai-gauge-202610141946.zip). 65,861 bytes, SHA-256: `8a0f4d493603ed7bffb3cd6d532b0b4d8bd6652b2eb28f2dcff3e9dbcb8c3e1c`.
+Node.js 24.19.0 / npm 11.9.0 / Chromium 154.0.8037.57. 브라우저 fixture는 합성 페이지·Chrome API mock·localhost 출처 치환을 사용합니다. 로그인한 계정/API 검증이 아닙니다.
 
-설치 ZIP은 새 브랜치 없이 원격 main의 최신 상태 위에 `downloads/ai-gauge-202610141946.zip` 파일만 추가했습니다(`9ec6752`). 개발 소스와 사용자 문서를 보존했습니다. 다운로드 링크는 HTTP 200, 원본 바이트·SHA-256 일치, ZIP 무결성 검사를 통과했습니다.
+## 실사용 검증 범위
 
-Chromium fixture는 Chrome API mock과 합성 페이지, localhost 출처 치환을 사용합니다. 팝업과 서비스 페이지는 독립 문서이며 닫힌 ShadowRoot의 좌표를 검사하는 훅은 테스트에만 있습니다. Node.js 24.19.0 / npm 11.9.0 / Chromium 154.0.8037.57.
+사용자는 이전 빌드에서 OpenAI 플랜 및 Claude 수집·리셋 시각, ChatGPT·Claude 홈/채팅 표시, 최근 팝업·아이콘·서비스 배경색을 확인했습니다. 이것이 이번 저장 마이그레이션과 Gemini의 실사용 검증까지 의미하지는 않습니다.
 
-기존 회귀 검사도 유지합니다: ChatGPT·Claude 제목, 520px 팝업과 390/320px overflow, 세 표시 체크박스, 최대 사용률 자동 선택, Codex 루트 리다이렉트 footer·후속 작업, Claude 내부 wrapper 위치, 52회 시간 간격 DOM 변경에서 표시줄 안정성, transient worker 실패 복구, 선택 권한 철회와 MAIN 관찰기 정리.
+이 환경에는 로그인한 사용자 Chrome 세션이 없으며 unpacked 확장 로딩도 관리자 정책으로 차단되었습니다. 다음은 **미검증**입니다.
 
-## 실사용 검증의 한계
+- AI Gauge에서 Gemini RPC 독립 호출 성공과 웹앱 사용량/초기화 시각 일치
+- 실제 Gemini CSP·CSRF·세션 만료·페이지 전환·입력창/응답 완료 버튼 구조
+- 실제 Chrome 업그레이드·권한 승인 창·서비스 워커 재시작·세 사이트 툴바 표시
+- 최신 Codex 홈/진행 작업의 실제 표시 위치
 
-실제 unpacked 확장 로딩은 이전에 `Loading of unpacked extensions is disabled by the administrator.` 정책으로 차단되었고 우회하지 않았습니다. 새 변경의 실제 권한창·툴바 배지·사이트 CSP·로그인 계정 API 응답/초기화 원문 대조는 미실시입니다. 실제 Codex 홈/진행 작업의 최신 표시 복구도 아직 사용자 확인이 없습니다.
+Gemini는 토큰을 안전하게 구할 수 없으면 unsupported입니다. 여러 Google 계정의 RPC 대상 선택 계약이 확인되지 않아 /u/1 또는 authuser=1 같은 비기본 계정 경로는 요청하지 않습니다. /u/0·authuser=0도 실제 계정 일치는 추가 검증해야 합니다. HTML 로그인 페이지를 정상 사용량으로 해석하지 않고 보호장치를 우회하지 않습니다.
 
-일반 ChatGPT 모델별 사용률 계약은 확보하지 못했으며 플랜 공유 풀을 일반 채팅 화면에 표시하는 것이 이를 해결했다는 뜻은 아닙니다. 공유 크레딧 잔액·복수 Claude 조직 수집도 미구현입니다. API가 제공한 제한과 초기화만 사용하며 없는 기간·요금제 한도를 만들지 않습니다. 자세한 근거는 [provider-feasibility.md](provider-feasibility.md)에 있습니다.
+## 설치 결과물
 
-## 설치 후 확인
+[설치 ZIP](https://github.com/han41858/ai-gauge/raw/refs/heads/main/downloads/ai-gauge-202610142007.zip)
 
-1. ZIP을 풀고 manifest.json이 바로 들어 있는 폴더를 로드합니다. 기존 폴더를 교체했다면 확장과 대상 사이트 탭을 모두 새로고침합니다. AI Gauge는 한 개만 활성화합니다.
-2. 권한 미승인 상태에서 한 번 승인한 뒤 서비스가 켜지는지 확인합니다.
-3. ChatGPT·Claude·다른 사이트 탭을 번갈아 열어 각각의 숫자 또는 빈 배지를 확인합니다.
-4. Claude 사용 후 실제 API 값이 바뀌면 숫자와 막대가 함께 바뀌는지, 아이콘과 0d 생략이 표시되는지 확인합니다.
-5. Codex 홈/후속 입력창 위치는 별도 확인이 필요합니다. 개발 빌드의 로컬 진단은 유지하고 정식 빌드에서는 제외합니다.
+- 크기: 65,704 bytes
+- SHA-256: c12ea298146b760df054afa7b57c6bebe0d81c0c8809b670811a88ba76281edb
+- 구성: 루트 manifest·background/content/popup JS·popup HTML/CSS, assets의 16/32/48/128px PNG. docs/INSTALL/상위 폴더 없음.
+- 원격 커밋 b567785는 ZIP 한 파일만 추가합니다. 기존 원격 README·명세·로고와 다른 파일은 그대로 보존했습니다. HTTP 200, 원본 바이트·SHA-256 일치, ZIP 무결성 검사를 통과했습니다. 소스·문서 개발 브랜치는 푸시하지 않았고 PR은 생성하지 않았습니다.
 
-설치 ZIP을 올리기 위해 새 브랜치를 만들지 않습니다. 접근 가능한 GitHub Releases 또는 기존 main의 `downloads/`에 검증한 산출물만 게시하며 문서는 ZIP에 넣지 않습니다. 기존 main에 게시할 때는 최신 원격 상태를 기준으로 ZIP 파일만 추가해 사용자의 변경을 보존합니다. 별도 요청 없이 개발 소스를 함께 푸시하지 않습니다.
+설치 후 확장과 사이트 탭을 새로고침하고 Gemini 카드에서 권한을 승인합니다. 기본 Google 계정의 Gemini에서 갱신한 뒤 사이트 사용량 화면과 비율·초기화를 대조하고, 홈/대화 입력창 위치·갱신·로그아웃 상태를 확인해야 합니다.
