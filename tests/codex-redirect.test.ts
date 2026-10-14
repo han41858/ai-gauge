@@ -11,7 +11,7 @@ import type { ReadyDisplayDiagnostic } from '../src/content/display-diagnostics'
 
 const rootUrl = 'https://chatgpt.com/';
 const footer = '<div id="codex-footer" class="flex ComposerLayoutFooter-_8IVRO gap-2"><button>Send</button></div>';
-const codex = `<main><form><textarea></textarea>${footer}</form></main>`;
+const codex = `<main><div id="codex-root" class="ComposerLayoutRoot-fixture"><form><textarea></textarea>${footer}</form></div></main>`;
 const ordinary = '<main><form id="chat-composer"><div id="prompt-textarea" contenteditable="true"></div><button>Send</button></form></main>';
 const popup = { id: 'fixture', url: 'chrome-extension://fixture/popup.html' };
 const view = (): View => {
@@ -113,7 +113,7 @@ test('production content recognizes a late Codex footer and return to ordinary c
     assert.equal(dom.window.document.getElementById('ai-gauge-usage-strip'), null);
     assert.equal(diagnostic()?.provider, 'chatgpt');
     dom.window.document.body.innerHTML = codex;
-    await waitFor(() => dom.window.document.getElementById('codex-footer')?.lastElementChild?.id === 'ai-gauge-usage-strip');
+    await waitFor(() => dom.window.document.getElementById('codex-root')?.nextElementSibling?.id === 'ai-gauge-usage-strip');
     assert.equal(dom.window.location.href, rootUrl);
     assert.equal(diagnostic()?.provider, 'codex');
     assert.equal(diagnostic()?.targetFound, true);
@@ -130,7 +130,7 @@ test('root-URL Codex and ordinary chat obey their own strip toggles while sharin
   const current = view(); current.settings.strips.chatgpt = false;
   const running = runningContent(codex, current), { dom } = running;
   try {
-    await waitFor(() => dom.window.document.getElementById('codex-footer')?.lastElementChild?.id === 'ai-gauge-usage-strip');
+    await waitFor(() => dom.window.document.getElementById('codex-root')?.nextElementSibling?.id === 'ai-gauge-usage-strip');
     dom.window.document.body.innerHTML = ordinary;
     await waitFor(() => running.diagnostic()?.provider === 'chatgpt');
     await new Promise(resolve => setTimeout(resolve, 350));

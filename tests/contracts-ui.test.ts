@@ -55,9 +55,9 @@ test('badge shows zero as zero and clears on unrelated tabs without borrowing an
   }
   v.settings.followTab = true; assert.equal(badge(v, 'https://chatgpt.com', 1001).text, '—'); assert.equal(badge(v, 'https://unrelated.invalid', 1001).text, '');
 });
-test('badge never renders failed, stale, denied, disabled or unknown data as current', () => {
+test('badge keeps valid cached usage by age while suppressing failed or denied data', () => {
   const v = view(); v.settings.enabled.claude = true; v.settings.defaultProvider = 'claude'; v.snapshots.claude = success(emptySnapshot('claude'), parseClaude({ five_hour: { utilization: 55 } }), 1000);
-  assert.equal(badge(v, 'https://claude.ai/', 601000).text, '—'); v.snapshots.claude.state = 'error'; assert.equal(badge(v, 'https://claude.ai/', 1001).text, '—');
+  assert.equal(badge(v, 'https://claude.ai/', 601000).text, '55%'); v.snapshots.claude.state = 'error'; assert.equal(badge(v, 'https://claude.ai/', 1001).text, '—');
   v.snapshots.claude.state = 'ok'; v.permissions.claude = false; assert.equal(badge(v, 'https://claude.ai/', 1001).text, '—');
 });
 test('site badge uses the actual reported weekly limit without inventing a five-hour quota', () => { const v = view(); v.settings.enabled.claude = true; v.settings.defaultProvider = 'claude'; v.snapshots.claude = success(emptySnapshot('claude'), parseClaude({ seven_day: { utilization: 50 } }), 1000); assert.equal(badge(v, 'https://claude.ai/', 1001).text, '50%'); v.settings.selectedLimit.claude = 'seven_day'; assert.equal(badge(v, 'https://claude.ai/', 1001).text, '50%'); });
@@ -70,11 +70,11 @@ test('usage strip mounts once below form, preserves input, handles SPA recreatio
   v.permissions.claude = false; strip.update(v); assert.equal(d.querySelector('#ai-gauge-usage-strip'), null);
 });
 test('unknown input selector fails quietly with the shared display source enabled', () => { const d = new JSDOM('<main></main>').window.document, v = view(); v.settings.enabled.chatgpt = true; const strip = new UsageStrip('chatgpt', d); strip.update(v); assert.equal(d.querySelector('#ai-gauge-usage-strip'), null); });
-test('popup renders zero, unknown, stale marker and untrusted labels as text, without XSS', () => {
+test('popup renders zero, unknown, previous-value marker and untrusted labels as text, without XSS', () => {
   const d = new JSDOM('<div id="cards"></div>').window.document, v = view(); v.settings.enabled.claude = true;
   v.snapshots.claude = success(emptySnapshot('claude'), parseClaude({ five_hour: { utilization: 0 }, seven_day: { utilization: null }, limits: [{ kind: 'weekly_scoped', percent: 12, scope: { model: { display_name: '<img src=x onerror=alert(1)>' } } }] }), 1000); v.snapshots.claude.state = 'error';
   renderCards(d.getElementById('cards')!, v, { enable() {}, disable() {}, revoke() {}, refresh() {}, select() {} }, 1001);
-  assert.match(d.body.textContent!, /0%/); assert.match(d.body.textContent!, /확인 불가/); assert.match(d.body.textContent!, /오래된 데이터/); assert.equal(d.querySelector('img'), null);
+  assert.match(d.body.textContent!, /0%/); assert.match(d.body.textContent!, /확인 불가/); assert.match(d.body.textContent!, /이전 수집값/); assert.doesNotMatch(d.body.textContent!, /오래된 데이터|갱신 필요/); assert.equal(d.querySelector('img'), null);
 });
 test('Codex web textarea composer gets one strip below it without reading or changing the input', () => {
   const d = new JSDOM('<main><form data-testid="codex-composer"><textarea>private Codex prompt</textarea><button>Send</button></form></main>', { url: 'https://chatgpt.com/codex/tasks/synthetic' }).window.document;

@@ -42,7 +42,58 @@ test('lease persists before fetch and prevents immediate retry on worker termina
   await new Scheduler({ read: async () => s, write: async v => { s = v; }, enabled: async () => true, now: () => 1000, collect: async () => { assert.equal(s.checkedAt, 1000); assert.equal(s.nextAttemptAt, 61000); return limits; } }).refresh('claude', 'manual');
 });
 test('exponential backoff is bounded but Retry-After can be longer', () => { assert.equal(backoff(1), 60000); assert.equal(backoff(2), 120000); assert.equal(backoff(1000), 3600000); assert.equal(failure(emptySnapshot('claude'), new CollectionError('rate_limited', 'rate_limited', 7200000), 1000).nextAttemptAt, 7201000); });
-test('restored snapshots validate and expire after ten minutes', () => { const s = success(emptySnapshot('claude'), limits, 1000); assert.deepEqual(parseSnapshot(s, 'claude'), s); assert.equal(effectiveSnapshot(s, 1000 + FRESH_MS).state, 'stale'); assert.equal(parseSnapshot({ ...s, limits: [{ percent: 999 }] }, 'claude').collectedAt, null); assert.equal(parseSnapshot(s, 'chatgpt').collectedAt, null); });
+test('restored snapshots validate and retain the last success while periodic renewal becomes due', () => {
+  const s = success(emptySnapshot('claude'), limits, 1000);
+  assert.deepEqual(parseSnapshot(s, 'claude'), s);
+  assert.equal(effectiveSnapshot(s, 1000 + FRESH_MS).state, 'ok');
+  assert.equal(due(s, 'periodic', 1000 + FRESH_MS), true);
+  assert.equal(parseSnapshot({ ...s, limits: [{ percent: 999 }] }, 'claude').collectedAt, null);
+  assert.equal(parseSnapshot(s, 'chatgpt').collectedAt, null);
+});
+
+test('periodic renewal after an observed reset respects attempt spacing and persisted backoff', () => {
+  const collectedAt = 1_000_000;
+  const resetsAt = new Date(collectedAt + 90_000).toISOString();
+  const snapshot = success(emptySnapshot('claude'), [{ ...limits[0]!, resetsAt }], collectedAt);
+  assert.equal(due(snapshot, 'periodic', collectedAt + 89_999), false);
+  assert.equal(due(snapshot, 'periodic', collectedAt + 90_000), true);
+  assert.equal(due({ ...snapshot, checkedAt: collectedAt + 60_000 }, 'periodic', collectedAt + 90_000), false);
+  assert.equal(due({ ...snapshot, nextAttemptAt: collectedAt + 180_000 }, 'periodic', collectedAt + 90_000), false);
+  for (const state of ['signed_out', 'permission_required', 'unsupported'] as const) {
+    assert.equal(due({ ...snapshot, state }, 'periodic', collectedAt + 180_000), false);
+  }
+});
+
+test('periodic retries use their saved deadline even when the last success is less than ten minutes old', () => {
+  const collectedAt = 1_000_000;
+  for (const error of [new CollectionError('network'), new CollectionError('rate_limited', 'rate_limited', 120_000)]) {
+    const failed = failure(success(emptySnapshot('claude'), limits, collectedAt), error, collectedAt + 60_000);
+    assert.equal(due(failed, 'periodic', failed.nextAttemptAt - 1), false);
+    assert.equal(due(failed, 'periodic', failed.nextAttemptAt), true, error.code);
+    assert(failed.nextAttemptAt - collectedAt < FRESH_MS);
+  }
+});
+
+test('a recreated scheduler renews a persisted due cache once for simultaneous periodic and tab triggers', async () => {
+  const now = 2_000_000;
+  let snapshot = success(emptySnapshot('claude'), limits, now - FRESH_MS);
+  let calls = 0;
+  const io = {
+    read: async () => parseSnapshot(structuredClone(snapshot), 'claude'),
+    write: async (value: typeof snapshot) => { snapshot = structuredClone(value); },
+    collect: async () => { calls++; return [{ ...limits[0]!, percent: 37 }]; },
+    enabled: async () => true,
+    now: () => now
+  };
+  const restarted = new Scheduler(io);
+  const replies = await Promise.all([restarted.refresh('claude', 'periodic'), restarted.refresh('claude', 'tab'), restarted.refresh('claude', 'event')]);
+  assert.equal(calls, 1);
+  assert(replies.every(reply => reply === replies[0]));
+  assert.equal(snapshot.limits[0]!.percent, 37);
+  assert.equal(snapshot.collectedAt, now);
+  await new Scheduler(io).refresh('claude', 'periodic');
+  assert.equal(calls, 1, 'another worker must respect the persisted success interval');
+});
 test('missing tabs do not accumulate server-failure backoff, but ordinary popup events remain spaced', () => {
   let s = emptySnapshot('claude');
   for (let i = 1; i <= 8; i++) {

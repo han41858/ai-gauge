@@ -72,24 +72,6 @@ function bounded(element: HTMLElement, input: HTMLElement): boolean {
   return !shell(element) && !element.querySelector(UNRELATED_REGION) && onlyEditor(element, input);
 }
 
-function claudeInnerAnchor(input: HTMLElement): HTMLElement | null {
-  const surface = input.closest<HTMLElement>('div.bg-surface-3');
-  if (!surface || !bounded(surface, input) || surface.closest('[contenteditable]')) return null;
-  // Support both the class reported by the user and the usual Tailwind spelling.
-  // Keep the new row inside the surface, but outside every editable descendant.
-  for (let anchor = input.parentElement; anchor && anchor !== surface; anchor = anchor.parentElement) {
-    if (!anchor.matches('div.relative.w-full.min-w-0,div.relative.w-full.mni-w-0')) continue;
-    const parent = anchor.parentElement;
-    if (!parent || !surface.contains(parent) || parent.closest('[contenteditable]')) continue;
-    const style = parent.ownerDocument.defaultView?.getComputedStyle(parent);
-    const row = (style?.display === 'flex' || style?.display === 'inline-flex')
-      && !style.flexDirection.startsWith('column');
-    if (row || style?.display === 'grid' || style?.display === 'inline-grid' || style?.display === 'contents') continue;
-    if (bounded(anchor, input)) return anchor;
-  }
-  return null;
-}
-
 function composerBoundary(input: HTMLElement, provider: PageProvider): HTMLElement | null {
   if (provider === 'gemini') {
     const boundary = geminiBoundary(input);
@@ -166,14 +148,58 @@ function outsideLayout(boundary: HTMLElement, input: HTMLElement): HTMLElement |
   return null;
 }
 
-export interface ComposerTarget { input: HTMLElement | null; anchor: HTMLElement; placement?: 'after' | 'append' }
+export interface ComposerTarget {
+  input: HTMLElement | null;
+  anchor: HTMLElement;
+  scope?: HTMLElement;
+  placement?: 'after';
+  marker?: Exclude<PageProvider, 'gemini'> | 'codex-footer';
+}
+
+function hasClassPrefix(element: HTMLElement, prefix: string): boolean {
+  return [...element.classList].some(token => token.startsWith(prefix) && token.length > prefix.length);
+}
+
+function classPrefixElements(doc: Document, prefix: string): HTMLElement[] {
+  return [...doc.querySelectorAll<HTMLElement>(`div[class*="${prefix}"]`)]
+    .filter(element => hasClassPrefix(element, prefix));
+}
+
+function eligibleAnchor(anchor: HTMLElement): boolean {
+  return visible(anchor) && onScreen(anchor) && !anchor.closest('[contenteditable]')
+    && !anchor.querySelector(UNRELATED_REGION);
+}
+
+export function retainsComposerMarker(target: ComposerTarget): boolean {
+  if (!target.marker) return true;
+  const { anchor, marker } = target;
+  return eligibleAnchor(anchor) && (marker === 'claude' ? anchor.matches('div[data-cds="ChatComposerChin"]')
+    : hasClassPrefix(anchor, marker === 'chatgpt' ? 'ComposerLayoutBody-' : marker === 'codex' ? 'ComposerLayoutRoot-' : 'ComposerLayoutFooter-'));
+}
+
+function associateMarker(anchor: HTMLElement, markers: HTMLElement[]): ComposerTarget {
+  // A chin/footer can be a sibling of the editor. Keep their common scope so
+  // temporary disabled/mirror editors do not invalidate a still-visible marker.
+  for (let scope: HTMLElement | null = anchor; scope && !shell(scope); scope = scope.parentElement) {
+    if (scope.querySelector(UNRELATED_REGION) || markers.filter(marker => scope.contains(marker)).length !== 1) break;
+    const inputs = inputsInside(scope);
+    if (inputs.length === 1) return { input: inputs[0]!, anchor, scope, placement: 'after' };
+    if (inputs.length > 1) break;
+  }
+  return { input: null, anchor, placement: 'after' };
+}
+
+function requestedTargets(doc: Document, provider: PageProvider): ComposerTarget[] {
+  if (provider === 'gemini') return [];
+  const markers = (provider === 'chatgpt' ? classPrefixElements(doc, 'ComposerLayoutBody-')
+    : provider === 'codex' ? classPrefixElements(doc, 'ComposerLayoutRoot-')
+      : [...doc.querySelectorAll<HTMLElement>('div[data-cds="ChatComposerChin"]')])
+    .filter(eligibleAnchor);
+  return markers.map(anchor => ({ ...associateMarker(anchor, markers), marker: provider }));
+}
 
 function codexFooters(doc: Document): HTMLElement[] {
-  const prefix = 'ComposerLayoutFooter-';
-  return [...doc.querySelectorAll<HTMLElement>('div[class*="ComposerLayoutFooter-"]')]
-    .filter(footer => [...footer.classList].some(token => token.startsWith(prefix) && token.length > prefix.length)
-      && visible(footer) && onScreen(footer) && !footer.closest('[contenteditable]')
-      && !footer.querySelector(UNRELATED_REGION));
+  return classPrefixElements(doc, 'ComposerLayoutFooter-').filter(eligibleAnchor);
 }
 
 export function hasCodexFooter(doc: Document): boolean {
@@ -182,22 +208,16 @@ export function hasCodexFooter(doc: Document): boolean {
 
 function codexFooterTargets(doc: Document): ComposerTarget[] {
   const footers = codexFooters(doc);
-  return footers.map(anchor => {
-    // The footer and editor can be siblings. Associate through their nearest
-    // unambiguous layout without requiring the editor to be inside the footer.
-    let input: HTMLElement | null = null;
-    for (let scope: HTMLElement | null = anchor; scope && !scope.matches('html,body'); scope = scope.parentElement) {
-      if (scope.closest(EXCLUDED) || scope.querySelector(UNRELATED_REGION)) break;
-      if (footers.filter(footer => scope.contains(footer)).length !== 1) break;
-      const inputs = inputsInside(scope);
-      if (inputs.length === 1) { input = inputs[0]!; break; }
-      if (inputs.length > 1) break;
-    }
-    return { input, anchor, placement: 'append' };
+  return footers.map(footer => {
+    const target: ComposerTarget = { ...associateMarker(footer, footers), marker: 'codex-footer' };
+    if (!target.input) return target;
+    const boundary = composerBoundary(target.input, 'codex');
+    const anchor = boundary && outsideLayout(boundary, target.input);
+    return anchor ? { input: target.input, anchor, placement: 'after' as const } : target;
   });
 }
 
-function preferredCodexFooter(targets: ComposerTarget[], doc: Document): ComposerTarget | null {
+function preferredMarker(targets: ComposerTarget[], doc: Document): ComposerTarget | null {
   if (targets.length === 1) return targets[0]!;
   const focused = targets.filter(({ input, anchor }) => anchor.contains(doc.activeElement)
     || input === doc.activeElement || !!input?.contains(doc.activeElement));
@@ -207,17 +227,18 @@ function preferredCodexFooter(targets: ComposerTarget[], doc: Document): Compose
 }
 
 export function findComposerTarget(doc: Document, provider: PageProvider): ComposerTarget | null {
+  const requested = requestedTargets(doc, provider);
+  if (requested.length) return preferredMarker(requested, doc);
   if (provider === 'codex') {
     const footers = codexFooterTargets(doc);
-    if (footers.length) return preferredCodexFooter(footers, doc);
+    if (footers.length) return preferredMarker(footers, doc);
   }
   const selector = provider === 'chatgpt' ? EXPLICIT_INPUT : SELECTORS[provider].input;
   const targets: ComposerTarget[] = [];
   for (const input of doc.querySelectorAll<HTMLElement>(selector)) {
     if (!eligibleInput(input)) continue;
-    const inner = provider === 'claude' ? claudeInnerAnchor(input) : null;
     const boundary = composerBoundary(input, provider);
-    const anchor = inner ?? (boundary && outsideLayout(boundary, input));
+    const anchor = boundary && outsideLayout(boundary, input);
     if (anchor) targets.push({ input, anchor });
   }
   if (targets.length === 1) return targets[0]!;

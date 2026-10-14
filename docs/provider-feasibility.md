@@ -89,7 +89,7 @@ OpenAI의 [`openai/codex` 커밋 `95273b84fbff40f9df7d71d50f1ca52c6489b25d`](htt
 
 ## 표시와 저장 정책
 
-- 팝업은 ChatGPT·Claude·Gemini 세 카드를 구분하고 Codex 카드를 중복 생성하지 않습니다. 오류·미수집·오래된 데이터 안내와 필수 관리 버튼을 유지합니다.
+- 팝업은 ChatGPT·Claude·Gemini 세 카드를 구분하고 Codex 카드를 중복 생성하지 않습니다. 미수집·신뢰할 수 없는 값에는 짧은 상태를 표시하고 필수 관리 버튼을 유지합니다. 정상 캐시의 시간 경과만으로 경고하지 않습니다.
 - 입력창 위치는 일반 ChatGPT·Codex·Claude·Gemini 네 곳입니다. 표시 설정도 네 화면을 구분하되 ChatGPT와 Codex는 동일한 ChatGPT 데이터 소스를 사용합니다.
 - 공통 표시줄은 높이 30px, 글자 12px, 기존 20px 로고를 사용합니다. 사용률·현지 초기화 시각·남은 시간을 표시하며 없는 값을 추정하지 않습니다. 유효한 실제 사용률에만 진행 막대를 표시합니다.
 - 대표 수치는 실제 유효한 사용률의 최댓값이며 동률은 원래 순서를 유지합니다. 원본 기간·모델별 항목은 팝업에 각각 남기므로 최대 수치를 모든 모델 사용 불가로 단정하지 않습니다.
@@ -98,9 +98,9 @@ OpenAI의 [`openai/codex` 커밋 `95273b84fbff40f9df7d71d50f1ca52c6489b25d`](htt
 
 ### 실제 표시 위치 확인 범위
 
-사용자는 `202610141801`에서 **ChatGPT 홈·채팅과 Claude 홈·채팅 위치가 정상**이라고 확인했습니다. 같은 빌드에서는 Codex 홈·진행 중 작업 표시가 없었고 `/codex/cloud`가 `https://chatgpt.com/`로 이동한다고 보고했습니다. 이에 허용된 호스트의 명시적인 `ComposerLayoutFooter-` 구조를 사용해 화면 맥락을 보완합니다. Claude는 사용자 제공 `bg-surface-3` 내부 `relative w-full min-w-0` 또는 `mni-w-0` 래퍼 뒤에 배치합니다.
+사용자는 이전 빌드에서 **ChatGPT 홈·채팅과 Claude 홈·채팅 위치가 정상**이라고 확인했습니다. `/codex/cloud`가 `https://chatgpt.com/`로 이동하는 화면은 허용된 호스트의 명시적인 `ComposerLayoutFooter-` 구조로 맥락을 보완합니다. ChatGPT와 Codex에 공통으로 존재할 수 있는 Body/Root 클래스만으로 Codex라고 판정하지 않습니다.
 
-이후 Codex 보완과 v1.2 Gemini 입력창 후보는 합성 DOM 검증 대상이며 **최신 실제 Codex·Gemini 화면 성공은 미검증**입니다. 기존 사용자 확인을 최신 구현의 실계정 결과로 확대하지 않습니다.
+최신 사용자 요청에 따라 ChatGPT는 `ComposerLayoutBody-` 클래스 토큰의 div 뒤, Codex는 `ComposerLayoutRoot-` div 뒤, Claude는 `div[data-cds="ChatComposerChin"]` 뒤로 옮겼습니다. 클래스 접미사는 고정하지 않고 대상의 바로 다음 형제로 삽입합니다. Gemini 위치는 유지했습니다. 새 위치·반복 삽입 방지·입력 기능 보존은 합성 DOM/Chromium에서 검증하며 **최신 실제 서비스의 각 화면 배치는 재확인 대상**입니다.
 
 ## 비공개 모듈·백엔드·라이선스 구분
 
@@ -135,7 +135,9 @@ OpenAI의 [`openai/codex` 커밋 `95273b84fbff40f9df7d71d50f1ca52c6489b25d`](htt
 | 401 / ChatGPT bearer 없음 | signed_out; 자동 재시도 중단. 로그아웃과 세션 만료는 401만으로 구분 불가 |
 | 403 | error/access_denied; 인증 실패로 단정하거나 우회하지 않음 |
 | 429 / Gemini의 알려진 내부 제한 코드 | rate_limited; Retry-After와 백오프 준수 |
-| fetch 실패 / timeout / 5xx | 오류와 백오프, 마지막 정상 값·시각 보존 |
+| fetch 실패 / timeout / 5xx | 오류·백오프·이전 값 보존. 유효하고 초기화 전인 캐시는 첫 실패에 유지하며 연속 실패 시 짧은 안내 |
+| 정상 캐시의 10분 경과 | 경고 없이 기존 값 유지, 공유 워커에서 자동 갱신 |
+| 실제 초기화 시각 경과 | reset_pending; 새 결과까지 현재 수치를 숨기며 0%나 다음 시각을 추정하지 않음 |
 | 손상·중복·비유효 응답 | invalid_response 또는 위 Gemini 고정 단계 코드; 없는 값은 null로 유지하고 0을 만들지 않음 |
 | Gemini token 없음 / 비기본 계정 / 해석되지 않은 RPC 상태 | unsupported; 요청 우회나 계정 fallback 없음 |
 | Gemini HTTP 200 HTML Content-Type | gemini_response_type; 정상 사용량·확정된 로그아웃으로 해석하지 않음 |

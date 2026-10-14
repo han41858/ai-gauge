@@ -125,7 +125,7 @@ test('bundled content keeps its strip through a transient runtime failure and la
     await flush();
     const original = dom.window.document.getElementById('ai-gauge-usage-strip');
     assert(original);
-    assert.match(original.getAttribute('aria-label')!, /아직 수집하지 않았습니다/);
+    assert.match(original.getAttribute('aria-label')!, /사용량 확인 중/);
     rejectNext = true;
     invalidate();
     await flush();
@@ -139,7 +139,7 @@ test('bundled content keeps its strip through a transient runtime failure and la
     await flush();
     assert(calls > callsAfterFailure, 'subsequent invalidation requests a current view');
     assert.equal(dom.window.document.getElementById('ai-gauge-usage-strip'), original);
-    assert.match(original.getAttribute('aria-label')!, /연결 또는 요청 시간이 초과/);
+    assert.match(original.getAttribute('aria-label')!, /연결 확인 중/);
 
     view.settings.strips.chatgpt = false;
     invalidate();

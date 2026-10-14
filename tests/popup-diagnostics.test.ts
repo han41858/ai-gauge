@@ -5,7 +5,6 @@ import { buildSync } from 'esbuild';
 import { JSDOM } from 'jsdom';
 import { bindDiagnostics, createDiagnosticReport } from '../src/popup/diagnostics';
 import { renderCards } from '../src/popup/render';
-import { ERROR_TEXT } from '../src/shared/errors';
 import { PROVIDERS, type View } from '../src/shared/types';
 import { defaults } from '../src/storage/settings';
 import { emptySnapshot } from '../src/storage/snapshots';
@@ -45,12 +44,13 @@ test('popup preserves a collection error while timestamps remain available only 
     v.snapshots.claude.errorCode = 'tab_access_failed';
     renderCards(dom.window.document.getElementById('cards')!, v, actions, at + 1);
     const card = dom.window.document.querySelector('[data-provider="claude"]')!;
-    assert(card.textContent!.includes(ERROR_TEXT.tab_access_failed));
+    assert(card.textContent!.includes('사이트 접근 설정 확인'));
     assert.equal(card.querySelector('details,select,.time'), null);
     assert.doesNotMatch(card.textContent!, /정상 수집 기록 없음|마지막 정상 수집:|최근 수집 성공|확인 시도|다음 갱신/);
     const report = createDiagnosticReport(v, 'fixture');
     assert.equal(report.providers.claude.checkedAt, at);
     assert.equal(report.providers.claude.collectedAt, null);
+    assert.equal(report.providers.claude.errorCode, 'tab_access_failed');
   } finally { dom.window.close(); }
 });
 

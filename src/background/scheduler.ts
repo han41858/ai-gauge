@@ -1,6 +1,6 @@
 import type { CollectionResult, Provider, Snapshot, UsageLimit } from '../shared/types';
 import { CollectionError } from '../shared/errors';
-import { FRESH_MS, validLimits } from '../storage/snapshots';
+import { FRESH_MS, hasElapsedReset, validLimits } from '../storage/snapshots';
 export type Trigger = 'manual' | 'event' | 'periodic' | 'tab';
 export interface SchedulerIO { read(p: Provider): Promise<Snapshot>; write(s: Snapshot): Promise<void>; collect(p: Provider): Promise<CollectionResult>; enabled(p: Provider): Promise<boolean>; now(): number }
 export function backoff(failures: number): number { return Math.min(60 * 60_000, 60_000 * 2 ** Math.min(6, Math.max(0, failures - 1))); }
@@ -11,7 +11,8 @@ export function due(s: Snapshot, trigger: Trigger, now: number): boolean {
   if (now < s.nextAttemptAt) return false;
   if (s.checkedAt !== null && now - s.checkedAt < 60_000) return false;
   if (trigger !== 'manual' && ['signed_out', 'permission_required', 'unsupported'].includes(s.state)) return false;
-  return trigger === 'manual' || s.collectedAt === null || now - s.collectedAt >= (trigger === 'periodic' ? FRESH_MS : 60_000);
+  return trigger === 'manual' || s.collectedAt === null || s.state !== 'ok' || hasElapsedReset(s, now)
+    || s.collectedAt > now + 60_000 || now - s.collectedAt >= (trigger === 'periodic' ? FRESH_MS : 60_000);
 }
 export function success(previous: Snapshot, limits: UsageLimit[], now: number): Snapshot {
   return { ...previous, limits, state: 'ok', collectedAt: now, checkedAt: now, failures: 0, nextAttemptAt: now + 60_000, errorCode: null };

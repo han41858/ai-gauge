@@ -57,12 +57,15 @@ async function enableProvider(provider: Provider) {
   await refresh(provider, 'manual');
 }
 async function initialize() {
-  if (!await chrome.alarms.get(ALARM)) await chrome.alarms.create(ALARM, { periodInMinutes: 10 });
+  // Check retry/reset deadlines each minute; the scheduler keeps normal
+  // collection at ten minutes and enforces persisted cooldowns across workers.
+  if ((await chrome.alarms.get(ALARM))?.periodInMinutes !== 1) await chrome.alarms.create(ALARM, { periodInMinutes: 1 });
   await queueSettingsWrite(async () => {
     await migrateStorage();
   });
   await reconcile();
   await publish();
+  await refreshAll('periodic');
 }
 chrome.runtime.onMessage.addListener((input: unknown, sender, sendResponse: (reply: Reply) => void) => {
   const message = parseMessage(input);

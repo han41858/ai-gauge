@@ -20,7 +20,7 @@ const view = (): View => {
 const composer = (classes = 'min-w-0') => `<div id="surface" class="bg-surface-3" style="border:1px solid gray;border-radius:16px"><div id="input-wrapper" class="relative w-full ${classes}"><div id="input" class="ProseMirror" contenteditable="true">Private prompt</div></div><div id="toolbar" role="toolbar"><button>Attach</button><button id="send">Send</button></div></div>`;
 
 for (const classes of ['min-w-0', 'mni-w-0']) {
-  test(`Claude uses the reported inner wrapper (${classes}) inside its surface`, () => {
+  test(`Claude legacy wrapper (${classes}) keeps the strip outside the full composer`, () => {
     const doc = documentFor(`<main><form>${composer(classes)}</form><p>Disclaimer</p></main>`);
     const input = doc.getElementById('input')!;
     const toolbar = doc.getElementById('toolbar')!;
@@ -34,9 +34,10 @@ for (const classes of ['min-w-0', 'mni-w-0']) {
     const strip = new UsageStrip('claude', doc);
     strip.update(view());
     const host = doc.getElementById('ai-gauge-usage-strip')!;
-    assert.equal(host.parentElement?.id, 'surface');
-    assert.equal(host.previousElementSibling?.id, 'input-wrapper');
-    assert.equal(host.nextElementSibling, toolbar);
+    assert.equal(host.parentElement, doc.querySelector('main'));
+    assert.equal(host.previousElementSibling, doc.querySelector('form'));
+    assert.equal(doc.getElementById('surface')!.contains(host), false);
+    assert.equal(toolbar.parentElement?.id, 'surface');
     assert.equal(host.closest('[contenteditable]'), null);
     assert.equal(toolbar.innerHTML, toolbarMarkup);
     button.click();
@@ -44,27 +45,27 @@ for (const classes of ['min-w-0', 'mni-w-0']) {
     for (let n = 0; n < 20; n++) {
       strip.mount();
       assert.equal(doc.getElementById('ai-gauge-usage-strip'), host);
-      assert.equal(host.previousElementSibling?.id, 'input-wrapper');
+      assert.equal(host.previousElementSibling, doc.querySelector('form'));
     }
     assert.equal(doc.querySelectorAll('#ai-gauge-usage-strip').length, 1);
   });
 }
 
-test('Claude keeps internal placement when toolbar lives inside the reported wrapper', () => {
+test('Claude keeps outside placement when toolbar lives inside the legacy wrapper', () => {
   const doc = documentFor(`<main>${composer()}</main>`);
   doc.getElementById('input-wrapper')!.append(doc.getElementById('toolbar')!);
   const target = findComposerTarget(doc, 'claude');
-  assert.equal(target?.anchor.id, 'input-wrapper');
+  assert.equal(target?.anchor.id, 'surface');
   const strip = new UsageStrip('claude', doc);
   strip.update(view());
-  assert.equal(doc.getElementById('ai-gauge-usage-strip')!.parentElement?.id, 'surface');
+  assert.equal(doc.getElementById('ai-gauge-usage-strip')!.previousElementSibling?.id, 'surface');
   assert.equal(doc.getElementById('toolbar')!.parentElement?.id, 'input-wrapper');
 });
 
-test('Claude column surface permits a full-width internal row', () => {
+test('Claude column surface does not move the strip into the composer', () => {
   const doc = documentFor(`<main>${composer()}</main>`);
   doc.getElementById('surface')!.style.cssText = 'display:flex;flex-direction:column';
-  assert.equal(findComposerTarget(doc, 'claude')?.anchor.id, 'input-wrapper');
+  assert.equal(findComposerTarget(doc, 'claude')?.anchor.id, 'surface');
 });
 
 test('Claude class markers do not apply to a different provider', () => {
@@ -74,7 +75,7 @@ test('Claude class markers do not apply to a different provider', () => {
 
 test('Claude skips class matches unrelated to the selected editor', () => {
   const doc = documentFor(`<main><div class="bg-surface-3"><div id="unrelated" class="relative w-full min-w-0">Other area</div></div>${composer()}</main>`);
-  assert.equal(findComposerTarget(doc, 'claude')?.anchor.id, 'input-wrapper');
+  assert.equal(findComposerTarget(doc, 'claude')?.anchor.id, 'surface');
 });
 
 for (const opening of ['<div hidden>', '<div role="search">', '<div data-message-author-role="user">', '<div role="dialog">']) {

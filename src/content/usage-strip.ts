@@ -2,14 +2,13 @@ import { selectedLimit } from '../background/badge';
 import { type PageProvider, type View } from '../shared/types';
 import { displayProvider, shouldShowStrip } from '../shared/display-policy';
 import { usageParts } from './usage-label';
-import { findComposerTarget, type ComposerTarget } from './selectors';
+import { findComposerTarget, retainsComposerMarker, type ComposerTarget } from './selectors';
 import { effectiveSnapshot } from '../storage/snapshots';
 import { ICON_DATA_URL } from '../shared/icon';
 export class UsageStrip {
   private host: HTMLElement | null = null;
   private view: View | null = null;
   private target: ComposerTarget | null = null;
-  private footerLayout: { element: HTMLElement; value: string; priority: string; appliedPriority: string; owned: boolean } | null = null;
   constructor(private provider: PageProvider, private doc: Document) {}
   update(view: View) { this.view = view; this.mount(); }
   mount() {
@@ -22,9 +21,10 @@ export class UsageStrip {
     if (next) this.target = next;
     // A temporary mirror editor or disabled input during streaming must not
     // destroy a known composer. Actual removal/hiding and route changes still do.
-    else if (!this.target || !this.target.anchor.isConnected || this.hidden(this.target.anchor)
+    else if (!this.target || !retainsComposerMarker(this.target) || !this.target.anchor.isConnected || this.hidden(this.target.anchor)
+      || (this.target.scope && (!this.target.scope.isConnected || !this.target.scope.contains(this.target.anchor)))
       || (this.target.input && (!this.target.input.isConnected || this.hidden(this.target.input)
-        || (this.target.placement !== 'append' && !this.target.anchor.contains(this.target.input))))) { this.remove(); return; }
+        || !(this.target.scope ?? this.target.anchor).contains(this.target.input)))) { this.remove(); return; }
     const anchor = this.target!.anchor;
     if (!this.host) {
       this.host = this.doc.createElement('div');
@@ -72,10 +72,7 @@ progress::-moz-progress-bar{background:currentColor;border-radius:999px}
       row.append(current, this.resetText, this.statusText);
       root.append(style, row);
     }
-    this.prepareFooterLayout(this.target!);
-    if (this.target!.placement === 'append') {
-      if (anchor.lastChild !== this.host) anchor.append(this.host);
-    } else if (anchor.nextElementSibling !== this.host) anchor.after(this.host);
+    if (anchor.nextElementSibling !== this.host) anchor.after(this.host);
     const snapshot = effectiveSnapshot(view.snapshots[displayProvider(p)]), limit = selectedLimit(snapshot, view.settings) ?? snapshot.limits[0];
     const parts = usageParts(snapshot, limit);
     if (this.currentText!.textContent !== parts.current) this.currentText!.textContent = parts.current;
@@ -88,43 +85,6 @@ progress::-moz-progress-bar{background:currentColor;border-radius:999px}
       if (this.progress!.hasAttribute('value')) this.progress!.removeAttribute('value');
     } else if (this.progress!.getAttribute('value') !== String(parts.percent)) this.progress!.setAttribute('value', String(parts.percent));
     if (this.host.getAttribute('aria-label') !== parts.label) this.host.setAttribute('aria-label', parts.label);
-  }
-  private prepareFooterLayout(target: ComposerTarget) {
-    const style = this.doc.defaultView?.getComputedStyle(target.anchor);
-    const row = this.provider === 'codex' && target.placement === 'append'
-      && (style?.display === 'flex' || style?.display === 'inline-flex')
-      && !style.flexDirection.startsWith('column');
-    if (this.footerLayout && (this.footerLayout.element !== target.anchor || !row)) this.restoreFooterLayout();
-    const basis = row ? '100%' : '';
-    if (this.host!.style.flexBasis !== basis) {
-      if (basis) this.host!.style.setProperty('flex-basis', basis);
-      else this.host!.style.removeProperty('flex-basis');
-    }
-    if (!row) return;
-    const inline = target.anchor.style;
-    if (this.footerLayout) {
-      // A later site change owns the property again. Do not fight it on every
-      // mutation callback or overwrite its new value when removing the strip.
-      if (inline.getPropertyValue('flex-wrap') !== 'wrap'
-        || inline.getPropertyPriority('flex-wrap') !== this.footerLayout.appliedPriority) this.footerLayout.owned = false;
-      return;
-    }
-    if (style.flexWrap && style.flexWrap !== 'nowrap') return;
-    const value = inline.getPropertyValue('flex-wrap'), priority = inline.getPropertyPriority('flex-wrap');
-    inline.setProperty('flex-wrap', 'wrap', priority);
-    if (this.doc.defaultView?.getComputedStyle(target.anchor).flexWrap !== 'wrap') inline.setProperty('flex-wrap', 'wrap', 'important');
-    this.footerLayout = { element: target.anchor, value, priority, appliedPriority: inline.getPropertyPriority('flex-wrap'), owned: true };
-  }
-  private restoreFooterLayout() {
-    const previous = this.footerLayout;
-    if (!previous) return;
-    const inline = previous.element.style;
-    if (previous.owned && inline.getPropertyValue('flex-wrap') === 'wrap'
-      && inline.getPropertyPriority('flex-wrap') === previous.appliedPriority) {
-      if (previous.value) inline.setProperty('flex-wrap', previous.value, previous.priority);
-      else inline.removeProperty('flex-wrap');
-    }
-    this.footerLayout = null;
   }
   private hidden(input: HTMLElement): boolean {
     if (input.closest('[hidden],[inert],[aria-hidden="true"]')) return true;
@@ -139,7 +99,7 @@ progress::-moz-progress-bar{background:currentColor;border-radius:999px}
   private statusText: HTMLElement | null = null;
   private progress: HTMLProgressElement | null = null;
   remove() {
-    this.restoreFooterLayout(); this.host?.remove(); this.host = null; this.target = null;
+    this.host?.remove(); this.host = null; this.target = null;
     this.currentText = null; this.resetText = null; this.statusText = null; this.progress = null;
   }
 }

@@ -23,8 +23,24 @@ export function parseSnapshot(input: unknown, provider: Provider): Snapshot {
   }));
   return { provider, state: r.state as Snapshot['state'], limits, collectedAt: r.collectedAt, checkedAt: r.checkedAt, nextAttemptAt: Math.max(0, r.nextAttemptAt), failures: Math.max(0, r.failures), errorCode: r.errorCode as Snapshot['errorCode'] };
 }
+export function hasElapsedReset(snapshot: Snapshot, now = Date.now()): boolean {
+  return snapshot.limits.some(limit => {
+    const reset = resetTime(limit.resetsAt);
+    return reset !== null && Date.parse(reset) <= now;
+  });
+}
 export function effectiveSnapshot(snapshot: Snapshot, now = Date.now()): Snapshot {
-  return snapshot.state === 'ok' && (snapshot.collectedAt === null || now - snapshot.collectedAt >= FRESH_MS || snapshot.collectedAt > now + 60_000) ? { ...snapshot, state: 'stale' } : snapshot;
+  const firstTransient = snapshot.failures === 1 && (snapshot.errorCode === 'network' || snapshot.errorCode === 'server');
+  const legacyAgeOnly = snapshot.state === 'stale' && snapshot.errorCode === null && snapshot.failures === 0;
+  const current = snapshot.state === 'ok';
+  if (!current && !legacyAgeOnly && !(snapshot.state === 'error' && firstTransient)) return snapshot;
+  if (current && snapshot.errorCode !== null && !firstTransient) return { ...snapshot, state: 'error' };
+  const usable = finite(now) && finite(snapshot.collectedAt) && snapshot.collectedAt > 0
+    && snapshot.collectedAt <= now + 60_000 && snapshot.limits.length > 0 && validLimits(snapshot.limits);
+  if (!usable) return current || legacyAgeOnly ? { ...snapshot, state: 'error', errorCode: 'invalid_response' } : snapshot;
+  if (hasElapsedReset(snapshot, now)) return { ...snapshot, state: 'error', errorCode: 'reset_pending' };
+  // A view may hide one transient failure, but storage retains its retry state.
+  return current ? snapshot : { ...snapshot, state: 'ok' };
 }
 export async function readSnapshot(provider: Provider): Promise<Snapshot> {
   await migrateStorage();

@@ -18,7 +18,7 @@ export function renderCards(container: HTMLElement, view: View, actions: Actions
     if (!enabled || s.state !== 'ok') card.append(el('p', enabled ? statusText(s) : '꺼짐', 'status'));
     else if (!s.limits.length) card.append(el('p', '사용량 확인 불가', 'status'));
     if (enabled && s.limits.length) {
-      if (s.state !== 'ok') card.append(el('p', '오래된 데이터 · 마지막 정상 값', 'status'));
+      if (s.state !== 'ok') card.append(el('p', '이전 수집값', 'status'));
       for (const limit of s.limits) {
         const name = limitLabel(p, limit.label);
         const row = el('div', undefined, `limit ${s.state === 'ok' ? '' : 'old'}`), line = el('div', undefined, 'limit-line');

@@ -45,11 +45,11 @@ test('missing, malformed, impossible and timezone-free reset dates do not invent
   }
 });
 
-test('an elapsed or exactly reached reset keeps its actual timestamp and requests refresh', () => {
+test('an elapsed reset formatter keeps the actual timestamp and gives a concise pending status', () => {
   const item = limit(), reset = Date.parse(item.resetsAt!);
   for (const now of [reset, reset + 1, reset + 86_400_000]) {
     assert.equal(usageLabel(snapshot(), item, now),
-      '사용량: 15%  🕒 사용량 초기화: 10/16(금) 09:05, 초기화 시각 지남 · 갱신 필요');
+      '사용량: 15%  🕒 사용량 초기화: 10/16(금) 09:05, 초기화 후 확인 중');
   }
 });
 
@@ -82,11 +82,11 @@ test('reset date and weekday use the browser timezone while countdown uses elaps
 test('failed and stale snapshots do not present cached values as current usage', () => {
   const item = limit();
   assert.equal(usageLabel({ ...snapshot(), state: 'stale' }, item),
-    '사용량: 확인 불가  🕒 사용량 초기화: 확인 불가  오래된 정보 · 갱신 필요');
+    '사용량: 확인 불가  🕒 사용량 초기화: 확인 불가  사용량 확인 중');
   assert.equal(usageLabel({ ...snapshot(), state: 'error', errorCode: 'network' }, item),
-    '사용량: 확인 불가  🕒 사용량 초기화: 확인 불가  연결 또는 요청 시간이 초과되었습니다.');
+    '사용량: 확인 불가  🕒 사용량 초기화: 확인 불가  연결 확인 중');
   assert.equal(usageLabel({ ...snapshot(), state: 'permission_required', errorCode: 'permission_required' }, item),
-    '사용량: 확인 불가  🕒 사용량 초기화: 확인 불가  이 서비스의 사이트 접근 권한이 필요합니다.');
+    '사용량: 확인 불가  🕒 사용량 초기화: 확인 불가  사이트 권한 필요');
 });
 
 test('usage parts share one validated percentage and accessibility label with the visible text', () => {

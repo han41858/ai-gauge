@@ -108,14 +108,14 @@ test('disabled or unauthorized active sources do not expose their cached usage',
   assert.doesNotMatch(unavailable.title, /최근 수집 성공/);
 });
 
-test('failed, stale or unknown data for an active source stays unavailable instead of switching to another successful service', () => {
+test('unreliable or unknown active data never switches providers, while age alone preserves the badge', () => {
   const view = fixture();
   view.snapshots.claude.state = 'error';
   view.snapshots.claude.errorCode = 'network';
   assert.equal(badge(view, 'https://claude.ai/new', NOW).text, '—');
   view.snapshots.claude = collected('claude', [limit('오래된 기간', 98)]);
   view.snapshots.claude.collectedAt = NOW - FRESH_MS;
-  assert.equal(badge(view, 'https://claude.ai/new', NOW).text, '—');
+  assert.equal(badge(view, 'https://claude.ai/new', NOW).text, '98%');
   view.snapshots.claude = collected('claude', [limit('알 수 없는 기간', null)]);
   const unknown = badge(view, 'https://claude.ai/new', NOW);
   assert.equal(unknown.text, '—');

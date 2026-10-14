@@ -37,6 +37,15 @@ try {
   const session = (await cdp('Target.attachToTarget', { targetId: target.targetId, flatten: true })).sessionId;
   await cdp('Runtime.enable', {}, session); await cdp('Page.enable', {}, session);
   const evaluate = async expression => { const r = await cdp('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true }, session); assert(!r.exceptionDetails, JSON.stringify(r.exceptionDetails)); return r.result.value; };
+  const waitForPlacement = async anchor => {
+    let placement;
+    for (let i = 0; i < 30; i++) {
+      placement = await evaluate(`(()=>{const anchor=document.getElementById(${JSON.stringify(anchor)}),strip=document.getElementById('ai-gauge-usage-strip'),gap=strip&&anchor?strip.getBoundingClientRect().top-anchor.getBoundingClientRect().bottom:null;return {sibling:!!strip&&anchor?.nextElementSibling===strip,gap,count:document.querySelectorAll('#ai-gauge-usage-strip').length,height:strip?.getBoundingClientRect().height};})()`);
+      if (placement.sibling && placement.gap >= 0 && placement.gap <= 12 && placement.count === 1 && placement.height === 30) return;
+      await pause(100);
+    }
+    assert.fail(`Composer placement ${anchor}: ${JSON.stringify(placement)}`);
+  };
   const fixture = {
     settings: { enabled: { chatgpt: true, claude: true, gemini: true }, strips: { chatgpt: true, codex: true, claude: true, gemini: true }, defaultProvider: 'chatgpt', selectedLimit: { chatgpt: null, claude: null, gemini: null }, followTab: false, warning: 70, danger: 90 },
     permissions: { chatgpt: true, claude: true, gemini: true },
@@ -55,7 +64,8 @@ try {
   await cdp('Page.navigate', { url: `http://127.0.0.1:${port}/popup.html` }, session);
   let state;
   for (let i = 0; i < 100; i++) { state = await evaluate('({cards:document.querySelectorAll(".card").length,text:document.body?.textContent??"",width:document.documentElement?.scrollWidth??0,clientWidth:document.documentElement?.clientWidth??0})'); if (state.cards === 3) break; await pause(100); }
-  assert.equal(state.cards, 3, JSON.stringify({state,exceptions})); assert.match(state.text, /42%/); assert.match(state.text, /0%/); assert.match(state.text, /오래된 데이터/); assert.doesNotMatch(state.text, /입력창에는|최근 수집 성공|Work \/ Codex 공유/); assert(state.width <= state.clientWidth);
+  assert.equal(state.cards, 3, JSON.stringify({state,exceptions})); assert.match(state.text, /42%/); assert.match(state.text, /0%/); assert.doesNotMatch(state.text, /오래된 데이터|오래된 정보|입력창에는|최근 수집 성공|Work \/ Codex 공유/); assert(state.width <= state.clientWidth);
+  assert(await evaluate(`(()=>{const card=document.querySelector('[data-provider="claude"]');return card.querySelector('.percent').textContent==='사용량: 0%'&&card.querySelector('progress').value===0&&!card.querySelector('.status');})()`), 'Popup keeps a valid 15-minute-old cached value through one network failure without an age-only warning');
   assert.equal(await evaluate('document.getElementById("extension-version").textContent'), `AI Gauge ${buildLabel}`);
   assert.equal(await evaluate('Math.round(document.body.getBoundingClientRect().width)'), 520);
   assert.equal(await evaluate(`document.querySelector('[data-provider="chatgpt"] .percent').textContent`), '사용량: 42%');
@@ -125,15 +135,13 @@ try {
   assert.equal(count, 1); assert.equal(await evaluate('document.querySelector("form").nextElementSibling.id'), 'ai-gauge-usage-strip');
   assert.equal(await evaluate('document.querySelector("textarea").value'), 'private synthetic prompt');
   await evaluate(content); assert.equal(await evaluate('document.querySelectorAll("#ai-gauge-usage-strip").length'), 1);
-  await evaluate(`history.replaceState(null,'','/');document.body.innerHTML='<main><section><textarea style="min-height:48px">private Codex prompt</textarea><div id="codex-footer" class="ComposerLayoutFooter-_8IVRO" style="display:flex;align-items:center;gap:8px"><button type="button">Environment</button><button type="button">Send</button></div></section></main>';window.dispatchEvent(new PopStateEvent('popstate'));`);
-  for (let i = 0; i < 30; i++) {
-    if (await evaluate(`document.getElementById('codex-footer').lastElementChild?.id==='ai-gauge-usage-strip'`)) break;
-    await pause(100);
-  }
-  assert(await evaluate(`(()=>{const footer=document.getElementById('codex-footer'),strip=document.getElementById('ai-gauge-usage-strip'),buttons=[...footer.querySelectorAll('button')];return footer.lastElementChild===strip&&strip.getBoundingClientRect().top>=Math.max(...buttons.map(b=>b.getBoundingClientRect().bottom))&&strip.getBoundingClientRect().right<=footer.getBoundingClientRect().right+1;})()`), 'Codex requested footer contains the final full-width usage row below its controls');
-  await evaluate(`window.__footerStrip=document.getElementById('ai-gauge-usage-strip');document.getElementById('codex-footer').className='ComposerLayoutFooter-newHash';const hint=document.createElement('span');hint.id='late-footer-hint';hint.textContent='Shortcut';document.getElementById('codex-footer').append(hint);`);
+  await evaluate(`history.replaceState(null,'','/');document.body.innerHTML='<main><section><div id="codex-root" class="layout ComposerLayoutRoot-XCKS7O" style="padding:12px;border:1px solid gray;border-radius:16px"><textarea style="min-height:48px">private Codex prompt</textarea><div id="codex-footer" class="ComposerLayoutFooter-_8IVRO" style="display:flex;align-items:center;gap:8px"><button type="button">Environment</button><button type="button">Send</button></div></div><p>Shortcut hints</p></section></main>';window.__codexFooterStyle=document.getElementById('codex-footer').getAttribute('style');window.__codexControls=[...document.querySelectorAll('#codex-footer button')];window.dispatchEvent(new PopStateEvent('popstate'));`);
+  await waitForPlacement('codex-root');
+  assert(await evaluate(`(()=>{const root=document.getElementById('codex-root'),footer=document.getElementById('codex-footer'),strip=document.getElementById('ai-gauge-usage-strip');return !root.contains(strip)&&footer.getAttribute('style')===window.__codexFooterStyle&&window.__codexControls.every((button,i)=>footer.children[i]===button)&&strip.getAttribute('aria-label').startsWith('사용량: 42%');})()`), 'Redirected Codex home places shared usage after the root without altering its footer controls or layout');
+  await evaluate(`window.__rootStrip=document.getElementById('ai-gauge-usage-strip');document.getElementById('codex-root').className='layout ComposerLayoutRoot-newHash';document.getElementById('codex-footer').className='ComposerLayoutFooter-newHash';const hint=document.createElement('span');hint.id='late-footer-hint';hint.textContent='Shortcut';document.getElementById('codex-footer').append(hint);`);
   await pause(400);
-  assert(await evaluate(`document.getElementById('codex-footer').lastElementChild===window.__footerStrip&&document.querySelectorAll('#ai-gauge-usage-strip').length===1`), 'Dynamic suffix and late footer controls preserve one final usage row');
+  await waitForPlacement('codex-root');
+  assert(await evaluate(`document.getElementById('codex-root').nextElementSibling===window.__rootStrip&&document.getElementById('codex-footer').lastElementChild.id==='late-footer-hint'&&document.getElementById('codex-footer').getAttribute('style')===window.__codexFooterStyle`), 'Dynamic class suffix and late footer controls preserve the same outside usage row without changing controls');
   const displayDiagnostic = await evaluate(`new Promise(resolve=>{for(const fn of window.__runtimeListeners)fn({type:'display-diagnostics'},{id:'fixture',url:'chrome-extension://fixture/popup.html'},resolve)})`);
   assert.equal(displayDiagnostic.provider, 'codex');
   assert.equal(displayDiagnostic.targetFound, true);
@@ -141,22 +149,10 @@ try {
   assert.equal(displayDiagnostic.stripCount, 1);
   assert.equal(await evaluate('location.pathname'), '/', 'Codex remains recognized after redirect to the site root');
   // A task view can replace the home composer while retaining the redirected URL.
-  await evaluate(`document.body.innerHTML='<main style="display:flex;gap:12px"><section style="flex:1">Task result</section><aside style="width:330px;display:flex;flex-direction:column"><section><div contenteditable="true" style="min-height:48px"></div><div id="task-footer" class="ComposerLayoutFooter-taskHash" style="display:flex"><button>Attach</button><button>Send</button></div></section></aside></main>';`);
-  for (let i = 0; i < 30; i++) {
-    if (await evaluate(`document.getElementById('task-footer').lastElementChild?.id==='ai-gauge-usage-strip'`)) break;
-    await pause(100);
-  }
-  assert(await evaluate(`document.getElementById('task-footer').lastElementChild?.id==='ai-gauge-usage-strip'&&document.querySelectorAll('#ai-gauge-usage-strip').length===1`), 'Redirected Codex task uses its replacement footer');
+  await evaluate(`document.body.innerHTML='<main style="display:flex;gap:12px"><section style="flex:1">Task result</section><aside style="width:330px;display:flex;flex-direction:column"><section><div id="task-root" class="ComposerLayoutRoot-taskHash" style="padding:12px;border:1px solid gray"><div contenteditable="true" style="min-height:48px">private follow-up prompt</div><div id="task-footer" class="ComposerLayoutFooter-taskHash" style="display:flex"><button>Attach</button><button>Send</button></div></div><p>Task footer</p></section></aside></main>';`);
+  await waitForPlacement('task-root');
+  assert(await evaluate(`!document.getElementById('task-root').contains(document.getElementById('ai-gauge-usage-strip'))&&document.querySelector('[contenteditable]').textContent==='private follow-up prompt'&&document.querySelectorAll('#task-footer button').length===2`), 'Redirected Codex task uses its replacement root while preserving the prompt and controls');
   await evaluate(`history.replaceState(null,'','/codex/tasks/fixture');window.dispatchEvent(new PopStateEvent('popstate'));`);
-  const waitForPlacement = async anchor => {
-    let placement;
-    for (let i = 0; i < 30; i++) {
-      placement = await evaluate(`(()=>{const anchor=document.getElementById(${JSON.stringify(anchor)}),strip=document.getElementById('ai-gauge-usage-strip'),gap=strip?strip.getBoundingClientRect().top-anchor.getBoundingClientRect().bottom:null;return {sibling:anchor?.nextElementSibling===strip,gap,count:document.querySelectorAll('#ai-gauge-usage-strip').length};})()`);
-      if (placement.sibling && placement.gap >= 0 && placement.gap <= 12 && placement.count === 1) return;
-      await pause(100);
-    }
-    assert.fail(`Composer placement ${anchor}: ${JSON.stringify(placement)}`);
-  };
   await evaluate(`document.body.innerHTML='<main><div id="composer" style="padding:12px;border:1px solid gray"><div><div data-lexical-editor="true" contenteditable="true">private Codex prompt</div></div><div id="toolbar"><button aria-label="Submit">Send</button></div></div><p>Footer</p></main>';`);
   await waitForPlacement('composer');
   assert.equal(await evaluate('document.querySelector("[contenteditable]").textContent'), 'private Codex prompt');
@@ -169,12 +165,13 @@ try {
     await waitForPlacement('codex-home');
     assert(await evaluate(`document.getElementById('ai-gauge-usage-strip')===window.__homeStrip && document.getElementById('ai-gauge-usage-strip').parentElement.id==='home-slot'`), 'Codex home stays in its composer slot when helpers toggle');
   }
-  await evaluate(`document.body.innerHTML='<main style="display:flex;gap:12px"><section style="flex:1;min-width:0">Task result</section><aside style="width:330px;display:flex;flex-direction:column"><section id="follow-up"><div><div contenteditable="plaintext-only" style="min-height:32px">private follow-up prompt</div></div><div role="toolbar"><button>Attach</button><button aria-label="Send follow-up">Send</button></div></section><p>Task footer</p></aside><textarea style="position:fixed;left:-10000px;width:0;height:0;opacity:0"></textarea></main>';`);
+  await evaluate(`document.body.innerHTML='<main style="display:flex;gap:12px"><section style="flex:1;min-width:0">Task result</section><aside style="width:330px;display:flex;flex-direction:column"><section><div id="follow-up" class="ComposerLayoutRoot-followUp" style="padding:12px;border:1px solid gray"><div><div contenteditable="plaintext-only" style="min-height:32px">private follow-up prompt</div></div><div role="toolbar"><button>Attach</button><button aria-label="Send follow-up">Send</button></div></div><p>Task footer</p></section></aside><textarea style="position:fixed;left:-10000px;width:0;height:0;opacity:0"></textarea></main>';`);
   await waitForPlacement('follow-up');
   await evaluate(`window.__stableCodexStrip=document.getElementById('ai-gauge-usage-strip');window.__stableCodexMoves=0;window.__stabilityObserver=new MutationObserver(records=>{for(const record of records)for(const node of record.removedNodes)if(node===window.__stableCodexStrip)window.__stableCodexMoves++;});window.__stabilityObserver.observe(document,{childList:true,subtree:true});`);
   for (let i = 0; i < 20; i++) {
-    await evaluate(`document.getElementById('follow-up').className='render-${i % 2}';`);
+    await evaluate(`document.getElementById('follow-up').className='ComposerLayoutRoot-render${i % 2}';${i === 10 ? "{const old=document.getElementById('follow-up');old.replaceWith(old.cloneNode(true));}" : ''}`);
     await pause(80);
+    await waitForPlacement('follow-up');
     assert(await evaluate(`document.getElementById('ai-gauge-usage-strip')===window.__stableCodexStrip && document.querySelectorAll('#ai-gauge-usage-strip').length===1`), 'Codex follow-up strip stays mounted during task re-renders');
   }
   assert.equal(await evaluate('window.__stableCodexMoves'), 0);
@@ -183,12 +180,22 @@ try {
   await waitForPlacement('visual-box');
   assert.equal(await evaluate('document.querySelector(".ProseMirror").textContent'), 'private Claude prompt');
   assert.equal(await evaluate('document.querySelectorAll("#toolbar button").length'), 2);
-  for (const className of ['min-w-0', 'mni-w-0']) {
-    await evaluate(`document.body.innerHTML='<main><div style="min-height:700px;display:flex;flex-direction:column;justify-content:center"><form><div id="claude-surface" class="bg-surface-3" style="padding:12px;background:#e7ebef;border-radius:16px"><div id="claude-inner" class="relative w-full ${className}" style="min-width:0;width:100%;position:relative"><div contenteditable="true" class="ProseMirror" style="min-height:48px">private Claude prompt</div></div><div id="claude-toolbar" role="toolbar"><button type="button">Attach</button><button type="button">Send</button></div></div></form></div></main>';`);
-    await waitForPlacement('claude-inner');
-    assert(await evaluate(`(()=>{const surface=document.getElementById('claude-surface'),host=document.getElementById('ai-gauge-usage-strip'),toolbar=document.getElementById('claude-toolbar');return host.parentElement===surface&&host.nextElementSibling===toolbar&&host.getBoundingClientRect().bottom<=surface.getBoundingClientRect().bottom&&toolbar.getBoundingClientRect().top>=host.getBoundingClientRect().bottom;})()`), 'Claude strip is inside its surface after the requested wrapper and does not overlap its toolbar');
+  for (const containsEditor of [true, false]) {
+    const editor = '<div id="claude-inner" class="relative w-full min-w-0" style="min-width:0;width:100%;position:relative"><div contenteditable="true" class="ProseMirror" style="min-height:48px">private Claude prompt</div></div>';
+    await evaluate(`history.replaceState(null,'',${JSON.stringify(containsEditor ? '/new' : '/chat/fixture')});document.body.innerHTML=${JSON.stringify(`<main><div style="min-height:700px;display:flex;flex-direction:column;justify-content:center"><form><div id="claude-surface" class="bg-surface-3" style="padding:12px;background:#e7ebef;border-radius:16px">${containsEditor ? '' : editor}<div id="claude-chin" data-cds="ChatComposerChin" style="padding:8px;background:#d4dbe3;border-radius:12px">${containsEditor ? editor : ''}<div id="claude-toolbar" role="toolbar"><button type="button">Attach</button><button type="button">Send</button></div></div></div></form></div></main>`)};window.__claudeControls=[...document.querySelectorAll('#claude-toolbar button')];window.__claudeChinStyle=document.getElementById('claude-chin').getAttribute('style');window.dispatchEvent(new PopStateEvent('popstate'));`);
+    await waitForPlacement('claude-chin');
+    assert(await evaluate(`(()=>{const chin=document.getElementById('claude-chin'),host=document.getElementById('ai-gauge-usage-strip'),toolbar=document.getElementById('claude-toolbar');return !chin.contains(host)&&!document.getElementById('claude-inner').contains(host)&&chin.getAttribute('style')===window.__claudeChinStyle&&window.__claudeControls.every((button,i)=>toolbar.children[i]===button);})()`), 'Claude strip follows ChatComposerChin for containing and sibling editors without changing the toolbar');
     assert.equal(await evaluate('document.querySelector(".ProseMirror").textContent'), 'private Claude prompt');
     assert.equal(await evaluate('document.querySelectorAll("#claude-toolbar button").length'), 2);
+    await evaluate(`window.__stableClaudeStrip=document.getElementById('ai-gauge-usage-strip');window.__stableClaudeMoves=0;window.__claudeObserver=new MutationObserver(records=>{for(const record of records)for(const node of record.removedNodes)if(node===window.__stableClaudeStrip)window.__stableClaudeMoves++;});window.__claudeObserver.observe(document,{childList:true,subtree:true});`);
+    for (let i = 0; i < 6; i++) {
+      await evaluate(`document.getElementById('claude-chin').className='render-${i % 2}';${i === 3 ? "{const old=document.getElementById('claude-chin');old.replaceWith(old.cloneNode(true));}" : ''}`);
+      await pause(100);
+      await waitForPlacement('claude-chin');
+      assert(await evaluate(`document.getElementById('ai-gauge-usage-strip')===window.__stableClaudeStrip`), 'Claude keeps the same outside strip when its Chin is re-rendered or replaced');
+    }
+    assert.equal(await evaluate('window.__stableClaudeMoves'), 0);
+    await evaluate('window.__claudeObserver.disconnect()');
   }
   // Storage and worker invalidation must update the existing Claude bar, even
   // for a fraction that leaves the rounded percentage label unchanged.
@@ -197,7 +204,7 @@ try {
     if (await evaluate(`!window.__claudeProgress.hidden&&window.__claudeProgress.value===17`)) break;
     await pause(50);
   }
-  assert(await evaluate(`!window.__claudeProgress.hidden&&window.__claudeProgress.value===17&&document.getElementById('ai-gauge-usage-strip').getAttribute('aria-label').includes('사용량: 17%')`), 'Claude successful collection replaces its unavailable state');
+  assert(await evaluate(`!window.__claudeProgress.hidden&&window.__claudeProgress.value===17&&document.getElementById('ai-gauge-usage-strip').getAttribute('aria-label').includes('사용량: 17%')`), 'Claude successful collection updates its previously cached usage');
   await evaluate(`window.__fixture.snapshots.claude.limits[0].percent=17.25;window.__fixture.snapshots.claude.collectedAt=Date.now();for(const fn of window.__storageListeners)fn({},'local');`);
   for (let i = 0; i < 20; i++) {
     if (await evaluate('window.__claudeProgress.value===17.25')) break;
@@ -210,8 +217,34 @@ try {
     await pause(50);
   }
   assert(await evaluate(`window.__fixtureUsageRoot.querySelector('progress')===window.__claudeProgress&&window.__claudeProgress.value===63&&document.getElementById('ai-gauge-usage-strip').getAttribute('aria-label').includes('사용량: 63%')`), 'Runtime invalidation updates both the existing bar and its usage label');
+  // Cache age alone is a collection schedule, not evidence that the value is
+  // wrong. A reset or repeated/hard collection failure does change reliability.
+  await evaluate(`window.__fixture.snapshots.claude.collectedAt=Date.now()-15*60_000;for(const fn of window.__storageListeners)fn({},'local');`);
+  await pause(400);
+  assert(await evaluate(`window.__fixtureUsageRoot.querySelector('progress')===window.__claudeProgress&&!window.__claudeProgress.hidden&&window.__claudeProgress.value===63&&window.__fixtureUsageRoot.querySelector('.status').hidden&&document.getElementById('ai-gauge-usage-strip').getAttribute('aria-label').includes('사용량: 63%')`), 'A normal cache older than ten minutes keeps the same visible progress node without a warning');
+  await evaluate(`window.__fixture.snapshots.claude.state='error';window.__fixture.snapshots.claude.errorCode='network';window.__fixture.snapshots.claude.failures=1;for(const fn of window.__runtimeListeners)fn({type:'invalidate'},{id:'fixture'});`);
+  await pause(400);
+  assert(await evaluate(`window.__fixtureUsageRoot.querySelector('progress')===window.__claudeProgress&&!window.__claudeProgress.hidden&&window.__claudeProgress.value===63&&window.__fixtureUsageRoot.querySelector('.status').hidden`), 'One temporary network failure retains the same reliable cached progress');
+  await evaluate(`window.__fixture.snapshots.claude.failures=2;for(const fn of window.__runtimeListeners)fn({type:'invalidate'},{id:'fixture'});`);
+  for (let i = 0; i < 20; i++) { if (await evaluate('window.__claudeProgress.hidden')) break; await pause(50); }
+  assert(await evaluate(`window.__fixtureUsageRoot.querySelector('progress')===window.__claudeProgress&&window.__claudeProgress.hidden&&!window.__claudeProgress.hasAttribute('value')&&!window.__fixtureUsageRoot.querySelector('.status').hidden&&!/사용량: (63|0)%/.test(document.getElementById('ai-gauge-usage-strip').getAttribute('aria-label'))`), 'Repeated collection failures clear the numeric value without replacing its progress node or inventing zero usage');
+  await evaluate(`window.__fixture.snapshots.claude.state='ok';window.__fixture.snapshots.claude.errorCode=null;window.__fixture.snapshots.claude.failures=0;window.__fixture.snapshots.claude.limits[0].resetsAt=new Date(Date.now()+1000).toISOString();for(const fn of window.__storageListeners)fn({},'local');`);
+  for (let i = 0; i < 20; i++) { if (await evaluate('!window.__claudeProgress.hidden')) break; await pause(25); }
+  assert(await evaluate(`!window.__claudeProgress.hidden&&window.__claudeProgress.value===63`), 'A reliable result restores the existing progress before its reset');
+  await evaluate(`window.__fixtureBeforeResetSend=chrome.runtime.sendMessage;window.__resetDisplayRequests=0;chrome.runtime.sendMessage=async message=>{window.__resetDisplayRequests++;return window.__fixtureBeforeResetSend(message)};`);
+  // Exercise the real display timer without a DOM mutation, worker message or
+  // clock substitution; a render tick must not turn into another API request.
+  for (let i = 0; i < 170; i++) { if (await evaluate('window.__claudeProgress.hidden')) break; await pause(100); }
+  assert(await evaluate(`window.__fixtureUsageRoot.querySelector('progress')===window.__claudeProgress&&window.__claudeProgress.hidden&&!window.__claudeProgress.hasAttribute('value')&&window.__fixtureUsageRoot.querySelector('.status').textContent==='초기화 후 확인 중'&&!/사용량: (63|0)%/.test(document.getElementById('ai-gauge-usage-strip').getAttribute('aria-label'))`), 'The display timer clears usage after reset without an incoming event, replacing the node, or guessing zero');
+  assert.equal(await evaluate('window.__resetDisplayRequests'), 0, 'Time-only display updates do not request another view or API refresh');
+  await evaluate('chrome.runtime.sendMessage=window.__fixtureBeforeResetSend');
+  await evaluate(`window.__fixture.snapshots.claude.state='signed_out';window.__fixture.snapshots.claude.errorCode='signed_out';window.__fixture.snapshots.claude.failures=1;window.__fixture.snapshots.claude.limits[0].resetsAt=new Date(Date.now()+7200000).toISOString();for(const fn of window.__runtimeListeners)fn({type:'invalidate'},{id:'fixture'});`);
+  await pause(400);
+  assert(await evaluate(`window.__fixtureUsageRoot.querySelector('progress')===window.__claudeProgress&&window.__claudeProgress.hidden&&!window.__claudeProgress.hasAttribute('value')&&!window.__fixtureUsageRoot.querySelector('.status').hidden`), 'Authentication failure invalidates cached usage immediately without replacing the strip');
   await evaluate(`window.__fixtureHost='https://chatgpt.com';`);
-  await evaluate(`history.replaceState(null,'','/');document.body.innerHTML='<main><div style="min-height:700px;display:flex;flex-direction:column;justify-content:center"><div id="chatgpt-slot"><form id="chatgpt-home"><div id="prompt-textarea" contenteditable="true" style="min-height:48px"></div><button>Send</button></form><p id="chatgpt-helper" hidden>Shortcut hints</p></div></div></main>';window.dispatchEvent(new PopStateEvent('popstate'));`);
+  await evaluate(`history.replaceState(null,'','/');document.body.innerHTML='<main><div style="min-height:700px;display:flex;flex-direction:column;justify-content:center"><div id="chatgpt-slot"><form id="chatgpt-home"><div id="chatgpt-body" class="layout ComposerLayoutBody-uBBf1A" style="padding:12px;border:1px solid gray;border-radius:16px"><div id="prompt-textarea" contenteditable="true" style="min-height:48px">private ChatGPT prompt</div><button>Send</button></div></form><p id="chatgpt-helper" hidden>Shortcut hints</p></div></div></main>';window.__chatgptControls=[...document.querySelectorAll('#chatgpt-body button')];window.dispatchEvent(new PopStateEvent('popstate'));`);
+  await waitForPlacement('chatgpt-body');
+  assert(await evaluate(`!document.getElementById('chatgpt-body').contains(document.getElementById('ai-gauge-usage-strip'))&&document.getElementById('prompt-textarea').textContent==='private ChatGPT prompt'&&window.__chatgptControls.every(button=>button.isConnected)`), 'ChatGPT home strip is the immediate sibling after ComposerLayoutBody, outside the input surface');
   let ordinary;
   for (let i = 0; i < 20; i++) { ordinary = await evaluate('document.querySelector("#ai-gauge-usage-strip")?.getAttribute("aria-label")??""'); if (ordinary.includes('사용량: 42%')) break; await pause(100); }
   assert.match(ordinary, /^사용량: 42%  🕒 사용량 초기화: \d{1,2}\/\d{1,2}\([일월화수목금토]\) \d{2}:\d{2}, \d+h 남음$/); assert.doesNotMatch(ordinary, /0d|Chat|Work|Codex|공유|모델별|AI Gauge/);
@@ -229,13 +262,15 @@ try {
   await cdp('Emulation.setDeviceMetricsOverride', { width: 320, height: 1000, deviceScaleFactor: 1, mobile: false }, session);
   assert(await evaluate(`(()=>{const root=window.__fixtureUsageRoot,host=document.getElementById('ai-gauge-usage-strip');return getComputedStyle(root.querySelector('.reset')).display==='none'&&host.getBoundingClientRect().height===30&&root.querySelector('.usage').getBoundingClientRect().height===30&&document.documentElement.scrollWidth<=document.documentElement.clientWidth;})()`), 'Small composer hides reset details and preserves its 30px height without horizontal overflow');
   await cdp('Emulation.setDeviceMetricsOverride', { width: 520, height: 1000, deviceScaleFactor: 1, mobile: false }, session);
-  await evaluate(`window.__stableChatGPTStrip=document.getElementById('ai-gauge-usage-strip');window.__fixtureSend=chrome.runtime.sendMessage;window.__fixtureRejectNext=true;chrome.runtime.sendMessage=async message=>{if(window.__fixtureRejectNext){window.__fixtureRejectNext=false;throw new Error('temporary worker restart');}return window.__fixtureSend(message)};for(const fn of window.__runtimeListeners)fn({type:'invalidate'},{id:'fixture'});`);
+  await evaluate(`window.__stableChatGPTStrip=document.getElementById('ai-gauge-usage-strip');window.__stableChatGPTMoves=0;window.__chatgptObserver=new MutationObserver(records=>{for(const record of records)for(const node of record.removedNodes)if(node===window.__stableChatGPTStrip)window.__stableChatGPTMoves++;});window.__chatgptObserver.observe(document,{childList:true,subtree:true});window.__fixtureSend=chrome.runtime.sendMessage;window.__fixtureRejectNext=true;chrome.runtime.sendMessage=async message=>{if(window.__fixtureRejectNext){window.__fixtureRejectNext=false;throw new Error('temporary worker restart');}return window.__fixtureSend(message)};for(const fn of window.__runtimeListeners)fn({type:'invalidate'},{id:'fixture'});`);
   for (let i = 0; i < 20; i++) {
-    await evaluate(`document.querySelector('form').className='render-${i % 2}';document.getElementById('chatgpt-helper').hidden=${i % 2 === 0};`);
+    await evaluate(`document.getElementById('chatgpt-body').className='ComposerLayoutBody-render${i % 2}';document.getElementById('chatgpt-helper').hidden=${i % 2 === 0};${i === 10 ? "history.replaceState(null,'','/c/fixture');{const old=document.getElementById('chatgpt-body');old.replaceWith(old.cloneNode(true));}window.dispatchEvent(new PopStateEvent('popstate'));" : ''}`);
     await pause(350);
-    await waitForPlacement('chatgpt-home');
-    assert(await evaluate(`document.getElementById('ai-gauge-usage-strip')===window.__stableChatGPTStrip && window.__aiGaugeMounted===true`), 'Plan usage stays next to the home composer despite worker failures and helper changes');
+    await waitForPlacement('chatgpt-body');
+    assert(await evaluate(`document.getElementById('ai-gauge-usage-strip')===window.__stableChatGPTStrip && window.__aiGaugeMounted===true`), 'Plan usage stays outside home/chat composers through hash and anchor changes, worker failures and helper changes');
   }
+  assert.equal(await evaluate('window.__stableChatGPTMoves'), 0);
+  await evaluate('window.__chatgptObserver.disconnect()');
   await evaluate(`window.__fixture.permissions.chatgpt=false;chrome.runtime.sendMessage=async()=>({ok:false});for(const fn of window.__runtimeListeners)fn({type:'permissions-revoked',origins:['https://chatgpt.com/*']},{id:'fixture'});`);
   for (let i = 0; i < 20; i++) { if (await evaluate('document.querySelectorAll("#ai-gauge-usage-strip").length') === 0) break; await pause(100); }
   assert.equal(await evaluate('document.querySelectorAll("#ai-gauge-usage-strip").length'), 0);
@@ -269,7 +304,7 @@ try {
   await cdp('Emulation.setDeviceMetricsOverride', { width: 520, height: 1000, deviceScaleFactor: 1, mobile: false }, session);
   const geminiScreenshot = await cdp('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false }, session);
   await writeFile(join(tmpdir(), 'ai-gauge-gemini-strip-fixture.png'), Buffer.from(geminiScreenshot.data, 'base64'));
-  await evaluate(`window.__fixture.snapshots.gemini.state='error';window.__fixture.snapshots.gemini.errorCode='network';for(const fn of window.__runtimeListeners)fn({type:'invalidate'},{id:'fixture'});`);
+  await evaluate(`window.__fixture.snapshots.gemini.state='error';window.__fixture.snapshots.gemini.errorCode='network';window.__fixture.snapshots.gemini.failures=2;for(const fn of window.__runtimeListeners)fn({type:'invalidate'},{id:'fixture'});`);
   for (let i = 0; i < 20; i++) { if (await evaluate('window.__geminiProgress.hidden')) break; await pause(50); }
   assert(await evaluate(`window.__geminiProgress.hidden&&window.__geminiStrip.getAttribute('aria-label').includes('확인 불가')&&!window.__geminiStrip.getAttribute('aria-label').includes('사용량: 0%')`), 'Gemini collection errors do not fabricate an unused quota');
   await evaluate(`window.__fixture.permissions.gemini=false;chrome.runtime.sendMessage=async()=>({ok:false});for(const fn of window.__runtimeListeners)fn({type:'permissions-revoked',origins:['https://gemini.google.com/*']},{id:'fixture'});`);
@@ -278,7 +313,7 @@ try {
   assert.equal(await evaluate('window.__aiGaugeMounted'), false);
   assert.equal(await evaluate(`document.querySelector('rich-textarea [contenteditable]').textContent`), 'private Gemini prompt');
   assert.deepEqual(exceptions, []);
-  console.log(`PASS Chromium fixture UI: compact three-card 520px popup with Gemini windows, four display settings, build-minute display version, narrow overflow and fixed 30px strip checks, redirected root-URL Codex home/task footers and diagnostics, hash changes, countdown without 0d, shared ChatGPT/Codex usage, Claude inner surfaces (min-w-0/mni-w-0), Gemini input-area-v2 composer, storage/runtime progress updates without replacing bars, stable strips over 64 timed checks, transient worker failure recovery, and OpenAI/Gemini denied-view revocation cleanup. Screenshot: ${screenshotPath}. Synthetic DOM/Chrome APIs; no live installation/account verification.`);
+  console.log(`PASS Chromium fixture UI: compact three-card 520px popup with Gemini windows, four display settings, build-minute display version, narrow overflow and fixed 30px strip checks, outside siblings after ChatGPT ComposerLayoutBody / Codex ComposerLayoutRoot / Claude ChatComposerChin, redirected Codex home/task and diagnostics, changing class suffixes and replaced anchors, preserved input/toolbar layout, countdown without 0d, shared ChatGPT/Codex usage, unchanged Gemini input-area-v2 placement, storage/runtime progress updates without replacing bars, valid cached usage past ten minutes and one temporary failure, reset/repeated/auth failure numeric clearing, stable strips over 76 timed checks, transient worker failure recovery, and OpenAI/Gemini denied-view revocation cleanup. Screenshot: ${screenshotPath}. Synthetic DOM/Chrome APIs; no live installation/account verification.`);
 } finally {
   ws?.close(); child.kill('SIGTERM');
   await new Promise(r => { if (child.exitCode !== null) r(); else { child.once('exit', r); setTimeout(() => { child.kill('SIGKILL'); r(); }, 3000).unref(); } });

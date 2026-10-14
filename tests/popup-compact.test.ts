@@ -7,7 +7,6 @@ import { renderCards, type Actions } from '../src/popup/render';
 import { defaults } from '../src/storage/settings';
 import { emptySnapshot } from '../src/storage/snapshots';
 import { success } from '../src/background/scheduler';
-import { ERROR_TEXT } from '../src/shared/errors';
 import { usageParts } from '../src/content/usage-label';
 import type { Provider, UsageLimit, View } from '../src/shared/types';
 
@@ -97,7 +96,7 @@ test('missing and failed quota stays visible without a fabricated zero or succes
     v.snapshots.chatgpt = { ...emptySnapshot('chatgpt'), errorCode: 'tab_access_failed', checkedAt: now };
     renderCards(cards, v, noop, now);
     const card = cards.querySelector('[data-provider="chatgpt"]')!;
-    assert.equal(card.querySelector('.status')!.textContent, ERROR_TEXT.tab_access_failed);
+    assert.equal(card.querySelector('.status')!.textContent, '사이트 접근 설정 확인');
     assert.equal(card.querySelector('.status')!.closest('details'), null);
     assert.equal(card.querySelector('progress'), null);
     assert.doesNotMatch(card.textContent!, /0%|최근 수집 성공/);
@@ -108,7 +107,7 @@ test('missing and failed quota stays visible without a fabricated zero or succes
   } finally { dom.window.close(); }
 });
 
-test('old quota remains explicitly marked and an actual zero is retained', () => {
+test('quota retained after an explicit collection failure is marked as a previous value and preserves an actual zero', () => {
   const { dom, cards } = fixture(), v = view();
   try {
     v.snapshots.claude.limits[0]!.percent = 0;
@@ -117,8 +116,9 @@ test('old quota remains explicitly marked and an actual zero is retained', () =>
     renderCards(cards, v, noop, now);
     const card = cards.querySelector('[data-provider="claude"]')!;
     const statuses = [...card.querySelectorAll('.status')];
-    assert(statuses.some(node => node.textContent?.includes('오래된 데이터') && !node.closest('details')));
-    assert(statuses.some(node => node.textContent === ERROR_TEXT.network && !node.closest('details')));
+    assert(statuses.some(node => node.textContent === '이전 수집값' && !node.closest('details')));
+    assert(statuses.some(node => node.textContent === '연결 확인 중' && !node.closest('details')));
+    assert.doesNotMatch(card.textContent!, /오래된 데이터/);
     assert.equal(card.querySelector('.old .percent')!.textContent, '사용량: 0%');
     assert.match(card.querySelector('progress')!.getAttribute('aria-label')!, /이전 값/);
   } finally { dom.window.close(); }
@@ -144,8 +144,9 @@ test('Gemini card displays all reported windows and actual zero without inventin
     v.snapshots.gemini.state = 'error'; v.snapshots.gemini.errorCode = 'network';
     renderCards(cards, v, noop, now);
     const failed = cards.querySelector('[data-provider="gemini"]')!;
-    assert.match(failed.textContent!, /오래된 데이터/);
-    assert(failed.textContent!.includes(ERROR_TEXT.network));
+    assert.match(failed.textContent!, /이전 수집값/);
+    assert(failed.textContent!.includes('연결 확인 중'));
+    assert.doesNotMatch(failed.textContent!, /오래된 데이터/);
     assert.equal(failed.querySelectorAll('.old').length, 3);
   } finally { dom.window.close(); }
 });
@@ -200,7 +201,7 @@ test('rate-limit error remains visible and blocks premature requests without sho
     const card = cards.querySelector('[data-provider="chatgpt"]')!;
     const refresh = [...card.querySelectorAll('button')].find(button => button.textContent === '새로고침')!;
     assert.equal(refresh.disabled, true); refresh.click(); assert.equal(requests, 0);
-    assert(card.textContent!.includes(ERROR_TEXT.rate_limited));
+    assert(card.textContent!.includes('잠시 후 다시 확인'));
     assert.equal(card.querySelector('.time'), null);
     assert.doesNotMatch(card.textContent!, /다음 갱신/);
   } finally { dom.window.close(); }

@@ -69,21 +69,28 @@ test('missing and invalid usage hide progress instead of clamping it or inventin
   } finally { dom.window.close(); }
 });
 
-test('failed, stale and aged snapshots cannot leave their old progress visible', () => {
+test('unreliable snapshots hide progress, while normal cache age preserves the existing bar', () => {
   const { dom, strip, elements } = fixture();
   try {
     for (const state of ['error', 'stale', 'signed_out', 'rate_limited', 'unsupported'] as const) {
       strip.update(view(63));
       assert.equal(elements().progress.value, 63);
       const current = view(63); current.snapshots.chatgpt.state = state;
+      current.snapshots.chatgpt.errorCode = 'network';
+      current.snapshots.chatgpt.failures = 2;
       strip.update(current);
       assert.equal(elements().progress.hidden, true);
       assert.equal(elements().progress.hasAttribute('value'), false);
       assert.doesNotMatch(elements().host.getAttribute('aria-label')!, /63%/);
     }
+    strip.update(view(63));
+    const previous = elements();
     const aged = view(63); aged.snapshots.chatgpt.collectedAt = Date.now() - FRESH_MS;
     strip.update(aged);
-    assert.equal(elements().progress.hidden, true);
+    assert.equal(elements().progress, previous.progress);
+    assert.equal(elements().progress.hidden, false);
+    assert.equal(elements().progress.value, 63);
+    assert.doesNotMatch(elements().host.getAttribute('aria-label')!, /오래된|갱신 필요/);
   } finally { dom.window.close(); }
 });
 

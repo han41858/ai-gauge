@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { GEMINI_RESPONSE_ERRORS, type Snapshot, type View } from '../src/shared/types';
 import { CollectionError, ERROR_TEXT } from '../src/shared/errors';
+import { statusText } from '../src/shared/format';
 import { unwrapTransport } from '../src/providers/tab-transport';
 import { Scheduler, failure, success } from '../src/background/scheduler';
 import { emptySnapshot, parseSnapshot, readSnapshot, writeSnapshot } from '../src/storage/snapshots';
@@ -70,7 +71,7 @@ test('detailed response errors preserve the ordinary popup message and remain vi
       renderCards(dom.window.document.getElementById('cards')!, view(snapshot), actions, 1_000_001);
       const card = dom.window.document.querySelector('[data-provider="gemini"]')!;
       assert.equal(ERROR_TEXT[code], ERROR_TEXT.invalid_response);
-      assert(card.textContent!.includes(ERROR_TEXT.invalid_response));
+      assert(card.textContent!.includes(statusText({ ...snapshot, errorCode: 'invalid_response' })));
       assert.doesNotMatch(card.textContent!, /gemini_|MIME|UTF|RPC|framing/);
       assert.equal(createDiagnosticReport(view(snapshot), 'fixture').providers.gemini.errorCode, code);
     }

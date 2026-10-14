@@ -15,6 +15,7 @@ if (resolvePageProvider(document, location.href) && !window.__aiGaugeMounted) {
   const refreshQueue = new Set<Provider>();
   let viewRetryTimer: ReturnType<typeof setTimeout> | null = null, viewFailures = 0;
   let completionTimer: ReturnType<typeof setTimeout> | null = null, completionProvider: Provider | null = null;
+  let clockTimer: ReturnType<typeof setInterval> | null = null;
   let routeUrl: string | null = null;
   const clearCompletion = () => {
     if (completionTimer) clearTimeout(completionTimer);
@@ -37,6 +38,7 @@ if (resolvePageProvider(document, location.href) && !window.__aiGaugeMounted) {
   const stop = () => {
     stopped = true; window.__aiGaugeMounted = false; strip?.remove(); observer.disconnect(); if (timer) clearTimeout(timer);
     if (viewRetryTimer) clearTimeout(viewRetryTimer);
+    if (clockTimer) clearInterval(clockTimer);
     clearCompletion();
     document.removeEventListener('focusin', scheduleCheck);
     document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('popstate', onRoute);
@@ -93,6 +95,7 @@ if (resolvePageProvider(document, location.href) && !window.__aiGaugeMounted) {
     }
   };
   const check = () => {
+    if (timer) clearTimeout(timer);
     timer = null; if (stopped) return;
     const changed = route(); strip?.mount(); if (!provider) return;
     if (changed) void load(displayProvider(provider));
@@ -123,7 +126,7 @@ if (resolvePageProvider(document, location.href) && !window.__aiGaugeMounted) {
   });
   observer.observe(document, {
     childList: true, subtree: true, attributes: true,
-    attributeFilter: ['hidden', 'aria-hidden', 'inert', 'style', 'class', 'contenteditable', 'aria-label', 'data-testid', 'data-test-id']
+    attributeFilter: ['hidden', 'aria-hidden', 'inert', 'style', 'class', 'contenteditable', 'aria-label', 'data-testid', 'data-test-id', 'data-cds']
   });
   const onMessage = (message: unknown, sender: chrome.runtime.MessageSender, sendResponse?: (response: unknown) => void) => {
     if (DEVELOPMENT && authorizedDisplayRequest(message, sender, chrome.runtime.id)) {
@@ -145,5 +148,8 @@ if (resolvePageProvider(document, location.href) && !window.__aiGaugeMounted) {
   chrome.runtime.onMessage.addListener(onMessage); chrome.storage.onChanged.addListener(onStorage);
   document.addEventListener('focusin', scheduleCheck);
   document.addEventListener('visibilitychange', onVisible); window.addEventListener('popstate', onRoute);
+  // Re-evaluate countdowns and elapsed resets even on a quiet page. Collection
+  // stays in the shared worker; each open tab only renders its local view here.
+  clockTimer = setInterval(check, 15_000);
   void load();
 }
