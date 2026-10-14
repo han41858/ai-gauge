@@ -6,7 +6,8 @@ export const ORIGINS: Record<Provider, string> = { chatgpt: 'https://chatgpt.com
 export const NAMES: Record<Provider, string> = { chatgpt: 'ChatGPT', claude: 'Claude', gemini: 'Gemini' };
 export const HOME_URLS: Record<Provider, string> = { chatgpt: 'https://chatgpt.com/', claude: 'https://claude.ai/', gemini: 'https://gemini.google.com/' };
 export type CollectionState = 'ok' | 'stale' | 'signed_out' | 'permission_required' | 'rate_limited' | 'unsupported' | 'error';
-export type ErrorCode = 'not_collected' | 'signed_out' | 'access_denied' | 'rate_limited' | 'network' | 'invalid_response' | 'open_tab' | 'tab_access_failed' | 'ambiguous_account' | 'unsupported' | 'permission_required' | 'server';
+export const GEMINI_RESPONSE_ERRORS = ['gemini_response_type', 'gemini_response_read', 'gemini_frame_invalid', 'gemini_rpc_missing', 'gemini_rpc_invalid', 'gemini_quota_invalid'] as const;
+export type ErrorCode = 'not_collected' | 'signed_out' | 'access_denied' | 'rate_limited' | 'network' | 'invalid_response' | 'open_tab' | 'tab_access_failed' | 'ambiguous_account' | 'unsupported' | 'permission_required' | 'server' | typeof GEMINI_RESPONSE_ERRORS[number];
 export interface UsageLimit {
   id: string;
   label: string;

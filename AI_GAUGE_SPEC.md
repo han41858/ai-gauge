@@ -43,7 +43,7 @@ AI Gauge는 기존 브라우저 로그인 세션으로 사용량을 조회하여
 - 제한 항목: `[remaining, utilizationRatio, windowType, [[resetSeconds, resetNanos]]]`. 확인된 `windowType=1`은 5시간, `2`는 주간이다. `utilizationRatio`의 유효 범위는 0~1이며 백분율로 변환한다.
 - `remaining`의 정확한 단위는 불명확하므로 메시지 횟수로 표시하지 않는다. 사용률과 초기화 시각만 표시한다. 미확인 요금제·부가 상태는 해석하지 않는다.
 - 초기화는 Unix 초와 선택적 나노초에서 파싱한다. 없는 필드를 0으로 채우지 않는다. 알 수 없는 창 종류·구조·손상된 값은 추측하지 않는다.
-- 선택적 XSSI 접두어, 길이 프레임, `wrb.fr`, 중첩 JSON과 다른 RPC/상태 프레임을 안전하게 처리한다. 프레임 길이·입력 크기를 제한하고 손상된 응답은 오류로 처리한다.
+- 선택적 XSSI 접두어, 구분 줄바꿈을 포함하거나 제외한 길이 프레임, 단일 JSON·줄별 JSON 프레임, `wrb.fr`, 중첩 JSON과 다른 RPC/상태 프레임을 안전하게 처리한다. 프레임 길이·입력 크기를 제한하고 손상된 줄을 건너뛰지 않는다. 형식 실패는 고정된 단계별 오류 코드로 구분하며 응답 원문을 저장하지 않는다.
 - 비공개 `vendor-ai` 모듈에 의존하지 않는다. 토큰은 페이지 함수 안에서 해당 Google 출처 요청에만 사용하며 반환·저장·로그하지 않는다. 토큰이나 계정 맥락을 안전하게 확인할 수 없으면 미지원/오류로 남긴다.
 - 참고: Claude Tuner의 `bg/api-gemini.js`, `bg/collect-gemini.js`, `bg/parse-gemini.js`와 gemini-usage의 `GEMINI_API_INTERNALS.md`. 복사한 코드가 있으면 라이선스·저작권 고지를 유지한다.
 

@@ -13,7 +13,7 @@ const compiled = transformSync(readFileSync(new URL('../src/providers/gemini-tra
 const module = { exports: {} as { collectGeminiInPage: () => Promise<TransportResult> } };
 runInNewContext(compiled, { module });
 const serialized = module.exports.collectGeminiInPage.toString();
-interface Options { body?: string; status?: number; contentType?: string; retryAfter?: string; url?: string; token?: unknown; error?: boolean; timeout?: boolean; invalidUtf8?: boolean }
+interface Options { body?: string; status?: number; contentType?: string; retryAfter?: string; url?: string; token?: unknown; error?: boolean; timeout?: boolean; invalidUtf8?: boolean; noBody?: boolean }
 async function run(options: Options = {}) {
   const calls: Array<{ url: string; options: RequestInit }> = [];
   const sandbox = {
@@ -25,7 +25,7 @@ async function run(options: Options = {}) {
       calls.push({ url, options: init });
       if (options.error) throw new Error('private response and credentials must not escape');
       if (options.timeout) return new Promise<Response>((_resolve, reject) => init.signal?.addEventListener('abort', () => reject(new Error('Aborted')), { once: true }));
-      return new Response(options.invalidUtf8 ? new Uint8Array([0xc3, 0x28]) : options.body ?? readFileSync(new URL('./fixtures/gemini-batchexecute.txt', import.meta.url), 'utf8'), { status: options.status ?? 200,
+      return new Response(options.noBody ? null : options.invalidUtf8 ? new Uint8Array([0xc3, 0x28]) : options.body ?? readFileSync(new URL('./fixtures/gemini-batchexecute.txt', import.meta.url), 'utf8'), { status: options.status ?? 200,
         headers: { 'Content-Type': options.contentType ?? 'application/json; charset=UTF-8', ...(options.retryAfter ? { 'Retry-After': options.retryAfter } : {}) } });
     }
   };
@@ -59,12 +59,52 @@ test('Gemini handles optional XSSI, UTF-16 length frames and unrelated RPC/statu
   }
 });
 
-test('Gemini rejects damaged length frames, duplicate RPCs, wrong RPCs, empty data and malformed nested JSON', async () => {
-  for (const body of ['', ")]}'\n\n", '1\n[]\n', '999\n[]\n', '[]trailing', framed([row()]).replace(/^\)\]\}'\n\n\d+/, ")]}'\n\n1"),
-    framed([row()], [row()]), framed([row(observed(), 'different')]), framed([['wrb.fr', 'jSf9Qc', '{broken']]),
-    framed([['wrb.fr', 'jSf9Qc', null]]), framed([row(), null]), framed([row()]) + 'garbage', framed([row([1, []])])]) {
+test('Gemini accepts lengths including the separator newline, multiple frames and EOF without a final newline', async () => {
+  const frames = [[['wrb.fr', 'unrelated', 'not JSON 🔒', null, null, null]], [row()], [['di', 42], ['af.httprm', 1]]];
+  const expected = parseGemini((await run()).value.data);
+  for (const newline of ['\n', '\r\n']) {
+    const includingSeparator = frames.map(frame => { const json = JSON.stringify(frame); return `${json.length + newline.length}${newline}${json}`; }).join(newline);
+    for (const body of [includingSeparator, includingSeparator + newline, ")]}'\n\n" + includingSeparator]) {
+      const { value } = await run({ body });
+      assert.equal(value.code, null); assert.deepEqual(parseGemini(value.data), expected);
+    }
+  }
+});
+
+test('Gemini accepts complete JSON or strict line-delimited frames without changing quota interpretation', async () => {
+  const frames = [[row()], [['di', 42], ['af.httprm', 1]]];
+  const expected = parseGemini((await run()).value.data);
+  for (const body of [JSON.stringify([row()], null, 2), frames.map(frame => JSON.stringify(frame)).join('\n'),
+    ")]}'\n\n" + frames.map(frame => JSON.stringify(frame)).join('\r\n\r\n') + '\r\n']) {
     const { value } = await run({ body });
-    assert.equal(value.code, 'invalid_response', body.slice(0, 80)); assert.equal(value.data, null);
+    assert.equal(value.code, null); assert.deepEqual(parseGemini(value.data), expected);
+  }
+});
+
+test('Gemini rejects damaged frames without skipping bad lines or exposing their text', async () => {
+  for (const body of ['', ")]}'\n\n", '1\n[]\n', '999\n[]\n', '[]trailing', framed([row()]).replace(/^\)\]\}'\n\n\d+/, ")]}'\n\n1"),
+    framed([row(), null]), framed([row()]) + 'garbage', JSON.stringify([row()]) + '\nprivate broken frame',
+    JSON.stringify([row()]) + '\n{}', JSON.stringify([row()]) + '\n2\n[]', Array(101).fill('[]').join('\n'),
+    framed(...Array(101).fill([])), framed([row()]).replace(/\n\n\d+\n/, '\n\n1048577\n')]) {
+    const { value } = await run({ body });
+    assert.equal(value.code, 'gemini_frame_invalid', body.slice(0, 80)); assert.equal(value.data, null);
+    assert.doesNotMatch(JSON.stringify(value), /private broken frame/);
+  }
+});
+
+test('Gemini distinguishes missing RPC, invalid RPC and invalid quota using only fixed codes', async () => {
+  const cases: Array<[string, string]> = [
+    ['gemini_rpc_missing', framed([row(observed(), 'different')])],
+    ['gemini_rpc_missing', '[]'],
+    ['gemini_rpc_invalid', framed([row()], [row()])],
+    ['gemini_rpc_invalid', [JSON.stringify([row()]), JSON.stringify([row()])].join('\n')],
+    ['gemini_rpc_invalid', framed([['wrb.fr', 'jSf9Qc', '{private malformed JSON']])],
+    ['gemini_rpc_invalid', framed([['wrb.fr', 'jSf9Qc', null]])],
+    ['gemini_quota_invalid', framed([row([1, []])])]
+  ];
+  for (const [code, body] of cases) {
+    const { value } = await run({ body });
+    assert.deepEqual(value, { status: 200, code, retryAfter: null, data: null });
   }
 });
 
@@ -72,7 +112,7 @@ test('Gemini page validation rejects duplicate windows and invalid ratios/timest
   for (const input of [[1, [[1, 1.1, 1, null]]], [1, [[1, '0', 1, null]]], [1, [[1, 0, 1, [[1791983127, 1e9]]]]],
     [1, [[1, 0, 1, null], [2, 0.2, 1, null]]]]) {
     const { value } = await run({ body: framed([row(input)]) });
-    assert.equal(value.code, 'invalid_response'); assert.equal(value.data, null);
+    assert.equal(value.code, 'gemini_quota_invalid'); assert.equal(value.data, null);
   }
 });
 
@@ -92,7 +132,7 @@ test('Gemini login HTML is not a successful quota response and missing bootstrap
     assert.equal(value.code, 'unsupported'); assert.equal(calls.length, 0);
   }
   const { value, calls } = await run({ contentType: 'text/html', body: '<html>Sign in</html>' });
-  assert.equal(value.code, 'invalid_response'); assert.equal(value.data, null);
+  assert.equal(value.code, 'gemini_response_type'); assert.equal(value.data, null);
   assert(calls[0]!.options.signal?.aborted, 'unread HTML bodies must not outlive the request timeout');
 });
 
@@ -115,11 +155,12 @@ test('Gemini in-band errors override any payload while unrelated RPC errors do n
 });
 
 test('Gemini rejects oversized bodies and returns fixed network errors without private exception text', async () => {
-  assert.equal((await run({ body: 'x'.repeat(1048577) })).value.code, 'invalid_response');
+  assert.equal((await run({ body: 'x'.repeat(1048577) })).value.code, 'gemini_response_read');
+  assert.equal((await run({ noBody: true })).value.code, 'gemini_response_read');
   const { value } = await run({ error: true });
   assert.deepEqual(value, { status: 0, code: 'network', retryAfter: null, data: null });
   const timed = await run({ timeout: true });
   assert.equal(timed.value.code, 'network'); assert(timed.calls[0]!.options.signal?.aborted);
   const invalidUtf8 = await run({ invalidUtf8: true });
-  assert.equal(invalidUtf8.value.code, 'invalid_response'); assert(invalidUtf8.calls[0]!.options.signal?.aborted);
+  assert.equal(invalidUtf8.value.code, 'gemini_response_read'); assert(invalidUtf8.calls[0]!.options.signal?.aborted);
 });

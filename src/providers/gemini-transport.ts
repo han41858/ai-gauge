@@ -11,40 +11,53 @@ export async function collectGeminiInPage(): Promise<TransportResult> {
   // A non-default account must not silently query the browser's default Google account.
   if ((account !== undefined && account !== '0') || page.searchParams.getAll('authuser').some(value => value !== '0')) return result(200, 'unsupported');
   const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 15_000);
-  const fail = (): never => { throw new Error('invalid_response'); };
+  const fail = (code = 'gemini_frame_invalid'): never => { throw new Error(code); };
   const sanitize = (payload: unknown): unknown => {
-    if (!Array.isArray(payload) || !Array.isArray(payload[1]) || payload[1].length > 20) return fail();
+    const invalid = (): never => fail('gemini_quota_invalid');
+    if (!Array.isArray(payload) || !Array.isArray(payload[1]) || payload[1].length > 20) return invalid();
     const windows: unknown[] = [], seen = new Set<number>();
     for (const row of payload[1]) {
-      if (!Array.isArray(row) || !Number.isInteger(row[2])) return fail();
+      if (!Array.isArray(row) || !Number.isInteger(row[2])) return invalid();
       const type = row[2] as number;
       if (type !== 1 && type !== 2) continue;
-      if (seen.has(type)) return fail();
+      if (seen.has(type)) return invalid();
       seen.add(type);
       const ratio: unknown = row[1];
-      if (ratio != null && (typeof ratio !== 'number' || !Number.isFinite(ratio) || ratio < 0 || ratio > 1)) return fail();
+      if (ratio != null && (typeof ratio !== 'number' || !Number.isFinite(ratio) || ratio < 0 || ratio > 1)) return invalid();
       let reset: unknown = null;
       if (row[3] != null) {
         const outer: unknown = row[3];
-        if (!Array.isArray(outer) || outer.length !== 1 || !Array.isArray(outer[0])) return fail();
+        if (!Array.isArray(outer) || outer.length !== 1 || !Array.isArray(outer[0])) return invalid();
         const stamp = outer[0] as unknown[], seconds = stamp[0], nanos = stamp.length === 1 ? 0 : stamp[1];
         if (stamp.length < 1 || stamp.length > 2 || typeof seconds !== 'number' || !Number.isSafeInteger(seconds)
           || seconds <= 0 || seconds >= 4_102_444_800 || typeof nanos !== 'number' || !Number.isInteger(nanos)
-          || nanos < 0 || nanos >= 1_000_000_000) return fail();
+          || nanos < 0 || nanos >= 1_000_000_000) return invalid();
         reset = [[seconds, nanos]];
       }
       windows.push([null, ratio ?? null, type, reset]);
     }
-    if (!windows.length) return fail();
+    if (!windows.length) return invalid();
     return [null, windows];
   };
   const decode = (body: string): unknown => {
     if (!body || body.length > 1_048_576) return fail();
     let text = body.trimStart();
     if (text.startsWith(")]}'")) text = text.slice(4).trimStart();
+    if (!text) return fail();
     const frames: unknown[] = [];
-    if (text.startsWith('[')) frames.push(JSON.parse(text));
-    else {
+    if (text.startsWith('[')) {
+      try { frames.push(JSON.parse(text)); }
+      catch {
+        // Some batchexecute responses contain a complete JSON frame on each line.
+        // Every nonempty line must parse; never skip damaged or unknown text.
+        const lines = text.split(/\r?\n/).filter(line => line.trim());
+        if (lines.length > 100) return fail();
+        for (const line of lines) {
+          try { frames.push(JSON.parse(line)); }
+          catch { return fail(); }
+        }
+      }
+    } else {
       let cursor = 0;
       while (cursor < text.length) {
         while (/\s/.test(text[cursor] ?? '') && cursor < text.length) cursor++;
@@ -52,12 +65,23 @@ export async function collectGeminiInPage(): Promise<TransportResult> {
         const prefix = /^(\d{1,7})\r?\n/.exec(text.slice(cursor));
         if (!prefix) return fail();
         const length = Number(prefix[1]);
-        cursor += prefix[0].length;
-        if (length <= 0 || length > 1_048_576 || cursor + length > text.length) return fail();
-        // Google's documented frame length uses JavaScript UTF-16 code units.
-        frames.push(JSON.parse(text.slice(cursor, cursor + length)));
-        cursor += length;
-        if (cursor < text.length && !/\s/.test(text[cursor]!)) return fail();
+        if (length <= 0 || length > 1_048_576) return fail();
+        // Public batchexecute parsers count the separator newline in the length;
+        // also accept frames whose length counts only the JSON (UTF-16 units).
+        let end = -1;
+        for (const start of [cursor + prefix[1]!.length, cursor + prefix[0].length]) {
+          const candidateEnd = start + length;
+          if (candidateEnd > text.length || (candidateEnd < text.length && !/\s/.test(text[candidateEnd]!))) continue;
+          try {
+            const frame: unknown = JSON.parse(text.slice(start, candidateEnd));
+            if (!Array.isArray(frame)) continue;
+            frames.push(frame);
+            end = candidateEnd;
+            break;
+          } catch { /* Try the other supported separator convention. */ }
+        }
+        if (end < 0) return fail();
+        cursor = end;
         if (frames.length > 100) return fail();
       }
     }
@@ -73,11 +97,12 @@ export async function collectGeminiInPage(): Promise<TransportResult> {
           throw new Error('unsupported');
         }
         if (row[1] !== 'jSf9Qc') continue;
-        if (++count !== 1 || typeof row[2] !== 'string' || !row[2]) return fail();
-        answer = JSON.parse(row[2]);
+        if (++count !== 1 || typeof row[2] !== 'string' || !row[2]) return fail('gemini_rpc_invalid');
+        try { answer = JSON.parse(row[2]); }
+        catch { return fail('gemini_rpc_invalid'); }
       }
     }
-    if (count !== 1) return fail();
+    if (count !== 1) return fail('gemini_rpc_missing');
     return sanitize(answer);
   };
   try {
@@ -92,9 +117,9 @@ export async function collectGeminiInPage(): Promise<TransportResult> {
       const wait = response.headers.get('Retry-After');
       return result(response.status, null, wait !== null && wait.length <= 100 ? wait : null);
     }
-    if (!/^(?:application\/json|text\/plain)(?:;|$)/i.test(response.headers.get('Content-Type') ?? '')) return result(200, 'invalid_response');
+    if (!/^(?:application\/json|text\/plain)(?:;|$)/i.test(response.headers.get('Content-Type') ?? '')) return result(200, 'gemini_response_type');
     const reader = response.body?.getReader();
-    if (!reader) return result(200, 'invalid_response');
+    if (!reader) return result(200, 'gemini_response_read');
     const decoder = new TextDecoder('utf-8', { fatal: true });
     let raw = '', bytes = 0;
     try {
@@ -104,18 +129,20 @@ export async function collectGeminiInPage(): Promise<TransportResult> {
         bytes += chunk.value.byteLength;
         if (bytes > 1_048_576) {
           await reader.cancel().catch(() => undefined);
-          return result(200, 'invalid_response');
+          return result(200, 'gemini_response_read');
         }
         try { raw += decoder.decode(chunk.value, { stream: true }); }
-        catch { return result(200, 'invalid_response'); }
+        catch { return result(200, 'gemini_response_read'); }
       }
       try { raw += decoder.decode(); }
-      catch { return result(200, 'invalid_response'); }
+      catch { return result(200, 'gemini_response_read'); }
     } finally { reader.releaseLock(); }
     try { return result(200, null, null, decode(raw)); }
     catch (error) {
       if (error instanceof Error && error.message === 'rate_limited') return result(429);
-      return result(200, error instanceof Error && error.message === 'unsupported' ? 'unsupported' : 'invalid_response');
+      // Fixed codes only; never send exception text or response contents to the worker.
+      const codes = ['unsupported', 'gemini_frame_invalid', 'gemini_rpc_missing', 'gemini_rpc_invalid', 'gemini_quota_invalid'];
+      return result(200, error instanceof Error && codes.includes(error.message) ? error.message : 'invalid_response');
     }
   } catch { return result(0, 'network'); }
   finally { controller.abort(); clearTimeout(timeout); }

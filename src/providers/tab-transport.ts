@@ -1,4 +1,4 @@
-import { ORIGINS, type Provider } from '../shared/types';
+import { GEMINI_RESPONSE_ERRORS, ORIGINS, type Provider } from '../shared/types';
 import { CollectionError, httpError, retryAfter } from '../shared/errors';
 import { record } from '../shared/validation';
 import { collectGeminiInPage } from './gemini-transport';
@@ -69,6 +69,8 @@ export function unwrapTransport(value: unknown): unknown {
   const r = record(value);
   if (!r || typeof r.status !== 'number' || !Number.isInteger(r.status) || r.status < 0 || r.status > 599) throw new CollectionError('invalid_response');
   if (r.code !== null) {
+    const geminiError = GEMINI_RESPONSE_ERRORS.find(code => code === r.code);
+    if (geminiError) throw new CollectionError(geminiError);
     if (r.code === 'unsupported') throw new CollectionError('unsupported', 'unsupported');
     if (r.code === 'network' || r.code === 'invalid_response' || r.code === 'open_tab' || r.code === 'ambiguous_account') throw new CollectionError(r.code);
     throw new CollectionError('invalid_response');
