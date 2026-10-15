@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": "^22.22.2 || >=24.15.0"
+  },
   "scripts": {
     "prepare:icons": "node scripts/prepare-icons.mjs",
     "build": "node scripts/build.mjs",
@@ -17,12 +20,12 @@
     "audit:extension": "node scripts/audit-build.mjs"
   },
   "devDependencies": {
-    "@types/chrome": "0.1.32",
-    "@types/jsdom": "21.1.7",
-    "@types/node": "24.10.1",
-    "esbuild": "0.25.12",
-    "jsdom": "26.1.0",
-    "tsx": "4.20.6",
-    "typescript": "5.9.3"
+    "@types/chrome": "0.3.5",
+    "@types/jsdom": "30.0.0",
+    "@types/node": "24.19.2",
+    "esbuild": "0.28.2",
+    "jsdom": "30.1.2",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
   }
 }

@@ -136,7 +136,7 @@ test('first run selects three services and grants them in one user gesture and p
     assert.equal(dom.window.document.querySelectorAll('#provider-choices input:checked').length, 3);
     assert.equal(dom.window.document.getElementById('cards')!.hidden, true);
     insideClick = true; dom.window.document.getElementById('onboarding-submit')!.click(); insideClick = false;
-    await waitFor(() => dom.window.document.getElementById('onboarding')!.hidden);
+    await waitFor(() => dom.window.document.getElementById('onboarding')!.hidden === true);
     assert.equal(calls, 1);
     assert.deepEqual(background.settings().enabled, { chatgpt: true, claude: true, gemini: true });
     assert.deepEqual([...background.requests].sort(), ['chatgpt', 'claude', 'gemini']);

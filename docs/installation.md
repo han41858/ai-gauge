@@ -8,7 +8,7 @@ ChatGPT·Claude·Gemini 사용량을 팝업, 탭별 배지, 입력창 하단에 
 
 ## 빌드와 설치
 
-Node.js 22 이상 권장. 이 환경에서는 Node.js 24.19.0 / npm 11.9.0을 사용합니다.
+Node.js 22.22.2 이상(22.x) 또는 24.15.0 이상이 필요합니다. 테스트에 쓰는 jsdom 30의 요구 사항이며 `package.json`의 `engines`에 명시했습니다. 이 환경에서는 Node.js 24.19.0 / npm 11.9.0을 사용합니다.
 
 ```bash
 npm ci
