@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <defs>
+    <linearGradient id="track" x1="9" y1="48" x2="55" y2="18" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5EF8E8"/><stop offset="0.55" stop-color="#20CEFC"/><stop offset="1" stop-color="#159EFF"/>
+    </linearGradient>
+    <linearGradient id="hub" x1="26" y1="42" x2="39" y2="57" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#80F7FF"/><stop offset="0.45" stop-color="#1970D0"/><stop offset="1" stop-color="#07275B"/>
+    </linearGradient>
+  </defs>
+  <!-- Transparent canvas; the arc uses a CSS custom property for inline SVG usage. -->
+  <path d="M8 46 A24 24 0 0 1 56 46" stroke="#073D85" stroke-width="10" stroke-linecap="round" opacity=".45"/>
+  <path d="M8 46 A24 24 0 0 1 56 46" stroke="var(--gauge-color, url(#track))" stroke-width="8" stroke-linecap="round"/>
+  <path d="M8 46 A24 24 0 0 1 56 46" stroke="white" stroke-width="1.2" stroke-linecap="round" opacity=".34"/>
+  <circle cx="32" cy="46" r="7" fill="#06377E" stroke="#3CAFFD" stroke-width="1.5"/>
+  <circle cx="32" cy="46" r="5" fill="url(#hub)"/>
+</svg>
