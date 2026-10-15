@@ -169,3 +169,72 @@ test('strip cleanup removes the progress host and re-enabling creates one fresh 
     assert.equal(doc.querySelector('#ai-gauge-usage-strip'), null);
   } finally { dom.window.close(); }
 });
+
+test('the inline gauge shares the text and progress selection and changes color without rotating for settings changes', () => {
+  const { dom, strip, elements } = fixture();
+  try {
+    const current = view(17);
+    current.snapshots.chatgpt.limits.push({ ...current.snapshots.chatgpt.limits[0]!, id: 'five-hour', percent: 84 });
+    strip.update(current);
+    const before = elements(), gauge = before.root.querySelector('.usage-gauge')!;
+    const needle = gauge.querySelector<SVGGElement>('.gauge-needle')!, arc = gauge.querySelector('.gauge-arc')!;
+    assert.equal(before.root.querySelector('img.brand-icon'), null);
+    assert.equal(before.root.querySelectorAll('svg.brand-icon').length, 1);
+    assert.equal(before.current.previousElementSibling, gauge);
+    assert.equal(before.current.textContent, '사용량: 84%');
+    assert.equal(before.progress.value, 84);
+    assert.equal(needle.style.transform, `rotate(${-90 + 84 * 1.8}deg)`);
+    assert.equal(arc.getAttribute('stroke'), '#FFAE32');
+    assert.equal(gauge.getAttribute('aria-hidden'), 'true');
+    assert.equal(gauge.querySelector('title,[role="status"]'), null);
+    const observer = new dom.window.MutationObserver(() => undefined);
+    observer.observe(gauge, { attributes: true, childList: true, characterData: true, subtree: true });
+    current.settings.warning = 50; current.settings.danger = 80;
+    strip.update(current);
+    const records = observer.takeRecords();
+    assert.equal(records.length, 1);
+    assert.equal(records[0]!.target, arc);
+    assert.equal(records[0]!.attributeName, 'stroke');
+    assert.equal(arc.getAttribute('stroke'), '#FF454E');
+    for (let i = 0; i < 20; i++) strip.mount();
+    assert.equal(observer.takeRecords().length, 0, 'time-only redraws leave an unchanged gauge untouched');
+    assert.equal(elements().root.querySelector('.usage-gauge'), gauge);
+    observer.disconnect();
+  } finally { dom.window.close(); }
+});
+
+test('the inline gauge follows the existing cache and unknown-state policy without inventing angles', () => {
+  const { dom, strip, elements } = fixture();
+  try {
+    const current = view(63);
+    current.snapshots.chatgpt.collectedAt = Date.now() - FRESH_MS;
+    current.snapshots.chatgpt.state = 'error';
+    current.snapshots.chatgpt.errorCode = 'network';
+    current.snapshots.chatgpt.failures = 1;
+    strip.update(current);
+    const gauge = elements().root.querySelector('.usage-gauge')!;
+    const needle = gauge.querySelector<SVGGElement>('.gauge-needle')!;
+    assert.equal(gauge.getAttribute('data-usage-state'), 'known');
+    assert.equal(needle.style.transform, `rotate(${-90 + 63 * 1.8}deg)`);
+    assert.equal(elements().progress.value, 63);
+    current.snapshots.chatgpt.failures = 2;
+    strip.update(current);
+    assert.equal(gauge.getAttribute('data-usage-state'), 'unknown');
+    assert.equal(needle.getAttribute('visibility'), 'hidden');
+    assert.equal(gauge.querySelector('.gauge-arc')!.getAttribute('stroke'), '#8893A0');
+    assert.equal(elements().progress.hidden, true);
+    assert.equal(elements().current.textContent, '사용량: 확인 불가');
+    const restored = view(0); strip.update(restored);
+    assert.equal(elements().root.querySelector('.usage-gauge'), gauge);
+    assert.equal(needle.getAttribute('visibility'), 'visible');
+    assert.equal(needle.style.transform, 'rotate(-90deg)');
+    assert.equal(needle.style.transition, 'none');
+    assert.equal(elements().current.textContent, '사용량: 0%');
+    restored.snapshots.chatgpt.limits[0]!.resetsAt = new Date(Date.now() - 1000).toISOString();
+    strip.update(restored);
+    assert.equal(gauge.getAttribute('data-usage-state'), 'unknown');
+    assert.equal(needle.getAttribute('visibility'), 'hidden');
+    strip.remove();
+    assert.equal(gauge.isConnected, false);
+  } finally { dom.window.close(); }
+});

@@ -228,7 +228,7 @@ test('popup keeps settings and diagnostics collapsed while removing persistent e
   } finally { dom.window.close(); }
 });
 
-test('display-only settings expose four page labels and preserve all stored badge preferences on save', async () => {
+test('display-only settings expose page labels and preserve unrelated preferences on save', async () => {
   const dom = new JSDOM(readFileSync(new URL('../src/popup/popup.html', import.meta.url), 'utf8'), { runScripts: 'outside-only' });
   const doc = dom.window.document, v = view();
   v.settings.defaultProvider = 'claude'; v.settings.followTab = true;
@@ -238,9 +238,9 @@ test('display-only settings expose four page labels and preserve all stored badg
   const flush = () => new Promise(resolve => setTimeout(resolve, 0));
   try {
     Object.assign(dom.window, { structuredClone, chrome: {
-      runtime: { getManifest: () => ({ version: '1.2.3' }), sendMessage: async (message: { type: string; strips?: View['settings']['strips'] }) => {
+      runtime: { getManifest: () => ({ version: '1.2.3' }), sendMessage: async (message: { type: string; strips?: View['settings']['strips']; warning?: number; danger?: number }) => {
         assert.notEqual(message.type, 'settings', 'display-only changes must not submit an old whole-settings object');
-        if (message.type === 'strips') { v.settings.strips = structuredClone(message.strips!); saved = structuredClone(v.settings); }
+        if (message.type === 'display-settings') { v.settings.strips = structuredClone(message.strips!); v.settings.warning = message.warning!; v.settings.danger = message.danger!; saved = structuredClone(v.settings); }
         return { ok: true, view: structuredClone(v) };
       } },
       storage: { onChanged: { addListener() {} } }

@@ -83,9 +83,10 @@ chrome.runtime.onMessage.addListener((input: unknown, sender, sendResponse: (rep
       const p = providerFromUrl(sender.url)!;
       if (!await chrome.permissions.contains({ origins: [ORIGINS[displayProvider(p)]] })) return { ok: false } as Reply;
     }
-    if (message.type === 'settings' || message.type === 'strips' || message.type === 'disable') {
+    if (message.type === 'settings' || message.type === 'strips' || message.type === 'display-settings' || message.type === 'disable') {
       await changeSettings(settings => {
         if (message.type === 'strips') settings.strips = { ...message.strips };
+        else if (message.type === 'display-settings') { settings.strips = { ...message.strips }; settings.warning = message.warning; settings.danger = message.danger; }
         else if (message.type === 'disable') settings.enabled[message.provider] = false;
         else Object.assign(settings, parseSettings(message.settings));
       });

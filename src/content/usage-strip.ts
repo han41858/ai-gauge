@@ -4,8 +4,8 @@ import { displayProvider, shouldShowStrip } from '../shared/display-policy';
 import { usageParts } from './usage-label';
 import { findComposerTarget, retainsComposerMarker, type ComposerTarget } from './selectors';
 import { effectiveSnapshot } from '../storage/snapshots';
-import { ICON_DATA_URL } from '../shared/icon';
 import { ticketDisplay } from '../shared/ticket-presentation';
+import { UsageGauge, USAGE_GAUGE_CSS } from './usage-gauge';
 export class UsageStrip {
   private host: HTMLElement | null = null;
   private view: View | null = null;
@@ -27,6 +27,8 @@ export class UsageStrip {
       || (this.target.input && (!this.target.input.isConnected || this.hidden(this.target.input)
         || !(this.target.scope ?? this.target.anchor).contains(this.target.input)))) { this.remove(); return; }
     const anchor = this.target!.anchor;
+    const snapshot = effectiveSnapshot(view.snapshots[displayProvider(p)]), limit = selectedLimit(snapshot, view.settings) ?? snapshot.limits[0];
+    const parts = usageParts(snapshot, limit);
     if (!this.host) {
       this.host = this.doc.createElement('div');
       this.host.id = 'ai-gauge-usage-strip';
@@ -34,6 +36,7 @@ export class UsageStrip {
       const root = this.host.attachShadow({ mode: 'closed' });
       const style = this.doc.createElement('style');
       style.textContent = `
+${USAGE_GAUGE_CSS}
 :host{display:block;position:static;box-sizing:border-box;width:100%;min-width:0;max-width:100%;height:30px;flex:0 0 auto;align-self:stretch;grid-column:1/-1;margin:0;border:0;background:transparent;font:12px/1.5 system-ui;color:inherit;container:ai-gauge/inline-size}
 .usage{display:flex;align-items:center;gap:14px;box-sizing:border-box;height:30px;padding:0 10px;border:0;background:transparent;overflow:hidden}
 .current{display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;min-width:0;max-width:100%;overflow:hidden}
@@ -63,14 +66,8 @@ progress::-moz-progress-bar{background:currentColor;border-radius:999px}
       this.progress.hidden = true;
       this.progress.setAttribute('aria-label', '사용량');
       current.append(this.currentText, this.progress);
-      if (ICON_DATA_URL) {
-        const icon = this.doc.createElement('img');
-        icon.src = ICON_DATA_URL; icon.alt = ''; icon.width = 20; icon.height = 20;
-        icon.draggable = false; icon.className = 'brand-icon';
-        icon.style.cssText = 'width:20px;height:20px;flex:0 0 20px;object-fit:contain';
-        icon.setAttribute('aria-hidden', 'true');
-        current.prepend(icon);
-      }
+      this.gauge = new UsageGauge(this.doc, parts.percent, view.settings);
+      current.prepend(this.gauge.element);
       this.resetText = this.doc.createElement('span'); this.resetText.className = 'reset';
       this.statusText = this.doc.createElement('span'); this.statusText.className = 'status'; this.statusText.hidden = true;
       row.append(current, this.resetText, this.statusText);
@@ -82,8 +79,7 @@ progress::-moz-progress-bar{background:currentColor;border-radius:999px}
       root.append(style, row);
     }
     if (anchor.nextElementSibling !== this.host) anchor.after(this.host);
-    const snapshot = effectiveSnapshot(view.snapshots[displayProvider(p)]), limit = selectedLimit(snapshot, view.settings) ?? snapshot.limits[0];
-    const parts = usageParts(snapshot, limit);
+    this.gauge!.update(parts.percent, view.settings);
     if (this.currentText!.textContent !== parts.current) this.currentText!.textContent = parts.current;
     if (this.resetText!.textContent !== parts.reset) this.resetText!.textContent = parts.reset;
     const status = parts.status ?? '';
@@ -121,9 +117,10 @@ progress::-moz-progress-bar{background:currentColor;border-radius:999px}
   private resetText: HTMLElement | null = null;
   private statusText: HTMLElement | null = null;
   private progress: HTMLProgressElement | null = null;
+  private gauge: UsageGauge | null = null;
   private ticketLink: HTMLAnchorElement | null = null;
   remove() {
     this.host?.remove(); this.host = null; this.target = null;
-    this.currentText = null; this.resetText = null; this.statusText = null; this.progress = null; this.ticketLink = null;
+    this.currentText = null; this.resetText = null; this.statusText = null; this.progress = null; this.ticketLink = null; this.gauge = null;
   }
 }

@@ -22,7 +22,6 @@ test('release build omits diagnostic UI and responses, and ZIP contains only roo
       assert.equal(icon.readUInt32BE(16), size); assert.equal(icon.readUInt32BE(20), size);
       assert.deepEqual(await readFile(join(dist, `assets/icon${size}.png`)), icon);
     }
-    const inlineLogo = await readFile('assets/logo-20x20.png');
     const html = await readFile(join(dist, 'popup.html'), 'utf8');
     assert.doesNotMatch(html, /id="diagnostics|진단 정보/);
     const settings = defaults(); settings.enabled.chatgpt = true;
@@ -52,7 +51,14 @@ test('release build omits diagnostic UI and responses, and ZIP contains only roo
     page.window.eval(await readFile(join(dist, 'content.js'), 'utf8'));
     await new Promise(resolve => setTimeout(resolve, 0));
     assert(page.window.document.getElementById('ai-gauge-usage-strip'));
-    assert.equal(usageRoot?.querySelector('img')?.getAttribute('src'), `data:image/png;base64,${inlineLogo.toString('base64')}`);
+    const gauge = usageRoot?.querySelector('svg.usage-gauge');
+    assert(gauge, 'Release content contains the local inline gauge');
+    assert.equal(gauge.getAttribute('viewBox'), '0 0 64 64');
+    assert.equal(gauge.getAttribute('width'), '20');
+    assert.equal(gauge.getAttribute('height'), '20');
+    assert.equal(gauge.querySelectorAll('.gauge-needle').length, 1);
+    assert.equal(gauge.querySelectorAll('image,script,foreignObject').length, 0);
+    assert.equal(usageRoot?.querySelector('img'), null, 'The strip gauge needs no image request');
     assert.equal(listeners.length, 1);
     let replies = 0;
     listeners[0]!({ type: 'display-diagnostics' }, { id: 'fixture', url: 'chrome-extension://fixture/popup.html' }, () => { replies++; });

@@ -8,10 +8,11 @@ const MANAGEMENT_URLS: Partial<Record<Provider, string>> = {
 const KIND_LABELS: Record<ResetTicketKind, string> = {
   full: '전체 한도', five_hour: '5시간 한도', weekly: '주간 한도', unspecified: '종류 확인 불가'
 };
+const DAYS = ['일', '월', '화', '수', '목', '금', '토'];
 const twoDigits = (n: number) => String(n).padStart(2, '0');
 export function ticketDate(value: string): string {
   const at = new Date(value);
-  return `${at.getMonth() + 1}/${at.getDate()} ${twoDigits(at.getHours())}:${twoDigits(at.getMinutes())}`;
+  return `${at.getMonth() + 1}/${at.getDate()}(${DAYS[at.getDay()]}) ${twoDigits(at.getHours())}:${twoDigits(at.getMinutes())}`;
 }
 function grantDetail(grant: ResetTicketGrant, now: number): string {
   const conditions: string[] = [];
@@ -31,7 +32,9 @@ export function ticketDisplay(snapshot: Snapshot, now = Date.now()) {
   const count = `🎫 초기화 티켓 ${summary.held}개`;
   const inline = expiry ? `🎫 초기화 티켓 ×${summary.held} · ${expiry}` : count;
   const entries = summary.grants.length === 1 && !summary.grants[0]!.expiresAt ? []
-    : summary.grants.map(grant => `${grant.count}개${grant.expiresAt ? ` · ${ticketDate(grant.expiresAt)} 만료` : ''}`);
+    : summary.grants.map(grant => grant.expiresAt
+      ? `${grant.count > 1 ? `${grant.count}개 · ` : ''}${ticketDate(grant.expiresAt)} 만료`
+      : `${grant.count}개`);
   const details = summary.grants.map(grant => grantDetail(grant, now)).join('\n');
   const action = '공식 사용량 관리 화면 열기 (새 탭)';
   return { href, count, entries, expiry, inline, details,

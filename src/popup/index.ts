@@ -3,7 +3,8 @@ import { request } from '../shared/contracts';
 import { renderCards } from './render';
 import { bindDiagnostics } from './diagnostics';
 import { DEVELOPMENT } from '../shared/build-mode';
-let view: View | null = null, busy = false, settingsDirty = false, viewDirty = false;
+import { parseUsageThresholds } from '../storage/settings';
+let view: View | null = null, busy = false, settingsDirty = false, viewDirty = false, settingsRevision = 0;
 const installedManifest = chrome.runtime.getManifest();
 const extensionVersion = installedManifest.version_name ?? installedManifest.version;
 document.getElementById('extension-version')!.textContent = `AI Gauge ${extensionVersion}`;
@@ -36,6 +37,8 @@ function render() {
   renderCards(cards, view, { enable: p => { void enable(p); }, disable: p => { void run(() => request({ type: 'disable', provider: p })); }, revoke: p => { void run(async () => { await chrome.permissions.remove({ origins: [ORIGINS[p]] }); return request({ type: 'view' }); }); } });
   if (!settingsDirty) {
     for (const p of PAGE_PROVIDERS) field(`strip-${p}`).checked = view.settings.strips[p];
+    field('gauge-warning').value = String(view.settings.warning);
+    field('gauge-danger').value = String(view.settings.danger);
   }
 }
 async function run(action: () => Promise<View>) {
@@ -62,12 +65,43 @@ document.getElementById('onboarding-form')!.addEventListener('submit', event => 
   event.preventDefault();
   void enableSelected(selectedProviders());
 });
-document.getElementById('settings-form')!.addEventListener('input', () => { settingsDirty = true; });
+const settingsFeedback = document.getElementById('settings-feedback')!;
+function showSettingsFeedback(text: string, invalid: string[] = []) {
+  settingsFeedback.setAttribute('role', invalid.length ? 'alert' : 'status');
+  settingsFeedback.setAttribute('aria-live', invalid.length ? 'assertive' : 'polite');
+  settingsFeedback.textContent = text;
+  for (const id of ['gauge-warning', 'gauge-danger']) {
+    if (invalid.includes(id)) field(id).setAttribute('aria-invalid', 'true');
+    else field(id).removeAttribute('aria-invalid');
+  }
+}
+document.getElementById('settings-form')!.addEventListener('input', () => {
+  settingsDirty = true; settingsRevision++; showSettingsFeedback('');
+});
 document.getElementById('settings-form')!.addEventListener('submit', event => {
   event.preventDefault();
+  if (busy) return;
+  const warning = field('gauge-warning').valueAsNumber, danger = field('gauge-danger').valueAsNumber;
+  const thresholds = parseUsageThresholds(warning, danger);
+  if (!thresholds) {
+    const invalid = ['gauge-warning', 'gauge-danger'].filter(id => {
+      const value = field(id).valueAsNumber;
+      return !Number.isInteger(value) || value < 1 || value > 99;
+    });
+    const order = invalid.length === 0;
+    const fields = order ? ['gauge-warning', 'gauge-danger'] : invalid;
+    showSettingsFeedback(order ? '주의 시작 사용률은 경고 시작 사용률보다 작아야 합니다.' : '주의·경고 시작 사용률은 1~99 사이의 정수로 입력해 주세요.', fields);
+    field(fields[0]!).focus();
+    return;
+  }
   const strips = Object.fromEntries(PAGE_PROVIDERS.map(p => [p, field(`strip-${p}`).checked])) as Settings['strips'];
-  settingsDirty = false;
-  void run(() => request({ type: 'strips', strips }));
+  const revision = settingsRevision;
+  showSettingsFeedback('');
+  void run(async () => {
+    const next = await request({ type: 'display-settings', strips, ...thresholds });
+    if (revision === settingsRevision) { settingsDirty = false; showSettingsFeedback('설정을 저장했습니다.'); }
+    return next;
+  });
 });
 chrome.storage.onChanged.addListener(() => { if (busy) viewDirty = true; else void run(() => request({ type: 'view' })); });
 // Render cache first; the worker independently refreshes only due enabled providers.

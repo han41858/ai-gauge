@@ -6,10 +6,8 @@ import { join } from 'node:path';
 const { values } = parseArgs({ options: { release: { type: 'boolean', default: false }, outdir: { type: 'string', default: 'dist' } } });
 const outdir = values.outdir;
 const version = buildVersion();
-const icon = await readFile('assets/logo-20x20.png');
 const options = { bundle: true, target: 'chrome120', legalComments: 'none',
-  define: { __AI_GAUGE_DEVELOPMENT__: String(!values.release),
-    __AI_GAUGE_ICON__: JSON.stringify(`data:image/png;base64,${icon.toString('base64')}`) } };
+  define: { __AI_GAUGE_DEVELOPMENT__: String(!values.release) } };
 await rm(outdir, { recursive: true, force: true });
 await mkdir(outdir, { recursive: true });
 await build({ ...options, entryPoints: { background: 'src/background/index.ts', popup: 'src/popup/index.ts' }, outdir, format: 'esm' });

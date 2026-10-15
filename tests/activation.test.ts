@@ -32,7 +32,7 @@ function worker(initialOrigins: string[] = [], initialStorage: Record<string, un
   };
   const stored: Record<string, unknown> = structuredClone(initialStorage), permissions = new Set(initialOrigins);
   const registrations: chrome.scripting.RegisteredContentScript[] = [];
-  const requests: Provider[] = [], messages: unknown[] = [];
+  const requests: Provider[] = [], messages: unknown[] = [], notifications: Array<{ tabId: number; message: unknown }> = [];
   const tabs = [{ id: 1, url: 'https://chatgpt.com/', active: true }, { id: 2, url: 'https://claude.ai/new', active: false }, { id: 3, url: 'https://gemini.google.com/app', active: false }] as chrome.tabs.Tab[];
   const errors = new Map<Provider, { status: number; retryAfter: string | null }>();
   let badge = '', alarm: unknown = null, holdCollection: Promise<void> | null = null;
@@ -46,7 +46,7 @@ function worker(initialOrigins: string[] = [], initialStorage: Record<string, un
     alarms: { get: async () => alarm, create: async (_name: string, value: unknown) => { alarm = value; }, onAlarm: events.alarm },
     tabs: {
       query: async (query: { url?: string; active?: boolean }) => tabs.filter(tab => (!query.url || tab.url!.startsWith(query.url.slice(0, -1))) && (!query.active || tab.active)),
-      get: async (id: number) => tabs.find(tab => tab.id === id), sendMessage: async () => undefined, onActivated: events.activated, onUpdated: events.updated
+      get: async (id: number) => tabs.find(tab => tab.id === id), sendMessage: async (tabId: number, message: unknown) => { notifications.push({ tabId, message: structuredClone(message) }); }, onActivated: events.activated, onUpdated: events.updated
     },
     windows: { onFocusChanged: events.focus },
     action: { setBadgeText: async ({ text }: { text: string }) => { badge = text; }, setBadgeBackgroundColor: async () => undefined, setBadgeTextColor: async () => undefined, setTitle: async () => undefined },
@@ -72,7 +72,7 @@ function worker(initialOrigins: string[] = [], initialStorage: Record<string, un
   };
   runInNewContext(backgroundBundle, { chrome: api, URL, setTimeout, clearTimeout });
   return {
-    api, events, permissions, registrations, requests, messages, send,
+    api, events, permissions, registrations, requests, messages, notifications, send,
     ready: () => waitFor(() => !!stored['settings:v2'] && badge !== ''),
     settings: () => structuredClone(stored['settings:v2']) as Settings,
     storage: () => structuredClone(stored),
@@ -201,6 +201,62 @@ test('visibility and disable patches accept only their exact fields and cannot b
   ]) assert.equal(parseMessage(malformed), null);
 });
 
+test('display settings accept only validated thresholds and visibility fields from the popup', () => {
+  const raw = { type: 'display-settings', strips: defaults().strips, warning: 70, danger: 90 };
+  const message = parseMessage(raw);
+  assert(message); assert(authorized(message, popupSender, popupSender.id));
+  assert.equal(authorized(message, { id: popupSender.id, url: 'https://claude.ai/new', frameId: 0,
+    tab: { id: 2, url: 'https://claude.ai/new' } } as chrome.runtime.MessageSender, popupSender.id), false);
+  assert.equal(authorized(message, { ...popupSender, id: 'other' }, popupSender.id), false);
+  assert.equal(authorized(message, { ...popupSender, url: 'chrome-extension://activation-fixture/other.html' }, popupSender.id), false);
+  for (const malformed of [
+    { ...raw, warning: 0 }, { ...raw, danger: 100 }, { ...raw, warning: 70.5 }, { ...raw, danger: NaN },
+    { ...raw, warning: 90 }, { ...raw, warning: 95 }, { ...raw, warning: '70' }, { ...raw, danger: undefined },
+    { ...raw, enabled: defaults().enabled }, { ...raw, permissions: { claude: true } },
+    { ...raw, strips: { chatgpt: true } }, { ...raw, strips: { ...raw.strips, claude: 'yes' } },
+    { ...raw, strips: { ...raw.strips, extra: true } }
+  ]) assert.equal(parseMessage(malformed), null);
+  assert.deepEqual(parseMessage({ ...raw, warning: 1, danger: 99 }), { ...raw, warning: 1, danger: 99 });
+});
+
+test('display settings and queued disable writes preserve each other and do not grant revoked permissions', async () => {
+  const settings = defaults(); settings.enabled = { chatgpt: true, claude: true, gemini: false };
+  const background = worker([ORIGINS.chatgpt, ORIGINS.claude], { 'settings:v2': settings, 'migration:shared-chatgpt:v2': true });
+  await background.ready();
+  const strips = { ...settings.strips, codex: false };
+  const display = background.send({ type: 'display-settings', strips, warning: 45, danger: 80 });
+  const disabled = background.send({ type: 'disable', provider: 'chatgpt' });
+  background.revoke(ORIGINS.claude);
+  const replies = await Promise.all([display, disabled]);
+  assert(replies.every(reply => reply.ok));
+  const current = background.settings();
+  assert.deepEqual(current.enabled, { chatgpt: false, claude: true, gemini: false });
+  assert.deepEqual(current.strips, strips); assert.equal(current.warning, 45); assert.equal(current.danger, 80);
+  assert.equal(background.permissions.has(ORIGINS.claude), false);
+  assert.equal(background.permissions.has(ORIGINS.gemini), false);
+  assert.equal(current.defaultProvider, settings.defaultProvider);
+  assert.deepEqual(current.selectedLimit, settings.selectedLimit); assert.equal(current.followTab, settings.followTab);
+  const before = background.storage();
+  assert.equal((await background.send({ type: 'display-settings', strips, warning: 80, danger: 45 })).ok, false);
+  assert.deepEqual(background.settings(), current, 'invalid threshold writes must not modify saved settings');
+  assert.deepEqual(background.storage()['settings:v2'], before['settings:v2']);
+  const legacy = await background.send({ type: 'strips', strips: settings.strips });
+  assert(legacy.ok); assert.equal(background.settings().warning, 45); assert.equal(background.settings().danger, 80);
+});
+
+test('saving gauge thresholds publishes invalidation to every permitted service tab without changing activation', async () => {
+  const settings = defaults(); settings.enabled = { chatgpt: true, claude: true, gemini: false };
+  const background = worker(Object.values(ORIGINS), { 'settings:v2': settings, 'migration:shared-chatgpt:v2': true });
+  await background.ready();
+  background.notifications.length = 0;
+  const reply = await background.send({ type: 'display-settings', strips: settings.strips, warning: 40, danger: 60 });
+  assert(reply.ok);
+  assert.deepEqual([...new Set(background.notifications.filter(item => (item.message as { type: string }).type === 'invalidate').map(item => item.tabId))].sort(), [1, 2, 3]);
+  assert.deepEqual(background.settings().enabled, settings.enabled);
+  assert.deepEqual(structuredClone(reply.view.permissions), { chatgpt: true, claude: true, gemini: true });
+  assert.equal(reply.view.settings.warning, 40); assert.equal(reply.view.settings.danger, 60);
+});
+
 test('a single permission click activates and collects in the worker even if the popup closes before its promise resolves', async () => {
   const background = worker(); await background.ready();
   let insideClick = false, requestedDuringClick = false;
@@ -301,7 +357,7 @@ for (const provider of ['chatgpt', 'gemini'] as const) for (const interruption o
   });
 }
 
-for (const operation of ['strips', 'disable'] as const) {
+for (const operation of ['display-settings', 'disable'] as const) {
   test(`popup ${operation} changes preserve a concurrent activation instead of overwriting its enabled state`, async () => {
     const background = worker([ORIGINS.claude]); await background.ready();
     if (operation === 'disable') await background.send({ type: 'enable', provider: 'claude' });
@@ -324,10 +380,12 @@ for (const operation of ['strips', 'disable'] as const) {
       await waitFor(() => dom.window.document.querySelectorAll('.card').length === 3);
       const before = background.settings();
       holdNext = true;
-      if (operation === 'strips') {
+      if (operation === 'display-settings') {
         const checkbox = dom.window.document.getElementById('strip-chatgpt') as HTMLInputElement;
         checkbox.checked = false;
         checkbox.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+        (dom.window.document.getElementById('gauge-warning') as HTMLInputElement).value = '55';
+        (dom.window.document.getElementById('gauge-danger') as HTMLInputElement).value = '85';
         dom.window.document.getElementById('settings-form')!.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
       } else {
         [...dom.window.document.querySelectorAll<HTMLButtonElement>('[data-provider="claude"] button')]
@@ -338,11 +396,14 @@ for (const operation of ['strips', 'disable'] as const) {
       await waitFor(() => background.snapshot('chatgpt')?.state === 'ok');
       assert.equal(background.settings().enabled.chatgpt, true);
       release!();
-      await waitFor(() => operation === 'strips' ? background.settings().strips.chatgpt === false : !background.settings().enabled.claude);
+      await waitFor(() => operation === 'display-settings' ? background.settings().strips.chatgpt === false : !background.settings().enabled.claude);
       const current = background.settings();
       assert.equal(current.enabled.chatgpt, true, 'changing another setting must preserve the newly activated provider');
       assert.equal(current.enabled.gemini, before.enabled.gemini);
-      if (operation === 'strips') assert.equal(current.enabled.claude, before.enabled.claude);
+      if (operation === 'display-settings') {
+        assert.equal(current.enabled.claude, before.enabled.claude);
+        assert.equal(current.warning, 55); assert.equal(current.danger, 85);
+      }
       else assert.deepEqual(current.strips, before.strips);
       assert(!background.messages.some(message => (message as { type: string }).type === 'settings'), 'popup edits must use narrow patches');
     } finally { release?.(); dom.window.close(); }

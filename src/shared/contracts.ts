@@ -1,9 +1,9 @@
 import { isProvider, providerFromUrl, PROVIDERS, PAGE_PROVIDERS, type Provider, type Settings, type View } from './types';
 import { record } from './validation';
-import { isSettings } from '../storage/settings';
+import { isSettings, parseUsageThresholds } from '../storage/settings';
 import { parseSnapshot } from '../storage/snapshots';
 import { canRefreshFromPage } from './display-policy';
-export type Message = { type: 'view' } | { type: 'context'; provider: Provider } | { type: 'enable'; provider: Provider } | { type: 'enable-many'; providers: Provider[] } | { type: 'disable'; provider: Provider } | { type: 'strips'; strips: Settings['strips'] } | { type: 'refresh'; provider: Provider; trigger: 'manual' | 'event' } | { type: 'settings'; settings: Settings };
+export type Message = { type: 'view' } | { type: 'context'; provider: Provider } | { type: 'enable'; provider: Provider } | { type: 'enable-many'; providers: Provider[] } | { type: 'disable'; provider: Provider } | { type: 'strips'; strips: Settings['strips'] } | { type: 'display-settings'; strips: Settings['strips']; warning: number; danger: number } | { type: 'refresh'; provider: Provider; trigger: 'manual' | 'event' } | { type: 'settings'; settings: Settings };
 export type Reply = { ok: true; view: View } | { ok: false };
 export function parseMessage(input: unknown): Message | null {
   const r = record(input);
@@ -20,6 +20,12 @@ export function parseMessage(input: unknown): Message | null {
     const strips = record(r.strips);
     if (strips && Object.keys(strips).length === PAGE_PROVIDERS.length && PAGE_PROVIDERS.every(p => typeof strips[p] === 'boolean')) {
       return { type: 'strips', strips: Object.fromEntries(PAGE_PROVIDERS.map(p => [p, strips[p]])) as Settings['strips'] };
+    }
+  }
+  if (r.type === 'display-settings' && keys === 'danger,strips,type,warning') {
+    const strips = record(r.strips), thresholds = parseUsageThresholds(r.warning, r.danger);
+    if (thresholds && strips && Object.keys(strips).length === PAGE_PROVIDERS.length && PAGE_PROVIDERS.every(p => typeof strips[p] === 'boolean')) {
+      return { type: 'display-settings', strips: Object.fromEntries(PAGE_PROVIDERS.map(p => [p, strips[p]])) as Settings['strips'], ...thresholds };
     }
   }
   if (r.type === 'refresh' && keys === 'provider,trigger,type' && isProvider(r.provider) && (r.trigger === 'manual' || r.trigger === 'event')) return { type: 'refresh', provider: r.provider, trigger: r.trigger };

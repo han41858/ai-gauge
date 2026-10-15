@@ -60,10 +60,10 @@ test('popup ticket links show held counts and every local expiry without current
     assert.equal(links[0]!.querySelector('.ticket-count')!.textContent, '🎫 초기화 티켓 2개');
     assert.equal(links[1]!.querySelector('.ticket-count')!.textContent, '🎫 초기화 티켓 3개');
     assert.deepEqual([...links[0]!.querySelectorAll('.ticket-expiry')].map(row => row.textContent), [
-      `1개 · ${ticketDate(iso(24 * hour))} 만료`, `1개 · ${ticketDate(iso(48 * hour))} 만료`
+      `${ticketDate(iso(24 * hour))} 만료`, `${ticketDate(iso(48 * hour))} 만료`
     ]);
     assert.deepEqual([...links[1]!.querySelectorAll('.ticket-expiry')].map(row => row.textContent), [
-      `1개 · ${ticketDate(iso(24 * hour))} 만료`, `2개 · ${ticketDate(iso(48 * hour))} 만료`
+      `${ticketDate(iso(24 * hour))} 만료`, `2개 · ${ticketDate(iso(48 * hour))} 만료`
     ]);
     assert.doesNotMatch(cards.textContent!, /지금 사용 가능/);
     assert.match(links[1]!.title, /전체 한도 1개/);
@@ -138,7 +138,7 @@ test('popup local clock excludes expired grants and recalculates held count with
     assert.equal(cards.querySelectorAll('[data-provider="chatgpt"] .ticket-expiry').length, 2);
     renderCards(cards, v, noop, now + 15_000);
     assert.match(cards.querySelector('[data-provider="chatgpt"] .ticket-count')!.textContent!, /티켓 1개/);
-    assert.deepEqual([...cards.querySelectorAll('[data-provider="chatgpt"] .ticket-expiry')].map(row => row.textContent), [`1개 · ${ticketDate(iso(60_000))} 만료`]);
+    assert.deepEqual([...cards.querySelectorAll('[data-provider="chatgpt"] .ticket-expiry')].map(row => row.textContent), [`${ticketDate(iso(60_000))} 만료`]);
     renderCards(cards, v, noop, now + 60_000);
     assert.equal(cards.querySelector('[data-provider="chatgpt"] .ticket-info'), null);
     assert.equal(cards.querySelector('[data-provider="chatgpt"] progress')!.getAttribute('value'), '42');

@@ -25,12 +25,14 @@ for (const size of [16, 32, 48, 128]) {
   assert.equal(icon.readUInt32BE(16), size); assert.equal(icon.readUInt32BE(20), size);
   assert.deepEqual(await readFile(`dist/assets/icon${size}.png`), icon);
 }
-const inlineLogo = await readFile('assets/logo-20x20.png');
-assert.equal(inlineLogo.readUInt32BE(16), 20); assert.equal(inlineLogo.readUInt32BE(20), 20);
-assert((await readFile('dist/content.js', 'utf8')).includes(`data:image/png;base64,${inlineLogo.toString('base64')}`), 'Inline icon must use the supplied 20px image unchanged');
+const content = await readFile('dist/content.js', 'utf8');
+assert(content.includes('gauge-needle') && content.includes('gauge-arc') && content.includes('prefers-reduced-motion'), 'Content must include the local animated SVG gauge and reduced-motion support');
 const source = (await Promise.all(['background.js', 'content.js', 'popup.js', 'popup.html'].map(file => readFile(`dist/${file}`, 'utf8')))).join('\n');
 const urls = source.match(/https?:\/\/[^\s"'`<>]+/g) ?? [];
-for (const url of urls) assert(['chatgpt.com', 'claude.ai', 'gemini.google.com'].includes(new URL(url).hostname), `Unexpected external destination: ${url}`);
+for (const url of urls) {
+  if (url === 'http://www.w3.org/2000/svg') continue; // DOM namespace, not a network request.
+  assert(['chatgpt.com', 'claude.ai', 'gemini.google.com'].includes(new URL(url).hostname), `Unexpected external destination: ${url}`);
+}
 for (const pattern of [/vendor-ai\//, /\/api\/snapshots/, /googletagmanager|google-analytics|telemetry|posthog|sentry/i, /chrome\.cookies/, /chrome\.storage\.sync/, /\beval\s*\(/, /new Function\s*\(/, /innerHTML/]) assert(!pattern.test(source), `Unexpected built capability: ${pattern}`);
 assert(source.includes('/backend-api/wham/usage'));
 assert(source.includes('/backend-api/wham/rate-limit-reset-credits') && source.includes('cedar_ember=1'), 'Read-only ticket collection must be present for ChatGPT and Claude');

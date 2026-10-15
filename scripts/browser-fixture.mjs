@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { checkGaugeMatchesUsage, checkGaugeMotion } from './gauge-browser-checks.mjs';
 import { spawn } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -68,7 +69,7 @@ try {
       grants: [86400000, 172800000].map(offset => ({ kind: 'full', count: 1, startsAt: null, expiresAt: new Date(Date.now() + offset).toISOString(),
         usableNow: true, clears: ['five_hour', 'seven_day'], requiresLimit: false, blocked: false, selected: null })) }
   };
-  await cdp('Page.addScriptToEvaluateOnNewDocument', { source: `window.__fixture=${JSON.stringify(fixture)};window.__runtimeListeners=[];window.__storageListeners=[];window.chrome={runtime:{id:'fixture',getManifest:()=>(${JSON.stringify(builtManifest)}),sendMessage:async m=>{if(m.type==='settings')window.__fixture.settings=m.settings;if(m.type==='strips')window.__fixture.settings.strips=m.strips;if(m.type==='disable')window.__fixture.settings.enabled[m.provider]=false;if(m.type==='enable')window.__fixture.settings.enabled[m.provider]=true;if(m.type==='enable-many')for(const p of m.providers)window.__fixture.settings.enabled[p]=true;return {ok:true,view:structuredClone(window.__fixture)}},onMessage:{addListener(f){window.__runtimeListeners.push(f)},removeListener(f){window.__runtimeListeners=window.__runtimeListeners.filter(x=>x!==f)}}},storage:{onChanged:{addListener(f){window.__storageListeners.push(f)},removeListener(f){window.__storageListeners=window.__storageListeners.filter(x=>x!==f)}}},permissions:{request:async({origins})=>{(window.__permissionRequests??=[]).push(origins);for(const [p,origin] of Object.entries({chatgpt:'https://chatgpt.com/*',claude:'https://claude.ai/*',gemini:'https://gemini.google.com/*'}))if(origins.includes(origin))window.__fixture.permissions[p]=true;return true;},remove:async()=>true}};` }, session);
+  await cdp('Page.addScriptToEvaluateOnNewDocument', { source: `window.__fixture=${JSON.stringify(fixture)};window.__runtimeListeners=[];window.__storageListeners=[];window.chrome={runtime:{id:'fixture',getManifest:()=>(${JSON.stringify(builtManifest)}),sendMessage:async m=>{if(m.type==='settings')window.__fixture.settings=m.settings;if(m.type==='strips')window.__fixture.settings.strips=m.strips;if(m.type==='display-settings'){(window.__displaySettingsRequests??=[]).push(m);window.__fixture.settings.strips=m.strips;window.__fixture.settings.warning=m.warning;window.__fixture.settings.danger=m.danger;}if(m.type==='disable')window.__fixture.settings.enabled[m.provider]=false;if(m.type==='enable')window.__fixture.settings.enabled[m.provider]=true;if(m.type==='enable-many')for(const p of m.providers)window.__fixture.settings.enabled[p]=true;return {ok:true,view:structuredClone(window.__fixture)}},onMessage:{addListener(f){window.__runtimeListeners.push(f)},removeListener(f){window.__runtimeListeners=window.__runtimeListeners.filter(x=>x!==f)}}},storage:{onChanged:{addListener(f){window.__storageListeners.push(f)},removeListener(f){window.__storageListeners=window.__storageListeners.filter(x=>x!==f)}}},permissions:{request:async({origins})=>{(window.__permissionRequests??=[]).push(origins);for(const [p,origin] of Object.entries({chatgpt:'https://chatgpt.com/*',claude:'https://claude.ai/*',gemini:'https://gemini.google.com/*'}))if(origins.includes(origin))window.__fixture.permissions[p]=true;return true;},remove:async()=>true}};` }, session);
   await cdp('Emulation.setTimezoneOverride', { timezoneId: 'Asia/Seoul' }, session);
   await cdp('Emulation.setDeviceMetricsOverride', { width: 800, height: 1000, deviceScaleFactor: 1, mobile: false }, session);
   await cdp('Page.navigate', { url: `http://127.0.0.1:${port}/popup.html` }, session);
@@ -102,7 +103,7 @@ try {
     { href: 'https://claude.ai/new#settings/usage', target: '_blank', rel: 'noopener noreferrer', tabIndex: 0, text: '🎫 초기화 티켓 2개' }
   ], 'Compact popup exposes held tickets only for ChatGPT and Claude as official native links');
   assert.doesNotMatch(state.text, /지금 사용 가능/);
-  assert(await evaluate(`['chatgpt','claude'].every(provider=>{const link=document.querySelector('[data-provider="'+provider+'"] .ticket-info'),rows=[...link.querySelectorAll('.ticket-expiry')];return rows.length===2&&rows.every((row,i)=>{const date=new Date(window.__fixture.snapshots[provider].tickets.inventory.grants[i].expiresAt),label='1개 · '+(date.getMonth()+1)+'/'+date.getDate()+' '+String(date.getHours()).padStart(2,'0')+':'+String(date.getMinutes()).padStart(2,'0')+' 만료';return row.textContent===label&&link.getAttribute('aria-label').includes(label);});})`), 'Popup presents each ticket expiry separately in local time and accessible labels');
+  assert(await evaluate(`['chatgpt','claude'].every(provider=>{const link=document.querySelector('[data-provider="'+provider+'"] .ticket-info'),rows=[...link.querySelectorAll('.ticket-expiry')];return rows.length===2&&rows.every((row,i)=>{const date=new Date(window.__fixture.snapshots[provider].tickets.inventory.grants[i].expiresAt),label=(date.getMonth()+1)+'/'+date.getDate()+'('+['일','월','화','수','목','금','토'][date.getDay()]+') '+String(date.getHours()).padStart(2,'0')+':'+String(date.getMinutes()).padStart(2,'0')+' 만료';return row.textContent===label&&link.getAttribute('aria-label').includes(label);});})`), 'Popup presents each local expiry with its weekday, without a redundant single-ticket count, including accessible labels');
   assert.equal(await evaluate(`document.querySelector('[data-provider="chatgpt"] .percent').textContent`), '사용량: 42%');
   assert.equal(await evaluate(`document.querySelector('[data-provider="chatgpt"] .limit-line > :first-child').textContent`), '7일', 'The ChatGPT card title is not repeated in the usage window label');
   assert.match(await evaluate(`document.querySelector('[data-provider="chatgpt"] .reset').textContent`), /^🕒 사용량 초기화: \d{1,2}\/\d{1,2}\([일월화수목금토]\) \d{2}:\d{2}, \d+h 남음$/);
@@ -122,10 +123,17 @@ try {
   assert.equal(await evaluate(`document.querySelector('[data-provider="gemini"] .plan-badge')?.textContent`), 'AI Ultra', 'A newly collected plan replaces the old label without duplicate badges');
   assert.equal(await evaluate(`document.querySelectorAll('.plan-badge').length`), 2);
   await cdp('Emulation.setDeviceMetricsOverride', { width: 600, height: 1000, deviceScaleFactor: 1, mobile: false }, session);
-  await evaluate('document.getElementById("preferences").open=true;document.getElementById("strip-claude").checked=false;document.getElementById("settings-form").dispatchEvent(new Event("submit",{bubbles:true,cancelable:true}))');
+  await evaluate('document.getElementById("preferences").open=true');
+  assert.deepEqual(await evaluate("[document.getElementById('gauge-warning').valueAsNumber,document.getElementById('gauge-danger').valueAsNumber]"), [70,90]);
+  await evaluate("document.getElementById('gauge-warning').value='90';document.getElementById('gauge-danger').value='70';document.getElementById('settings-form').dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('#settings-form button').click()");
+  assert.equal(await evaluate('(window.__displaySettingsRequests??[]).length'), 0, 'An inverted threshold pair is not saved');
+  assert(await evaluate("document.querySelector('[aria-invalid=\"true\"]')!==null"), 'Invalid thresholds expose an accessible error');
+  await evaluate('document.getElementById("gauge-warning").value="40";document.getElementById("gauge-danger").value="60";document.getElementById("strip-claude").checked=false;document.getElementById("settings-form").dispatchEvent(new Event("input",{bubbles:true}));document.getElementById("settings-form").dispatchEvent(new Event("submit",{bubbles:true,cancelable:true}))');
+  for(let i=0;i<20;i++){if(await evaluate('window.__fixture.settings.warning===40&&window.__fixture.settings.danger===60'))break;await pause(50);}
+  assert.deepEqual(await evaluate('[window.__fixture.settings.warning,window.__fixture.settings.danger]'),[40,60], 'Valid custom thresholds save with the existing strip preferences');
   for (let i = 0; i < 20; i++) { if (await evaluate('window.__fixture.settings.strips.claude') === false) break; await pause(100); }
   assert.equal(await evaluate('window.__fixture.settings.strips.claude'), false);
-  assert.equal(await evaluate('window.__fixture.settings.warning'), 70, 'Saving display preferences leaves internal threshold settings intact');
+  assert.equal(await evaluate('window.__fixture.settings.warning'), 40, 'Saving display preferences includes the custom gauge warning threshold');
   assert.deepEqual(await evaluate('[...document.querySelectorAll("#strip-settings label")].map(node=>node.textContent)'), ['ChatGPT 입력창에 표시', 'Codex 입력창에 표시', 'Claude 입력창에 표시', 'Gemini 입력창에 표시']);
   assert.deepEqual(await evaluate('[...document.querySelectorAll(".card h2")].map(node=>node.textContent)'), ['ChatGPT', 'Claude', 'Gemini']);
   assert.equal(await evaluate('document.querySelectorAll(".card details,.card select,.card .time,#default-provider").length'), 0);
@@ -187,6 +195,7 @@ try {
   let count = 0;
   for (let i = 0; i < 20; i++) { count = await evaluate('document.querySelectorAll("#ai-gauge-usage-strip").length'); if (count === 1) break; await pause(100); }
   assert.equal(count, 1); assert.equal(await evaluate('document.querySelector("form").nextElementSibling.id'), 'ai-gauge-usage-strip');
+  await checkGaugeMatchesUsage(evaluate,pause);
   assert.equal(await evaluate(`window.__fixtureUsageRoot.querySelector('.tickets').href`), 'https://chatgpt.com/settings/usage?tab=overview', 'Codex uses the same ChatGPT ticket link');
   assert.equal(await evaluate('document.querySelector("textarea").value'), 'private synthetic prompt');
   await evaluate(content); assert.equal(await evaluate('document.querySelectorAll("#ai-gauge-usage-strip").length'), 1);
@@ -280,9 +289,11 @@ try {
   await evaluate(`window.__fixture.snapshots.claude.state='error';window.__fixture.snapshots.claude.errorCode='network';window.__fixture.snapshots.claude.failures=1;for(const fn of window.__runtimeListeners)fn({type:'invalidate'},{id:'fixture'});`);
   await pause(400);
   assert(await evaluate(`window.__fixtureUsageRoot.querySelector('progress')===window.__claudeProgress&&!window.__claudeProgress.hidden&&window.__claudeProgress.value===63&&window.__fixtureUsageRoot.querySelector('.status').hidden`), 'One temporary network failure retains the same reliable cached progress');
+  await checkGaugeMatchesUsage(evaluate,pause);
   await evaluate(`window.__fixture.snapshots.claude.failures=2;for(const fn of window.__runtimeListeners)fn({type:'invalidate'},{id:'fixture'});`);
   for (let i = 0; i < 20; i++) { if (await evaluate('window.__claudeProgress.hidden')) break; await pause(50); }
   assert(await evaluate(`window.__fixtureUsageRoot.querySelector('progress')===window.__claudeProgress&&window.__claudeProgress.hidden&&!window.__claudeProgress.hasAttribute('value')&&!window.__fixtureUsageRoot.querySelector('.status').hidden&&!/사용량: (63|0)%/.test(document.getElementById('ai-gauge-usage-strip').getAttribute('aria-label'))`), 'Repeated collection failures clear the numeric value without replacing its progress node or inventing zero usage');
+  assert(await evaluate(`getComputedStyle(window.__fixtureUsageRoot.querySelector('.gauge-needle')).visibility==='hidden'&&window.__fixtureUsageRoot.querySelector('.usage-gauge').dataset.usageState==='unknown'`), 'Unreliable data shows a neutral gauge with no visible needle');
   await evaluate(`window.__fixture.snapshots.claude.state='ok';window.__fixture.snapshots.claude.errorCode=null;window.__fixture.snapshots.claude.failures=0;window.__fixture.snapshots.claude.limits[0].resetsAt=new Date(Date.now()+1000).toISOString();for(const grant of window.__fixture.snapshots.claude.tickets.inventory.grants)grant.expiresAt=new Date(Date.now()+1000).toISOString();for(const fn of window.__storageListeners)fn({},'local');`);
   for (let i = 0; i < 20; i++) { if (await evaluate('!window.__claudeProgress.hidden')) break; await pause(25); }
   assert(await evaluate(`!window.__claudeProgress.hidden&&window.__claudeProgress.value===63`), 'A reliable result restores the existing progress before its reset');
@@ -304,6 +315,7 @@ try {
   let ordinary;
   for (let i = 0; i < 20; i++) { ordinary = await evaluate('document.querySelector("#ai-gauge-usage-strip")?.getAttribute("aria-label")??""'); if (ordinary.includes('사용량: 42%')) break; await pause(100); }
   assert.match(ordinary, /^사용량: 42%  🕒 사용량 초기화: \d{1,2}\/\d{1,2}\([일월화수목금토]\) \d{2}:\d{2}, \d+h 남음$/); assert.doesNotMatch(ordinary, /0d|Chat|Work|Codex|공유|모델별|AI Gauge/);
+  await checkGaugeMotion({ cdp, session, evaluate, pause });
   await cdp('Emulation.setDeviceMetricsOverride', { width: 1200, height: 1000, deviceScaleFactor: 1, mobile: false }, session);
   assert(await evaluate(`(()=>{const root=window.__fixtureUsageRoot,link=root.querySelector('.tickets'),reset=root.querySelector('.reset'),host=document.getElementById('ai-gauge-usage-strip');return !link.hidden&&getComputedStyle(link).display!=='none'&&link.getBoundingClientRect().left>reset.getBoundingClientRect().right&&link.getBoundingClientRect().right<=host.getBoundingClientRect().right&&host.getBoundingClientRect().height===30&&root.querySelector('.brand-icon').getBoundingClientRect().width===20&&getComputedStyle(link).fontSize==='12px';})()`), 'Wide composer adds the ticket link without changing usage, reset, icon, 12px text or 30px strip geometry');
   const ticketStripScreenshot = await cdp('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false }, session);
@@ -315,7 +327,7 @@ try {
   assert.equal(await evaluate('window.__ticketActivated'), 'https://chatgpt.com/settings/usage?tab=overview', 'Keyboard activation resolves to the fixed official usage page (navigation prevented in fixture)');
   await cdp('Emulation.setDeviceMetricsOverride', { width: 900, height: 1000, deviceScaleFactor: 1, mobile: false }, session);
   assert(await evaluate(`getComputedStyle(window.__fixtureUsageRoot.querySelector('.tickets')).display==='none'&&getComputedStyle(window.__fixtureUsageRoot.querySelector('.reset')).display!=='none'`), 'Tickets hide before reset details when the composer narrows');
-  assert(await evaluate(`(()=>{const root=window.__fixtureUsageRoot,img=root.querySelector('.brand-icon'),text=root.querySelector('.current span');return img.complete&&img.naturalWidth===20&&img.getBoundingClientRect().width===20&&img.getBoundingClientRect().right<text.getBoundingClientRect().left})()`), 'Supplied icon loads at the start of the usage strip without a remote image request');
+  assert(await evaluate(`(()=>{const root=window.__fixtureUsageRoot,gauge=root.querySelector('svg.usage-gauge'),text=root.querySelector('.current span');return gauge.getAttribute('viewBox')==='0 0 64 64'&&gauge.getBoundingClientRect().width===20&&gauge.getBoundingClientRect().height===20&&gauge.getBoundingClientRect().right<text.getBoundingClientRect().left&&!gauge.querySelector('image,script,foreignObject')})()`), 'Local inline gauge occupies 20px at the start of the usage strip without an image request');
   assert(await evaluate(`(()=>{const root=window.__fixtureUsageRoot,bar=root.querySelector('progress'),current=root.querySelector('.current').getBoundingClientRect(),reset=root.querySelector('.reset').getBoundingClientRect();return document.getElementById('ai-gauge-usage-strip').shadowRoot===null&&!bar.hidden&&bar.value===42&&bar.max===100&&bar.getBoundingClientRect().width===80&&bar.getBoundingClientRect().height===6&&reset.left-current.right>=13&&Math.abs(current.top-reset.top)<2;})()`), 'Small real-value progress and spacing replace the comma on a wide composer');
   const stripScreenshot = await cdp('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false }, session);
   await writeFile(join(tmpdir(), 'ai-gauge-strip-fixture.png'), Buffer.from(stripScreenshot.data, 'base64'));
@@ -365,6 +377,7 @@ try {
   await evaluate(`window.__fixture.snapshots.gemini.limits.find(limit=>limit.id==='gemini:2').percent=63;for(const fn of window.__runtimeListeners)fn({type:'invalidate'},{id:'fixture'});`);
   for (let i = 0; i < 20; i++) { if (await evaluate('window.__geminiProgress.value===63')) break; await pause(50); }
   assert(await evaluate(`window.__fixtureUsageRoot.querySelector('progress')===window.__geminiProgress&&window.__geminiProgress.value===63&&window.__geminiStrip.getAttribute('aria-label').includes('사용량: 63%')`), 'Gemini runtime invalidation updates its own visible usage');
+  await checkGaugeMatchesUsage(evaluate,pause);
   await cdp('Emulation.setDeviceMetricsOverride', { width: 320, height: 1000, deviceScaleFactor: 1, mobile: false }, session);
   assert(await evaluate(`window.__geminiStrip.getBoundingClientRect().height===30&&getComputedStyle(window.__fixtureUsageRoot.querySelector('.reset')).display==='none'&&document.documentElement.scrollWidth<=document.documentElement.clientWidth`), 'Narrow Gemini strip retains the shared 30px height without overflow');
   await cdp('Emulation.setDeviceMetricsOverride', { width: 600, height: 1000, deviceScaleFactor: 1, mobile: false }, session);
