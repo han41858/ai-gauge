@@ -1,5 +1,12 @@
 # 구현 및 검증 결과
 
+## 2026-10-15 개발 의존성 최신화
+
+TypeScript 7.0.2, esbuild 0.28.2, jsdom 30.1.2, tsx 4.23.15, @types/chrome 0.3.5, @types/jsdom 30.0.0, @types/node 24.19.2로 올렸습니다. 확장 실행 코드는 바꾸지 않았습니다. TypeScript 7의 DOM 타입에서 `HTMLElement.hidden`이 `boolean | "until-found"`로 넓어져 테스트 한 줄의 비교를 명시했습니다. jsdom 30의 Node 요구 사항을 `package.json`의 `engines`와 설치 문서에 적었습니다. `@types/node`는 실행 환경 메이저에 맞춰 24.x를 유지했습니다.
+
+- `npm ci` 후 `npm run check`: **523개 통과**, TypeScript 7 타입 검사·개발 빌드·산출물 검사 통과. 릴리스 빌드와 `npm audit`(취약점 0) 확인. 번들 크기 변화는 수십 바이트입니다.
+- 작업 환경 Node.js 22.22.0은 jsdom 30의 요구 범위보다 낮아 설치 경고가 있었으나 테스트는 통과했습니다. Chromium fixture는 작업 환경에 Chromium이 없어 실행하지 못했습니다.
+
 ## 2026-10-15 탭 실행 실패 시 마지막 사용량 유지 — 202610151145
 
 GitHub main `82ce69c`의 변경을 가져와 SVG 자산 직접 사용, 이벤트 중복 처리 감소, 설정 정리·0~100 소수 임계치 지원을 유지한 상태에서 수정했습니다.
