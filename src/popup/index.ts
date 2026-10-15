@@ -3,7 +3,8 @@ import { request } from '../shared/contracts';
 import { renderCards } from './render';
 import { bindDiagnostics } from './diagnostics';
 import { DEVELOPMENT } from '../shared/build-mode';
-import { parseUsageThresholds } from '../storage/settings';
+import { checkUsageThresholds } from '../storage/settings';
+import { affectsView } from '../storage/snapshots';
 let view: View | null = null, busy = false, settingsDirty = false, viewDirty = false, settingsRevision = 0;
 const installedManifest = chrome.runtime.getManifest();
 const extensionVersion = installedManifest.version_name ?? installedManifest.version;
@@ -47,7 +48,7 @@ async function run(action: () => Promise<View>) {
   renderSetup();
   try { view = await action(); render(); feedback.textContent = ''; }
   catch { feedback.textContent = '확장 프로그램과 통신할 수 없습니다. 확장을 다시 로드해 주세요.'; }
-  finally { busy = false; renderSetup(); if (viewDirty) { viewDirty = false; void run(() => request({ type: 'view' })); } }
+  finally { busy = false; renderSetup(); if (viewDirty) { viewDirty = false; void run(() => request({ type: 'read' })); } }
 }
 async function enableSelected(providers: Provider[]) {
   if (busy || !providers.length) return;
@@ -81,19 +82,14 @@ document.getElementById('settings-form')!.addEventListener('input', () => {
 document.getElementById('settings-form')!.addEventListener('submit', event => {
   event.preventDefault();
   if (busy) return;
-  const warning = field('gauge-warning').valueAsNumber, danger = field('gauge-danger').valueAsNumber;
-  const thresholds = parseUsageThresholds(warning, danger);
-  if (!thresholds) {
-    const invalid = ['gauge-warning', 'gauge-danger'].filter(id => {
-      const value = field(id).valueAsNumber;
-      return !Number.isInteger(value) || value < 1 || value > 99;
-    });
-    const order = invalid.length === 0;
-    const fields = order ? ['gauge-warning', 'gauge-danger'] : invalid;
-    showSettingsFeedback(order ? '주의 시작 사용률은 경고 시작 사용률보다 작아야 합니다.' : '주의·경고 시작 사용률은 1~99 사이의 정수로 입력해 주세요.', fields);
+  const checked = checkUsageThresholds(field('gauge-warning').valueAsNumber, field('gauge-danger').valueAsNumber);
+  if (!checked.ok) {
+    const fields = checked.fields.map(name => `gauge-${name}`);
+    showSettingsFeedback(checked.reason === 'order' ? '주의 시작 사용률은 경고 시작 사용률보다 작아야 합니다.' : '주의·경고 시작 사용률은 0~100 사이의 숫자로 입력해 주세요.', fields);
     field(fields[0]!).focus();
     return;
   }
+  const thresholds = checked.value;
   const strips = Object.fromEntries(PAGE_PROVIDERS.map(p => [p, field(`strip-${p}`).checked])) as Settings['strips'];
   const revision = settingsRevision;
   showSettingsFeedback('');
@@ -103,7 +99,11 @@ document.getElementById('settings-form')!.addEventListener('submit', event => {
     return next;
   });
 });
-chrome.storage.onChanged.addListener(() => { if (busy) viewDirty = true; else void run(() => request({ type: 'view' })); });
+// Re-read only; collection was already requested when the popup opened.
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (!affectsView(changes, areaName)) return;
+  if (busy) viewDirty = true; else void run(() => request({ type: 'read' }));
+});
 // Render cache first; the worker independently refreshes only due enabled providers.
 void run(() => request({ type: 'view' }));
 setInterval(render, 15_000);

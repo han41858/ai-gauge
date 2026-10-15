@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildSync } from 'esbuild';
+import { bundleEntry } from './helpers/bundle';
 import { JSDOM } from 'jsdom';
 import { renderCards, type Actions } from '../src/popup/render';
 import { defaults } from '../src/storage/settings';
@@ -231,8 +231,7 @@ test('popup keeps settings and diagnostics collapsed while removing persistent e
 test('display-only settings expose page labels and preserve unrelated preferences on save', async () => {
   const dom = new JSDOM(readFileSync(new URL('../src/popup/popup.html', import.meta.url), 'utf8'), { runScripts: 'outside-only' });
   const doc = dom.window.document, v = view();
-  v.settings.defaultProvider = 'claude'; v.settings.followTab = true;
-  v.settings.warning = 41; v.settings.danger = 82; v.settings.selectedLimit.chatgpt = 'week';
+  v.settings.warning = 41; v.settings.danger = 82;
   const before = structuredClone(v.settings);
   let saved: View['settings'] | null = null;
   const flush = () => new Promise(resolve => setTimeout(resolve, 0));
@@ -245,7 +244,7 @@ test('display-only settings expose page labels and preserve unrelated preference
       } },
       storage: { onChanged: { addListener() {} } }
     } });
-    const bundle = buildSync({ entryPoints: ['src/popup/index.ts'], bundle: true, write: false, format: 'iife', target: 'chrome120' }).outputFiles[0]!.text;
+    const bundle = bundleEntry('src/popup/index.ts');
     dom.window.eval(bundle); await flush();
     assert.deepEqual([...doc.querySelectorAll('#strip-settings label')].map(label => label.textContent), ['ChatGPT 입력창에 표시', 'Codex 입력창에 표시', 'Claude 입력창에 표시', 'Gemini 입력창에 표시']);
     assert.equal(doc.querySelector('#default-provider,#follow-tab,#warning,#danger'), null);

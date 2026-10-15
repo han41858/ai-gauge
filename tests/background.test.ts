@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { runInNewContext } from 'node:vm';
-import { buildSync } from 'esbuild';
+import { bundleEntry } from './helpers/bundle';
 import { defaults } from '../src/storage/settings';
 import { emptySnapshot, FRESH_MS } from '../src/storage/snapshots';
 import { success } from '../src/background/scheduler';
@@ -22,14 +22,14 @@ test('real background wiring: initialization, merged content refreshes, permissi
   };
   const stored: Record<string, unknown> = {}, registrations: Array<{ id: string }> = [];
   const tab = { id: 1, url: 'https://chatgpt.com/codex', active: true } as chrome.tabs.Tab;
-  let permission = true, requests = 0, pushes = 0, badge = '', alarm: unknown = null;
+  let permission = true, requests = 0, pushes = 0, gets = 0, badge = '', alarm: unknown = null;
   const pushedMessages: unknown[] = [];
   const mock = {
     runtime: { id: 'ext', onMessage: events.message, onInstalled: events.installed, onStartup: events.startup },
     storage: { local: { get: async (key: string | string[]) => Object.fromEntries((Array.isArray(key) ? key : [key]).map(name => [name, stored[name]])), set: async (value: Record<string, unknown>) => { Object.assign(stored, value); } } },
     permissions: { contains: async () => permission, onAdded: events.added, onRemoved: events.removed },
     alarms: { get: async () => alarm, create: async (_name: string, a: unknown) => { alarm = a; }, onAlarm: events.alarm },
-    tabs: { query: async (q: { url?: string }) => !q.url || tab.url!.startsWith(q.url.slice(0, -1)) ? [tab] : [], get: async () => tab, sendMessage: async (_id: number, message: unknown) => { pushes++; pushedMessages.push(message); }, onActivated: events.activated, onUpdated: events.updated },
+    tabs: { query: async (q: { url?: string }) => !q.url || tab.url!.startsWith(q.url.slice(0, -1)) ? [tab] : [], get: async () => { gets++; return tab; }, sendMessage: async (_id: number, message: unknown) => { pushes++; pushedMessages.push(message); }, onActivated: events.activated, onUpdated: events.updated },
     windows: { onFocusChanged: events.focus },
     action: { setBadgeText: async (v: { text: string }) => { badge = v.text; }, setBadgeBackgroundColor: async () => undefined, setBadgeTextColor: async () => undefined, setTitle: async () => undefined },
     scripting: {
@@ -54,15 +54,17 @@ test('real background wiring: initialization, merged content refreshes, permissi
     await import('../src/background/index');
     await waitFor(() => alarm !== null && badge === '—');
     assert.deepEqual(alarm, { periodInMinutes: 1 }); assert.equal(requests, 0);
-    const settings = defaults(); settings.enabled.chatgpt = true; settings.defaultProvider = 'chatgpt';
-    const saved = await send({ type: 'settings', settings }); assert(saved.ok); assert.equal(registrations[0]?.id, 'ai-gauge-openai');
+    const settings = defaults(); settings.enabled.chatgpt = true;
+    const saved = await send({ type: 'enable', provider: 'chatgpt' }); assert(saved.ok); assert.equal(registrations[0]?.id, 'ai-gauge-openai');
     const pushesBefore = pushes;
     const cached = await send({ type: 'view' }, content); assert(cached.ok); assert.equal(pushes, pushesBefore, 'Reading cached content view must not cause invalidation loop');
     const results = await Promise.all([send({ type: 'refresh', provider: 'chatgpt', trigger: 'event' }, content), send({ type: 'refresh', provider: 'chatgpt', trigger: 'event' }, content), send({ type: 'refresh', provider: 'chatgpt', trigger: 'event' }, content)]);
     assert(results.every(r => r.ok)); assert.equal(requests, 1); assert.equal(badge, '21%');
     const rejected = await send({ type: 'settings', settings }, content); assert.equal(rejected.ok, false);
-    const beforeNavigation = pushes; tab.url = 'https://chatgpt.com/c/synthetic'; events.updated.emit(1, { url: tab.url }, tab);
-    await waitFor(() => pushes > beforeNavigation && badge === '21%');
+    // Navigation within the same service updates only that tab and does not broadcast an unchanged view.
+    const beforeNavigation = pushes, lookups = gets; tab.url = 'https://chatgpt.com/c/synthetic'; events.updated.emit(1, { url: tab.url }, tab);
+    await waitFor(() => gets > lookups && badge === '21%');
+    assert.equal(pushes, beforeNavigation);
     permission = false; events.removed.emit({ origins: ['https://chatgpt.com/*'] });
     await waitFor(() => registrations.length === 0 && badge === '—');
     assert(pushedMessages.some(message => JSON.stringify(message) === JSON.stringify({ type: 'permissions-revoked', origins: ['https://chatgpt.com/*'] })));
@@ -74,7 +76,7 @@ test('real background wiring: initialization, merged content refreshes, permissi
     // A real browser tab event must recover from the old persisted missing-tab
     // backoff; opening the popup alone must not create a refresh/invalidation loop.
     permission = true; settings.enabled.claude = true; settings.enabled.chatgpt = false;
-    await send({ type: 'settings', settings });
+    await send({ type: 'disable', provider: 'chatgpt' }); await send({ type: 'enable', provider: 'claude' });
     stored['snapshot:v2:claude'] = { ...emptySnapshot('claude'), errorCode: 'open_tab', checkedAt: Date.now(), nextAttemptAt: Date.now() + 3_600_000, failures: 8 };
     tab.url = 'https://claude.ai/new'; events.updated.emit(1, { status: 'complete' }, tab);
     await waitFor(() => (stored['snapshot:v2:claude'] as ReturnType<typeof emptySnapshot>)?.state === 'ok');
@@ -83,7 +85,7 @@ test('real background wiring: initialization, merged content refreshes, permissi
 });
 
 test('worker startup and periodic renewal publish one shared cache to ChatGPT and Codex tabs without activation', async () => {
-  const bundle = buildSync({ entryPoints: ['src/background/index.ts'], bundle: true, write: false, format: 'iife', target: 'chrome120' }).outputFiles[0]!.text;
+  const bundle = bundleEntry('src/background/index.ts');
   let now = 1_790_000_000_000, requests = 0, usedPercent = 37;
   const settings = defaults(); settings.enabled.chatgpt = true;
   const payload = (percent: number) => ({ rate_limit: { primary_window: { used_percent: percent, limit_window_seconds: 604800, reset_at: null } } });

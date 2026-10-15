@@ -64,9 +64,6 @@ export interface Snapshot {
 export interface Settings {
   enabled: Record<Provider, boolean>;
   strips: Record<PageProvider, boolean>;
-  defaultProvider: Provider;
-  selectedLimit: Record<Provider, string | null>;
-  followTab: boolean;
   warning: number;
   danger: number;
 }

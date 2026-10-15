@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { highestUsageLimit } from '../src/shared/usage-selection';
-import { badge, selectedLimit } from '../src/background/badge';
+import { badge } from '../src/background/badge';
 import { defaults } from '../src/storage/settings';
 import { emptySnapshot, FRESH_MS } from '../src/storage/snapshots';
 import type { Provider, Snapshot, UsageLimit, View } from '../src/shared/types';
@@ -32,9 +32,9 @@ test('a saved weekly selection cannot hide a fully used shorter window', () => {
   const view = fixture();
   const short = limit('5시간', 100), weekly = limit('7일', 15);
   view.snapshots.chatgpt.limits = [weekly, short];
-  view.settings.selectedLimit.chatgpt = weekly.id;
+  Object.assign(view.settings, { selectedLimit: { chatgpt: weekly.id, claude: null, gemini: null } });
   const before = structuredClone(view);
-  assert.equal(selectedLimit(view.snapshots.chatgpt, view.settings), short);
+  assert.equal(highestUsageLimit(view.snapshots.chatgpt.limits), short);
   assert.equal(badge(view, 'https://chatgpt.com/codex', NOW).text, '100%');
   assert.match(badge(view, 'https://chatgpt.com/codex', NOW).title, /5시간: 100%/);
   assert.deepEqual(view, before, 'display selection must not mutate or aggregate the reported limits');
@@ -60,7 +60,7 @@ test('no reported valid percentage yields no representative limit', () => {
 test('a model-specific maximum remains identified as that reported item without claiming every model is blocked', () => {
   const view = fixture(), model = limit('특정 모델', 100, 'model');
   view.snapshots.claude.limits = [limit('전체 기간', 20), model];
-  assert.equal(selectedLimit(view.snapshots.claude, view.settings), model);
+  assert.equal(highestUsageLimit(view.snapshots.claude.limits), model);
   const result = badge(view, 'https://claude.ai/new', NOW);
   assert.equal(result.text, '100%');
   assert.equal(result.title, 'AI Gauge · Claude · 특정 모델: 100%');
@@ -68,8 +68,7 @@ test('a model-specific maximum remains identified as that reported item without 
 
 test('the general ChatGPT page automatically uses the plan source regardless of legacy badge preferences', () => {
   const view = fixture();
-  view.settings.defaultProvider = 'chatgpt';
-  view.settings.followTab = false;
+  Object.assign(view.settings, { defaultProvider: 'chatgpt', followTab: false });
   assert.equal(badge(view, 'https://chatgpt.com/', NOW).text, '15%');
   assert.equal(badge(view, 'https://chatgpt.com/c/example', NOW).text, '15%');
   assert.equal(badge(view, 'https://chatgpt.com/codex', NOW).text, '15%');
@@ -77,14 +76,12 @@ test('the general ChatGPT page automatically uses the plan source regardless of 
 
 test('an enabled and authorized Claude tab takes priority over a legacy fixed plan preference', () => {
   const view = fixture();
-  view.settings.defaultProvider = 'chatgpt';
-  view.settings.followTab = false;
+  Object.assign(view.settings, { defaultProvider: 'chatgpt', followTab: false });
   assert.equal(badge(view, 'https://claude.ai/new', NOW).text, '63%');
 });
 
 test('unrelated and URL-redacted tabs never receive a service badge', () => {
   const view = fixture();
-  view.settings.defaultProvider = 'claude';
   assert.equal(badge(view, 'https://unrelated.invalid/', NOW).text, '');
   view.settings.enabled.chatgpt = false;
   assert.equal(badge(view, 'https://unrelated.invalid/', NOW).text, '');

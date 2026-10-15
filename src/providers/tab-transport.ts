@@ -36,11 +36,16 @@ export async function collectInPage(provider: 'chatgpt' | 'claude', scopeSalt = 
   };
   const summary = (v: unknown) => { const r = object(v); return r ? { available_count: count(r.available_count), applicable_available_count: count(r.applicable_available_count) } : null; };
   // Absolute URLs prevent a page's <base> from redirecting credentialed reads.
-  const get = (path: string, headers: Record<string, string> = {}) => fetch(`${origin}${path}`, { method: 'GET', credentials: 'include', cache: 'no-store', redirect: 'error', signal: controller.signal, headers: { Accept: 'application/json', ...headers } });
+  const request = (path: string, signal: AbortSignal, headers: Record<string, string> = {}) => fetch(`${origin}${path}`, { method: 'GET', credentials: 'include', cache: 'no-store', redirect: 'error', signal, headers: { Accept: 'application/json', ...headers } });
+  const get = (path: string, headers: Record<string, string> = {}) => request(path, controller.signal, headers);
   const errorResult = (r: Response) => result(r.status, null, r.headers.get('Retry-After'));
+  // Same 1 MiB ceiling as the Gemini transport; usage and organization payloads are far smaller.
   const read = async (r: Response): Promise<unknown> => {
     if (!r.headers.get('content-type')?.includes('application/json')) throw new Error('invalid_response');
-    return r.json();
+    if (Number(r.headers.get('content-length')) > 1_048_576) throw new Error('invalid_response');
+    const body = await r.text();
+    if (body.length > 1_048_576) throw new Error('invalid_response');
+    return JSON.parse(body);
   };
   // Optional ticket metadata has its own deadline and cannot fail valid usage.
   const optional = async (run: (signal: AbortSignal) => Promise<Record<string, unknown>>): Promise<Record<string, unknown>> => {
@@ -49,7 +54,6 @@ export async function collectInPage(provider: 'chatgpt' | 'claude', scopeSalt = 
     try { return await Promise.race([run(optionalController.signal).catch(() => ({ state: 'error' })), new Promise<Record<string, unknown>>(resolve => { timer = setTimeout(() => { optionalController.abort(); resolve({ state: 'error' }); }, 3000); })]); }
     finally { if (timer) clearTimeout(timer); }
   };
-  const optionalGet = (path: string, signal: AbortSignal, headers: Record<string, string> = {}) => fetch(`${origin}${path}`, { method: 'GET', credentials: 'include', cache: 'no-store', redirect: 'error', signal, headers: { Accept: 'application/json', ...headers } });
   const optionalFailure = (r: Response) => ({ state: r.status === 401 || r.status === 403 ? 'auth' : 'error' });
   const chatRate = (value: unknown) => {
     const raw = object(value), out: Record<string, unknown> = {};
@@ -75,11 +79,11 @@ export async function collectInPage(provider: 'chatgpt' | 'claude', scopeSalt = 
       let tickets: Record<string, unknown> = { state: held ? 'ok' : 'unavailable', scope: proof, summary: held };
       if (held && held.available_count !== null && held.available_count > 0 && account) {
         const detail = await optional(async signal => {
-          const detailResponse = await optionalGet('/backend-api/wham/rate-limit-reset-credits', signal, { Authorization: `Bearer ${session.accessToken}` });
+          const detailResponse = await request('/backend-api/wham/rate-limit-reset-credits', signal, { Authorization: `Bearer ${session.accessToken}` });
           if (!detailResponse.ok) return optionalFailure(detailResponse);
           const details = object(await read(detailResponse));
           if (!details || !Array.isArray(details.credits) || details.credits.length > 100) return { state: 'error' };
-          const againResponse = await optionalGet('/backend-api/wham/usage', signal, { Authorization: `Bearer ${session.accessToken}` });
+          const againResponse = await request('/backend-api/wham/usage', signal, { Authorization: `Bearer ${session.accessToken}` });
           if (!againResponse.ok) return optionalFailure(againResponse);
           const again = object(await read(againResponse));
           if (!again) return { state: 'error' };
@@ -112,7 +116,7 @@ export async function collectInPage(provider: 'chatgpt' | 'claude', scopeSalt = 
     const usagePath = `/api/organizations/${uuid}/usage`;
     let featureFailed = false, usageResp: Response, usageData: unknown;
     const queried = await optional(async signal => {
-      const response = await optionalGet(`${usagePath}?cedar_ember=1`, signal);
+      const response = await request(`${usagePath}?cedar_ember=1`, signal);
       return { response, ...(response.ok ? { data: await read(response) } : {}) };
     });
     if (queried.response instanceof Response && (queried.response.ok || (![400, 403, 404, 422].includes(queried.response.status) && queried.response.status < 500))) {
@@ -125,7 +129,6 @@ export async function collectInPage(provider: 'chatgpt' | 'claude', scopeSalt = 
       if (!usageResp.ok) return errorResult(usageResp);
       usageData = await read(usageResp);
     }
-    if (!usageResp.ok) return errorResult(usageResp);
     const raw = object(usageData), out: Record<string, unknown> = {};
     if (!raw) return result(200, 'invalid_response');
     for (const [key, value] of Object.entries(raw).slice(0, 100)) {
@@ -145,7 +148,7 @@ export async function collectInPage(provider: 'chatgpt' | 'claude', scopeSalt = 
     let tickets: Record<string, unknown> = { state: featureFailed ? 'error' : 'unavailable', scope: null };
     if (cedar) {
       const detail = await optional(async signal => {
-        const againResponse = await optionalGet('/api/organizations', signal);
+        const againResponse = await request('/api/organizations', signal);
         if (!againResponse.ok) return optionalFailure(againResponse);
         const again = await read(againResponse);
         if (!Array.isArray(again) || again.length !== 1 || object(again[0])?.uuid !== uuid) return { state: 'context_changed', scope: null };

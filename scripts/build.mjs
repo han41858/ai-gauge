@@ -6,8 +6,8 @@ import { join } from 'node:path';
 const { values } = parseArgs({ options: { release: { type: 'boolean', default: false }, outdir: { type: 'string', default: 'dist' } } });
 const outdir = values.outdir;
 const version = buildVersion();
-const options = { bundle: true, target: 'chrome120', legalComments: 'none',
-  define: { __AI_GAUGE_DEVELOPMENT__: String(!values.release) } };
+const options = { bundle: true, target: 'chrome120', legalComments: 'none', minify: values.release,
+  loader: { '.svg': 'text' }, define: { __AI_GAUGE_DEVELOPMENT__: String(!values.release) } };
 await rm(outdir, { recursive: true, force: true });
 await mkdir(outdir, { recursive: true });
 await build({ ...options, entryPoints: { background: 'src/background/index.ts', popup: 'src/popup/index.ts' }, outdir, format: 'esm' });

@@ -1,4 +1,4 @@
-import { PROVIDERS, type Provider, type Settings, type Snapshot, type UsageLimit, type View } from '../shared/types';
+import { ORIGINS, PROVIDERS, type Provider, type Settings, type Snapshot, type UsageLimit, type View } from '../shared/types';
 import { record, finite, percent, resetTime, label, nonnegative } from '../shared/validation';
 import { parseSettings } from './settings';
 import { ERROR_TEXT } from '../shared/errors';
@@ -60,13 +60,11 @@ const MIGRATION_KEY = 'migration:shared-chatgpt:v2';
 const migrations = new WeakMap<chrome.storage.StorageArea, Promise<void>>();
 
 function legacySettings(input: unknown): Settings {
-  const old = record(input), enabled = record(old?.enabled), strips = record(old?.strips), selected = record(old?.selectedLimit);
+  const old = record(input), enabled = record(old?.enabled), strips = record(old?.strips);
   return parseSettings({
     enabled: { chatgpt: enabled?.work_codex, claude: enabled?.claude },
     strips: { chatgpt: strips?.chatgpt, codex: strips?.work_codex, claude: strips?.claude },
-    selectedLimit: { chatgpt: selected?.work_codex, claude: selected?.claude },
-    defaultProvider: old?.defaultProvider === 'work_codex' ? 'chatgpt' : old?.defaultProvider === 'claude' ? 'claude' : 'chatgpt',
-    followTab: old?.followTab, warning: old?.warning, danger: old?.danger
+    warning: old?.warning, danger: old?.danger
   });
 }
 
@@ -98,6 +96,10 @@ export function migrateStorage(): Promise<void> {
   return pending;
 }
 
+/** Only saved settings and usage snapshots change what tabs and the popup render. */
+export function affectsView(changes: Record<string, unknown> | undefined, areaName: string | undefined): boolean {
+  return areaName === 'local' && !!changes && Object.keys(changes).some(key => key === SETTINGS_KEY || Object.values(SNAPSHOT_KEYS).includes(key));
+}
 export async function writeSnapshot(snapshot: Snapshot): Promise<void> {
   await migrateStorage();
   await chrome.storage.local.set({ [snapshotKey(snapshot.provider)]: parseSnapshot(snapshot, snapshot.provider) });
@@ -111,13 +113,18 @@ export async function writeSettings(settings: Settings): Promise<void> {
   await chrome.storage.local.set({ [SETTINGS_KEY]: parseSettings(settings) });
 }
 export async function readView(): Promise<View> {
-  const settings = await readSettings();
+  await migrateStorage();
+  // One storage read and parallel permission checks per view; tabs request views often.
+  const [stored, granted] = await Promise.all([
+    chrome.storage.local.get([SETTINGS_KEY, ...PROVIDERS.map(snapshotKey)]),
+    Promise.all(PROVIDERS.map(p => chrome.permissions.contains({ origins: [ORIGINS[p]] })))
+  ]);
+  const settings = parseSettings(stored[SETTINGS_KEY]);
   const permissions = {} as View['permissions'], snapshots = {} as View['snapshots'];
-  const { ORIGINS } = await import('../shared/types');
-  await Promise.all(PROVIDERS.map(async p => {
-    permissions[p] = await chrome.permissions.contains({ origins: [ORIGINS[p]] });
-    const s = effectiveSnapshot(await readSnapshot(p));
+  PROVIDERS.forEach((p, index) => {
+    permissions[p] = granted[index]!;
+    const s = effectiveSnapshot(parseSnapshot(stored[snapshotKey(p)], p));
     snapshots[p] = permissions[p] ? s : { ...s, state: 'permission_required', errorCode: 'permission_required' };
-  }));
+  });
   return { settings, snapshots, permissions };
 }

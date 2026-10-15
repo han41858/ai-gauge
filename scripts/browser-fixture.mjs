@@ -91,12 +91,12 @@ try {
   assert.equal(await evaluate('document.getElementById("extension-version").textContent'), `AI Gauge ${buildLabel}`);
   assert.equal(await evaluate('Math.round(document.body.getBoundingClientRect().width)'), 600);
   assert(await evaluate(`document.body.getBoundingClientRect().height<=600`), 'The default three-service popup fits the Chrome popup height');
-  await evaluate(`window.__savedLimits=structuredClone(Object.fromEntries(['chatgpt','claude'].map(p=>[p,window.__fixture.snapshots[p].limits])));for(const p of ['chatgpt','claude']){const s=window.__fixture.snapshots[p];s.limits.push({...s.limits[0],id:'extra-weekly',label:'주간',windowSeconds:604800,resetsAt:new Date(Date.now()+7*86400000).toISOString()});}for(const fn of window.__storageListeners)fn({},'local');`);
+  await evaluate(`window.__savedLimits=structuredClone(Object.fromEntries(['chatgpt','claude'].map(p=>[p,window.__fixture.snapshots[p].limits])));for(const p of ['chatgpt','claude']){const s=window.__fixture.snapshots[p];s.limits.push({...s.limits[0],id:'extra-weekly',label:'주간',windowSeconds:604800,resetsAt:new Date(Date.now()+7*86400000).toISOString()});}for(const fn of window.__storageListeners)fn({'settings:v2':{}},'local');`);
   for (let i = 0; i < 20; i++) { if (await evaluate(`document.querySelectorAll('.card .limit').length===6`)) break; await pause(50); }
   const compactHeight = await evaluate('Math.ceil(document.body.getBoundingClientRect().height)');
   assert(compactHeight <= 600, `Six usage windows and four individual tickets need no popup scroll: ${compactHeight}px`);
   assert(await evaluate(`Array.from(document.querySelectorAll('.card-heading')).every(h=>{const name=h.querySelector('.provider-name').getBoundingClientRect(),actions=h.querySelector('.actions').getBoundingClientRect();return actions.left>=name.right&&Math.abs((name.top+name.height/2)-(actions.top+actions.height/2))<1;})`), 'Service controls share the title row in the wide popup');
-  await evaluate(`for(const p of ['chatgpt','claude'])window.__fixture.snapshots[p].limits=window.__savedLimits[p];for(const fn of window.__storageListeners)fn({},'local');`);
+  await evaluate(`for(const p of ['chatgpt','claude'])window.__fixture.snapshots[p].limits=window.__savedLimits[p];for(const fn of window.__storageListeners)fn({'settings:v2':{}},'local');`);
   for (let i = 0; i < 20; i++) { if (await evaluate(`document.querySelectorAll('.card .limit').length===4`)) break; await pause(50); }
   assert.deepEqual(await evaluate(`[...document.querySelectorAll('.ticket-info')].map(link=>({href:link.href,target:link.target,rel:link.rel,tabIndex:link.tabIndex,text:link.querySelector('.ticket-count').textContent}))`), [
     { href: 'https://chatgpt.com/settings/usage?tab=overview', target: '_blank', rel: 'noopener noreferrer', tabIndex: 0, text: '🎫 초기화 티켓 2개' },
@@ -114,11 +114,11 @@ try {
     await cdp('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false }, session);
     assert(await evaluate('document.documentElement.scrollWidth <= document.documentElement.clientWidth'), `Popup overflow at ${width}px`);
   }
-  await evaluate(`window.__fixture.snapshots.gemini.plan=null;for(const fn of window.__storageListeners)fn({},'local');`);
+  await evaluate(`window.__fixture.snapshots.gemini.plan=null;for(const fn of window.__storageListeners)fn({'settings:v2':{}},'local');`);
   for (let i = 0; i < 20; i++) { if (await evaluate(`document.querySelector('[data-provider="gemini"] .plan-badge')===null`)) break; await pause(50); }
   assert.equal(await evaluate(`document.querySelector('[data-provider="gemini"] .plan-badge')===null`), true, 'A missing policy result removes the previous Gemini plan badge');
   assert.deepEqual(await evaluate(`[...document.querySelectorAll('[data-provider="gemini"] progress')].map(bar=>bar.value)`), [0, 42], 'Plan failure does not clear or change successful quota values');
-  await evaluate(`{const s=window.__fixture.snapshots.gemini;s.collectedAt=s.checkedAt=Date.now();s.plan={label:'AI Ultra',checkedAt:s.collectedAt};for(const fn of window.__storageListeners)fn({},'local');}`);
+  await evaluate(`{const s=window.__fixture.snapshots.gemini;s.collectedAt=s.checkedAt=Date.now();s.plan={label:'AI Ultra',checkedAt:s.collectedAt};for(const fn of window.__storageListeners)fn({'settings:v2':{}},'local');}`);
   for (let i = 0; i < 20; i++) { if (await evaluate(`document.querySelector('[data-provider="gemini"] .plan-badge')?.textContent`) === 'AI Ultra') break; await pause(50); }
   assert.equal(await evaluate(`document.querySelector('[data-provider="gemini"] .plan-badge')?.textContent`), 'AI Ultra', 'A newly collected plan replaces the old label without duplicate badges');
   assert.equal(await evaluate(`document.querySelectorAll('.plan-badge').length`), 2);
@@ -162,7 +162,7 @@ try {
   const darkPopup = await cdp('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false }, session);
   await writeFile(join(tmpdir(), 'ai-gauge-popup-dark-fixture.png'), Buffer.from(darkPopup.data, 'base64'));
   await cdp('Emulation.setEmulatedMedia', { features: [] }, session);
-  await evaluate(`for(const p of ['chatgpt','claude','gemini']){window.__fixture.settings.enabled[p]=false;window.__fixture.permissions[p]=false;}for(const fn of window.__storageListeners)fn({},'local');`);
+  await evaluate(`for(const p of ['chatgpt','claude','gemini']){window.__fixture.settings.enabled[p]=false;window.__fixture.permissions[p]=false;}for(const fn of window.__storageListeners)fn({'settings:v2':{}},'local');`);
   for (let i = 0; i < 20; i++) { if (await evaluate(`!document.getElementById('onboarding').hidden&&!document.getElementById('onboarding-submit').disabled`)) break; await pause(50); }
   assert(await evaluate(`!document.getElementById('onboarding').hidden&&document.getElementById('cards').hidden&&document.querySelectorAll('#provider-choices input:checked').length===3`), 'First run offers three native service checkboxes before showing cards');
   const onboardingScreenshot = await cdp('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false }, session);
@@ -263,13 +263,13 @@ try {
   }
   // Storage and worker invalidation must update the existing Claude bar, even
   // for a fraction that leaves the rounded percentage label unchanged.
-  await evaluate(`window.__claudeProgress=window.__fixtureUsageRoot.querySelector('progress');window.__fixture.snapshots.claude={...window.__fixture.snapshots.claude,state:'ok',collectedAt:Date.now(),checkedAt:Date.now(),nextAttemptAt:0,errorCode:null,failures:0,limits:[{...window.__fixture.snapshots.claude.limits[0],percent:17,resetsAt:new Date(Date.now()+7200000).toISOString()}]};for(const fn of window.__storageListeners)fn({},'local');`);
+  await evaluate(`window.__claudeProgress=window.__fixtureUsageRoot.querySelector('progress');window.__fixture.snapshots.claude={...window.__fixture.snapshots.claude,state:'ok',collectedAt:Date.now(),checkedAt:Date.now(),nextAttemptAt:0,errorCode:null,failures:0,limits:[{...window.__fixture.snapshots.claude.limits[0],percent:17,resetsAt:new Date(Date.now()+7200000).toISOString()}]};for(const fn of window.__storageListeners)fn({'settings:v2':{}},'local');`);
   for (let i = 0; i < 20; i++) {
     if (await evaluate(`!window.__claudeProgress.hidden&&window.__claudeProgress.value===17`)) break;
     await pause(50);
   }
   assert(await evaluate(`!window.__claudeProgress.hidden&&window.__claudeProgress.value===17&&document.getElementById('ai-gauge-usage-strip').getAttribute('aria-label').includes('사용량: 17%')`), 'Claude successful collection updates its previously cached usage');
-  await evaluate(`window.__fixture.snapshots.claude.limits[0].percent=17.25;window.__fixture.snapshots.claude.collectedAt=Date.now();for(const fn of window.__storageListeners)fn({},'local');`);
+  await evaluate(`window.__fixture.snapshots.claude.limits[0].percent=17.25;window.__fixture.snapshots.claude.collectedAt=Date.now();for(const fn of window.__storageListeners)fn({'settings:v2':{}},'local');`);
   for (let i = 0; i < 20; i++) {
     if (await evaluate('window.__claudeProgress.value===17.25')) break;
     await pause(50);
@@ -283,7 +283,7 @@ try {
   assert(await evaluate(`window.__fixtureUsageRoot.querySelector('progress')===window.__claudeProgress&&window.__claudeProgress.value===63&&document.getElementById('ai-gauge-usage-strip').getAttribute('aria-label').includes('사용량: 63%')`), 'Runtime invalidation updates both the existing bar and its usage label');
   // Cache age alone is a collection schedule, not evidence that the value is
   // wrong. A reset or repeated/hard collection failure does change reliability.
-  await evaluate(`window.__fixture.snapshots.claude.collectedAt=Date.now()-15*60_000;for(const fn of window.__storageListeners)fn({},'local');`);
+  await evaluate(`window.__fixture.snapshots.claude.collectedAt=Date.now()-15*60_000;for(const fn of window.__storageListeners)fn({'settings:v2':{}},'local');`);
   await pause(400);
   assert(await evaluate(`window.__fixtureUsageRoot.querySelector('progress')===window.__claudeProgress&&!window.__claudeProgress.hidden&&window.__claudeProgress.value===63&&window.__fixtureUsageRoot.querySelector('.status').hidden&&document.getElementById('ai-gauge-usage-strip').getAttribute('aria-label').includes('사용량: 63%')`), 'A normal cache older than ten minutes keeps the same visible progress node without a warning');
   await evaluate(`window.__fixture.snapshots.claude.state='error';window.__fixture.snapshots.claude.errorCode='network';window.__fixture.snapshots.claude.failures=1;for(const fn of window.__runtimeListeners)fn({type:'invalidate'},{id:'fixture'});`);
@@ -294,7 +294,7 @@ try {
   for (let i = 0; i < 20; i++) { if (await evaluate('window.__claudeProgress.hidden')) break; await pause(50); }
   assert(await evaluate(`window.__fixtureUsageRoot.querySelector('progress')===window.__claudeProgress&&window.__claudeProgress.hidden&&!window.__claudeProgress.hasAttribute('value')&&!window.__fixtureUsageRoot.querySelector('.status').hidden&&!/사용량: (63|0)%/.test(document.getElementById('ai-gauge-usage-strip').getAttribute('aria-label'))`), 'Repeated collection failures clear the numeric value without replacing its progress node or inventing zero usage');
   assert(await evaluate(`getComputedStyle(window.__fixtureUsageRoot.querySelector('.gauge-needle')).visibility==='hidden'&&window.__fixtureUsageRoot.querySelector('.usage-gauge').dataset.usageState==='unknown'`), 'Unreliable data shows a neutral gauge with no visible needle');
-  await evaluate(`window.__fixture.snapshots.claude.state='ok';window.__fixture.snapshots.claude.errorCode=null;window.__fixture.snapshots.claude.failures=0;window.__fixture.snapshots.claude.limits[0].resetsAt=new Date(Date.now()+1000).toISOString();for(const grant of window.__fixture.snapshots.claude.tickets.inventory.grants)grant.expiresAt=new Date(Date.now()+1000).toISOString();for(const fn of window.__storageListeners)fn({},'local');`);
+  await evaluate(`window.__fixture.snapshots.claude.state='ok';window.__fixture.snapshots.claude.errorCode=null;window.__fixture.snapshots.claude.failures=0;window.__fixture.snapshots.claude.limits[0].resetsAt=new Date(Date.now()+1000).toISOString();for(const grant of window.__fixture.snapshots.claude.tickets.inventory.grants)grant.expiresAt=new Date(Date.now()+1000).toISOString();for(const fn of window.__storageListeners)fn({'settings:v2':{}},'local');`);
   for (let i = 0; i < 20; i++) { if (await evaluate('!window.__claudeProgress.hidden')) break; await pause(25); }
   assert(await evaluate(`!window.__claudeProgress.hidden&&window.__claudeProgress.value===63`), 'A reliable result restores the existing progress before its reset');
   await evaluate(`window.__fixtureBeforeResetSend=chrome.runtime.sendMessage;window.__resetDisplayRequests=0;chrome.runtime.sendMessage=async message=>{window.__resetDisplayRequests++;return window.__fixtureBeforeResetSend(message)};`);
@@ -371,7 +371,7 @@ try {
     await waitForPlacement('gemini-composer');
     assert(await evaluate(`document.getElementById('ai-gauge-usage-strip')===window.__geminiStrip&&window.__fixtureUsageRoot.querySelector('progress')===window.__geminiProgress`), 'Gemini helper changes retain the same strip and progress node');
   }
-  await evaluate(`window.__fixture.snapshots.gemini.limits.find(limit=>limit.id==='gemini:2').percent=42.25;window.__fixture.snapshots.gemini.collectedAt=Date.now();for(const fn of window.__storageListeners)fn({},'local');`);
+  await evaluate(`window.__fixture.snapshots.gemini.limits.find(limit=>limit.id==='gemini:2').percent=42.25;window.__fixture.snapshots.gemini.collectedAt=Date.now();for(const fn of window.__storageListeners)fn({'settings:v2':{}},'local');`);
   for (let i = 0; i < 20; i++) { if (await evaluate('window.__geminiProgress.value===42.25')) break; await pause(50); }
   assert(await evaluate(`window.__fixtureUsageRoot.querySelector('progress')===window.__geminiProgress&&window.__geminiProgress.value===42.25&&window.__geminiStrip.getAttribute('aria-label').includes('사용량: 42%')`), 'Gemini fractional usage changes update the existing bar even with unchanged rounded text');
   await evaluate(`window.__fixture.snapshots.gemini.limits.find(limit=>limit.id==='gemini:2').percent=63;for(const fn of window.__runtimeListeners)fn({type:'invalidate'},{id:'fixture'});`);

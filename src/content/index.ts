@@ -6,6 +6,7 @@ import { canRefreshFromPage, displayProvider, needsContent } from '../shared/dis
 import { authorizedDisplayRequest, createDisplayDiagnostic } from './display-diagnostics';
 import { resolvePageProvider } from './page-provider';
 import { DEVELOPMENT } from '../shared/build-mode';
+import { affectsView } from '../storage/snapshots';
 
 declare global { interface Window { __aiGaugeMounted?: boolean } }
 if (resolvePageProvider(document, location.href) && !window.__aiGaugeMounted) {
@@ -149,7 +150,7 @@ if (resolvePageProvider(document, location.href) && !window.__aiGaugeMounted) {
       if (origin && message.origins.includes(origin)) stop();
     } else if (message.type === 'invalidate') void load();
   };
-  const onStorage = () => { void load(); };
+  const onStorage = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => { if (affectsView(changes, areaName)) void load(); };
   const onVisible = () => { if (document.visibilityState === 'visible') { check(); void load(provider ? displayProvider(provider) : undefined); } };
   const onRoute = () => { check(); };
   chrome.runtime.onMessage.addListener(onMessage); chrome.storage.onChanged.addListener(onStorage);

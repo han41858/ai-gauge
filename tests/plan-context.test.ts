@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { runInNewContext } from 'node:vm';
-import { buildSync } from 'esbuild';
+import { bundleEntry } from './helpers/bundle';
 import { defaults } from '../src/storage/settings';
 import { emptySnapshot } from '../src/storage/snapshots';
 import { parseChatGPT } from '../src/providers/parsers';
@@ -52,7 +52,7 @@ function worker(ticketSeed = false) {
     updated: new Event<(id: number, change: { status?: string; url?: string }, tab: chrome.tabs.Tab) => void>(),
     focus: new Event<(windowId: number) => void>(), added: new Event<() => void>(), removed: new Event<() => void>()
   };
-  let pushes = 0;
+  let pushes = 0, gets = 0;
   const registrations: Array<{ id: string }> = [];
   const api = {
     runtime: { id: 'plan-context', onMessage: events.message, onInstalled: events.installed, onStartup: events.startup },
@@ -64,7 +64,7 @@ function worker(ticketSeed = false) {
     alarms: { get: async () => ({ periodInMinutes: 1 }), create: async () => undefined, onAlarm: events.alarm },
     tabs: {
       query: async (query: { url?: string; active?: boolean }) => tabs.filter(tab => (!query.url || tab.url!.startsWith(query.url.slice(0, -1))) && (!query.active || tab.active)),
-      get: async (id: number) => tabs.find(tab => tab.id === id), onActivated: events.activated, onUpdated: events.updated,
+      get: async (id: number) => { gets++; return tabs.find(tab => tab.id === id); }, onActivated: events.activated, onUpdated: events.updated,
       sendMessage: async () => { pushes++; }
     },
     windows: { onFocusChanged: events.focus },
@@ -83,14 +83,14 @@ function worker(ticketSeed = false) {
     }
   };
   class Clock extends Date { static now() { return now; } }
-  const bundle = buildSync({ entryPoints: ['src/background/index.ts'], bundle: true, write: false, format: 'iife', platform: 'browser' }).outputFiles[0]!.text;
+  const bundle = bundleEntry('src/background/index.ts', { platform: 'browser' });
   runInNewContext(bundle, { chrome: api, URL, Date: Clock, setTimeout, clearTimeout });
   const send = (message: unknown, tabId?: number): Promise<Reply> => {
     const tab = tabs.find(value => value.id === tabId);
     const sender = tab ? { id: 'plan-context', url: tab.url!, tab, frameId: 0 } : { id: 'plan-context', url: 'chrome-extension://plan-context/popup.html' };
     return new Promise(resolve => events.message.listeners[0]!(message, sender, resolve));
   };
-  return { tabs, events, stored, seed, snapshot, send, requests: () => requests, pushes: () => pushes,
+  return { tabs, events, stored, seed, snapshot, send, requests: () => requests, pushes: () => pushes, gets: () => gets,
     advance: () => { now += 60_001; }, responsePlan: (plan: string) => { responsePlan = plan; },
     hold: () => { hold = new Promise(resolve => { release = resolve; }); },
     release: () => { release?.(); hold = null; },
@@ -116,9 +116,9 @@ test('tab activation, initial content attachment and SPA routes preserve each fr
   for (const [provider, id] of [['chatgpt', 2], ['claude', 3], ['gemini', 4]] as const) {
     w.activate(id);
     const tab = w.tabs.find(value => value.id === id)!;
-    const pushed = w.pushes();
+    const pushed = w.gets();
     w.events.updated.emit(id, { url: tab.url! }, tab);
-    await waitFor(() => w.pushes() > pushed);
+    await waitFor(() => w.gets() > pushed);
     const route = await w.send({ type: 'context', provider }, id);
     assert(route.ok); assert.equal(route.view.snapshots[provider].plan?.label, labels[provider]);
     assert.equal(route.view.snapshots[provider].limits[0]!.percent, 27);
@@ -136,14 +136,14 @@ test('returning to Chrome and opening the popup do not erase a freshly collected
   w.events.focus.emit(-1);
   await new Promise(resolve => setTimeout(resolve, 10));
   assert.equal(w.snapshot('chatgpt').plan?.label, 'Plus', 'losing Chrome focus does not invalidate');
-  const returned = w.pushes(); w.events.focus.emit(1);
-  await waitFor(() => w.pushes() > returned);
+  const returned = w.gets(); w.events.focus.emit(1);
+  await waitFor(() => w.gets() > returned);
   const popup = await w.send({ type: 'view' });
   assert(popup.ok); assert.equal(popup.view.snapshots.chatgpt.plan?.label, 'Plus');
   assert.equal(w.snapshot('claude').plan?.label, 'Pro');
   w.seed('chatgpt'); w.activate(5);
-  const pushed = w.pushes(); w.events.focus.emit(1);
-  await waitFor(() => w.pushes() > pushed);
+  const pushed = w.gets(); w.events.focus.emit(1);
+  await waitFor(() => w.gets() > pushed);
   assert.equal(w.snapshot('chatgpt').plan?.label, 'Plus');
   assert.equal(w.requests(), 0);
 });
@@ -197,9 +197,9 @@ test('new collection updates subscription but a late pre-navigation plan cannot 
   w.advance(); w.responsePlan('plus'); w.hold();
   const pending = w.send({ type: 'refresh', provider: 'chatgpt', trigger: 'event' }, 1);
   await waitFor(() => w.requests() === 2);
-  const pushed = w.pushes();
+  const pushed = w.gets();
   w.events.updated.emit(1, { status: 'loading' }, w.tabs[0]!);
-  await waitFor(() => w.pushes() > pushed);
+  await waitFor(() => w.gets() > pushed);
   w.release();
   const old = await pending;
   assert(old.ok); assert.equal(old.view.snapshots.chatgpt.plan, null, 'old account plan is dropped after navigation');
@@ -222,4 +222,25 @@ test('an immediate popup view waits for restart ticket quarantine without hiding
     assert.equal(snapshot.plan?.label, labels[provider]);
   }
   assert.equal(w.requests(), 0, 'quarantine must respect the existing collection gate');
+});
+
+test('periodic checks with an unchanged view and popup re-reads send no tab invalidations or collections', async () => {
+  const w = worker();
+  await waitFor(() => w.pushes() >= 4);
+  await new Promise(resolve => setTimeout(resolve, 30));
+  const pushes = w.pushes(), requests = w.requests();
+  w.events.alarm.emit({ name: 'ai-gauge-refresh' }); w.events.alarm.emit({ name: 'ai-gauge-refresh' });
+  await new Promise(resolve => setTimeout(resolve, 30));
+  assert.equal(w.pushes(), pushes, 'an unchanged view is not re-broadcast every minute');
+  assert.equal(w.requests(), requests);
+  w.advance();
+  const read = await w.send({ type: 'read' });
+  assert(read.ok); assert.equal(read.view.snapshots.chatgpt.limits[0]!.percent, 27);
+  await new Promise(resolve => setTimeout(resolve, 30));
+  assert.equal(w.requests(), requests, 'a popup re-read after a storage change never starts collection');
+  assert((await w.send({ type: 'read' }, 1)).ok === false, 'site content cannot use the popup read message');
+  const opened = await w.send({ type: 'view' });
+  assert(opened.ok);
+  await waitFor(() => w.requests() > requests);
+  await waitFor(() => w.pushes() > pushes);
 });

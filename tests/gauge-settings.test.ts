@@ -1,14 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildSync } from 'esbuild';
+import { bundleEntry } from './helpers/bundle';
 import { JSDOM } from 'jsdom';
-import { defaults, isSettings, parseSettings, parseUsageThresholds } from '../src/storage/settings';
+import { checkUsageThresholds, defaults, isSettings, parseSettings, parseUsageThresholds } from '../src/storage/settings';
 import { emptySnapshot } from '../src/storage/snapshots';
 import type { Message } from '../src/shared/contracts';
 import type { View } from '../src/shared/types';
 
-const bundle = buildSync({ entryPoints: ['src/popup/index.ts'], bundle: true, write: false, format: 'iife', target: 'chrome120' }).outputFiles[0]!.text;
+const bundle = bundleEntry('src/popup/index.ts');
 const html = readFileSync(new URL('../src/popup/popup.html', import.meta.url), 'utf8');
 const flush = () => new Promise(resolve => setTimeout(resolve, 0));
 async function settled() { await flush(); await flush(); }
@@ -18,7 +18,7 @@ function popup() {
     permissions: { chatgpt: true, claude: false, gemini: false },
     snapshots: { chatgpt: emptySnapshot('chatgpt'), claude: emptySnapshot('claude'), gemini: emptySnapshot('gemini') } };
   const messages: Message[] = [];
-  let changed = () => {}, save: (() => Promise<void>) | null = null;
+  let changed: (...args: unknown[]) => void = () => {}, save: (() => Promise<void>) | null = null;
   Object.assign(dom.window, { structuredClone, chrome: {
     runtime: { getManifest: () => ({ version: '1.0.0' }), sendMessage: async (message: Message) => {
       messages.push(structuredClone(message));
@@ -34,17 +34,17 @@ function popup() {
   const input = (id: string) => doc.getElementById(id) as HTMLInputElement;
   const edit = (id: string, value: string) => { input(id).value = value; input(id).dispatchEvent(new dom.window.Event('input', { bubbles: true })); };
   const submit = () => doc.getElementById('settings-form')!.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
-  return { dom, doc, state, messages, input, edit, submit, notify: () => changed(), saveWith: (fn: () => Promise<void>) => { save = fn; } };
+  return { dom, doc, state, messages, input, edit, submit, notify: () => changed({ 'settings:v2': {} }, 'local'), saveWith: (fn: () => Promise<void>) => { save = fn; } };
 }
 
-test('gauge thresholds accept only ordered integers from 1 through 99 and recover corrupt stored pairs together', () => {
-  for (const [warning, danger] of [[1, 2], [1, 99], [70, 90], [98, 99]]) {
+test('gauge thresholds accept ordered percentages from 0 to 100, including fractions, and recover corrupt stored pairs together', () => {
+  for (const [warning, danger] of [[0, 100], [0, 0.5], [1, 99], [70, 90], [70.5, 90.25], [99.9, 100]]) {
     assert.deepEqual(parseUsageThresholds(warning, danger), { warning, danger });
     assert(isSettings({ ...defaults(), warning, danger }));
     assert.equal(parseSettings({ ...defaults(), warning, danger }).warning, warning);
   }
-  for (const [warning, danger] of [[0, 90], [70, 100], [-1, 90], [70, -1], [70.5, 90], [70, 90.5],
-    [90, 90], [91, 90], [NaN, 90], [70, Infinity], ['70', 90], [70, null], [undefined, 90]]) {
+  for (const [warning, danger] of [[-1, 90], [70, 100.5], [-0.01, 90], [90, 90], [91, 90], [NaN, 90], [70, Infinity],
+    ['70', 90], [70, null], [undefined, 90]]) {
     assert.equal(parseUsageThresholds(warning, danger), null);
     const source = { ...defaults(), enabled: { chatgpt: true, claude: false, gemini: true }, warning, danger };
     assert.equal(isSettings(source), false);
@@ -54,17 +54,25 @@ test('gauge thresholds accept only ordered integers from 1 through 99 and recove
   }
 });
 
+test('threshold checks report the failing fields and whether the cause is range or order', () => {
+  assert.deepEqual(checkUsageThresholds(-1, 90), { ok: false, reason: 'range', fields: ['warning'] });
+  assert.deepEqual(checkUsageThresholds(70, 101), { ok: false, reason: 'range', fields: ['danger'] });
+  assert.deepEqual(checkUsageThresholds(NaN, '90'), { ok: false, reason: 'range', fields: ['warning', 'danger'] });
+  assert.deepEqual(checkUsageThresholds(90, 90), { ok: false, reason: 'order', fields: ['warning', 'danger'] });
+  assert.deepEqual(checkUsageThresholds(70.5, 90), { ok: true, value: { warning: 70.5, danger: 90 } });
+});
+
 test('invalid gauge edits explain the error in Korean, focus the field and do not save visibility or thresholds', async () => {
   const p = popup();
   try {
     await settled();
     assert.equal(p.input('gauge-warning').value, '70'); assert.equal(p.input('gauge-danger').value, '90');
-    for (const [warning, danger, focused] of [['0', '90', 'gauge-warning'], ['70', '100', 'gauge-danger'],
-      ['70.5', '90', 'gauge-warning'], ['', '90', 'gauge-warning'], ['90', '90', 'gauge-warning'], ['91', '90', 'gauge-warning']]) {
+    for (const [warning, danger, focused] of [['-1', '90', 'gauge-warning'], ['70', '101', 'gauge-danger'],
+      ['70', '100.5', 'gauge-danger'], ['', '90', 'gauge-warning'], ['90', '90', 'gauge-warning'], ['91', '90', 'gauge-warning']]) {
       p.edit('gauge-warning', warning!); p.edit('gauge-danger', danger!);
       p.input('strip-chatgpt').checked = false;
       p.submit(); await settled();
-      assert.match(p.doc.getElementById('settings-feedback')!.textContent!, /1~99.*정수|작아야 합니다/);
+      assert.match(p.doc.getElementById('settings-feedback')!.textContent!, /0~100.*숫자|작아야 합니다/);
       assert.equal(p.doc.getElementById('settings-feedback')!.getAttribute('role'), 'alert');
       assert.equal(p.input(focused!).getAttribute('aria-invalid'), 'true');
       assert.equal(p.input(focused!).getAttribute('aria-describedby'), 'settings-feedback');
@@ -81,12 +89,12 @@ test('a valid display save submits visibility and both thresholds together while
   try {
     await settled();
     const before = structuredClone(p.state.settings);
-    p.edit('gauge-warning', '55'); p.edit('gauge-danger', '85');
+    p.edit('gauge-warning', '55.5'); p.edit('gauge-danger', '85');
     p.input('strip-codex').checked = false;
     p.submit(); await settled();
-    const expected = { type: 'display-settings', strips: { ...before.strips, codex: false }, warning: 55, danger: 85 };
+    const expected = { type: 'display-settings', strips: { ...before.strips, codex: false }, warning: 55.5, danger: 85 };
     assert.deepEqual(p.messages.filter(message => message.type === 'display-settings'), [expected]);
-    assert.deepEqual(p.state.settings, { ...before, strips: expected.strips, warning: 55, danger: 85 });
+    assert.deepEqual(p.state.settings, { ...before, strips: expected.strips, warning: 55.5, danger: 85 });
     assert.equal(p.input('gauge-warning').getAttribute('aria-invalid'), null);
     assert.equal(p.doc.getElementById('settings-feedback')!.textContent, '설정을 저장했습니다.');
   } finally { p.dom.window.close(); }

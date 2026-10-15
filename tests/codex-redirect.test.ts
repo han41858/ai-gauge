@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { buildSync } from 'esbuild';
+import { bundleEntry } from './helpers/bundle';
 import { resolvePageProvider } from '../src/content/page-provider';
 import { providerFromUrl, type View } from '../src/shared/types';
 import { authorized, type Message } from '../src/shared/contracts';
@@ -83,13 +83,13 @@ test('page context detection reads no prompt value or text and does not cross if
 function runningContent(html: string, currentView: View) {
   const dom = new JSDOM(html, { url: rootUrl, runScripts: 'outside-only' });
   type Listener = (message: unknown, sender: chrome.runtime.MessageSender, reply?: (value: unknown) => void) => void;
-  const listeners: Listener[] = [], storageListeners: Array<() => void> = [], requests: Message[] = [];
+  const listeners: Listener[] = [], storageListeners: Array<(...args: unknown[]) => void> = [], requests: Message[] = [];
   Object.assign(dom.window, { chrome: {
     runtime: { id: 'fixture', sendMessage: async (message: Message) => { requests.push(message); return { ok: true, view: structuredClone(currentView) }; },
       onMessage: { addListener(fn: Listener) { listeners.push(fn); }, removeListener(fn: Listener) { const i = listeners.indexOf(fn); if (i >= 0) listeners.splice(i, 1); } } },
-    storage: { onChanged: { addListener(fn: () => void) { storageListeners.push(fn); }, removeListener() {} } }
+    storage: { onChanged: { addListener(fn: (...args: unknown[]) => void) { storageListeners.push(fn); }, removeListener() {} } }
   } });
-  const bundle = buildSync({ entryPoints: ['src/content/index.ts'], bundle: true, write: false, format: 'iife', target: 'chrome120' }).outputFiles[0]!.text;
+  const bundle = bundleEntry('src/content/index.ts');
   dom.window.eval(bundle);
   const diagnostic = () => {
     let result: ReadyDisplayDiagnostic | undefined;
@@ -98,7 +98,7 @@ function runningContent(html: string, currentView: View) {
   };
   return {
     dom, requests, diagnostic,
-    invalidate() { for (const listener of storageListeners) listener(); },
+    invalidate() { for (const listener of storageListeners) listener({ 'snapshot:v4:chatgpt': {} }, 'local'); },
     close() {
       for (const listener of [...listeners]) listener({ type: 'permissions-revoked', origins: ['https://chatgpt.com/*'] }, { id: 'fixture' });
       dom.window.close();

@@ -1,6 +1,6 @@
-import { test } from 'node:test';
+import { beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { updateBadge } from '../src/background/badge';
+import { resetBadgeCache, updateBadge } from '../src/background/badge';
 import { defaults } from '../src/storage/settings';
 import { emptySnapshot } from '../src/storage/snapshots';
 import type { Snapshot, UsageLimit, View } from '../src/shared/types';
@@ -18,6 +18,8 @@ const view = (): View => {
   return { settings, permissions: { chatgpt: true, claude: true, gemini: true },
     snapshots: { chatgpt: snapshot('chatgpt', 15), claude: snapshot('claude', 63), gemini: snapshot('gemini', 42) } };
 };
+// Each test simulates a fresh worker; the module keeps its write cache per worker lifetime.
+beforeEach(() => resetBadgeCache());
 function browser(initial: Tab[]) {
   const tabs = new Map(initial.map(tab => [tab.id, { ...tab }]));
   const texts = new Map<number, string>(), titles = new Map<number, string>(), colors = new Map<number, string>(), textColors = new Map<number, string>();
@@ -188,4 +190,41 @@ test('a delayed old badge write cannot overwrite a newer unsupported-page clear'
     assert.equal(mock.current(1), ''); assert.equal(mock.titles.get(1), 'AI Gauge');
     assert.deepEqual(mock.writes.filter(value => value.tabId === 1).map(value => value.text), ['15%', '']);
   } finally { release!(); globalThis.chrome = previous; }
+});
+
+test('unchanged badges are not rewritten and tab-only updates touch only the named tabs', async () => {
+  const mock = browser([{ id: 1, url: 'https://chatgpt.com/' }, { id: 2, url: 'https://claude.ai/new' }]);
+  const previous = globalThis.chrome;
+  globalThis.chrome = mock.api as unknown as typeof chrome;
+  try {
+    const current = view();
+    await updateBadge(current);
+    const initial = mock.writes.length;
+    await updateBadge(current);
+    assert.equal(mock.writes.length, initial, 'an identical view causes no action API writes');
+    current.snapshots.claude.limits[0]!.percent = 64;
+    await updateBadge(current, [1]);
+    assert.equal(mock.writes.length, initial, 'tab 1 is unchanged, and tab 2 was not requested');
+    assert.equal(mock.current(2), '63%');
+    await updateBadge(current, [2]);
+    assert.deepEqual(mock.writes.slice(initial), [{ tabId: 2, text: '64%' }]);
+    mock.tabs.set(1, { id: 1, url: 'https://unrelated.invalid/' });
+    await updateBadge(current, [1]);
+    assert.equal(mock.current(1), '');
+  } finally { globalThis.chrome = previous; }
+});
+
+test('a failed action write is retried on the next update instead of being cached', async () => {
+  const mock = browser([{ id: 1, url: 'https://chatgpt.com/' }]);
+  const previous = globalThis.chrome, write = mock.api.action.setBadgeText;
+  let fail = true;
+  mock.api.action.setBadgeText = async value => { if (fail && value.tabId === 1) throw new Error('transient'); await write(value); };
+  globalThis.chrome = mock.api as unknown as typeof chrome;
+  try {
+    await updateBadge(view());
+    assert.equal(mock.texts.has(1), false);
+    fail = false;
+    await updateBadge(view());
+    assert.equal(mock.current(1), '15%');
+  } finally { globalThis.chrome = previous; }
 });

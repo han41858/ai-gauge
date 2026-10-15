@@ -1,4 +1,4 @@
-import { selectedLimit } from '../background/badge';
+import { highestUsageLimit } from '../shared/usage-selection';
 import { type PageProvider, type View } from '../shared/types';
 import { displayProvider, shouldShowStrip } from '../shared/display-policy';
 import { usageParts } from './usage-label';
@@ -27,7 +27,7 @@ export class UsageStrip {
       || (this.target.input && (!this.target.input.isConnected || this.hidden(this.target.input)
         || !(this.target.scope ?? this.target.anchor).contains(this.target.input)))) { this.remove(); return; }
     const anchor = this.target!.anchor;
-    const snapshot = effectiveSnapshot(view.snapshots[displayProvider(p)]), limit = selectedLimit(snapshot, view.settings) ?? snapshot.limits[0];
+    const snapshot = effectiveSnapshot(view.snapshots[displayProvider(p)]), limit = highestUsageLimit(snapshot.limits) ?? snapshot.limits[0];
     const parts = usageParts(snapshot, limit);
     if (!this.host) {
       this.host = this.doc.createElement('div');

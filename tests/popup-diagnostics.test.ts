@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildSync } from 'esbuild';
+import { bundleEntry } from './helpers/bundle';
 import { JSDOM } from 'jsdom';
 import { bindDiagnostics, createDiagnosticReport } from '../src/popup/diagnostics';
 import { renderCards } from '../src/popup/render';
@@ -119,7 +119,7 @@ test(`popup bundle uses installed display version ${manifest.version_name ?? man
       runtime: { getManifest: () => manifest, sendMessage: async () => ({ ok: true, view: view() }) },
       storage: { onChanged: { addListener() {} } }
     } });
-    const bundle = buildSync({ entryPoints: ['src/popup/index.ts'], bundle: true, write: false, format: 'iife', target: 'chrome120' }).outputFiles[0]!.text;
+    const bundle = bundleEntry('src/popup/index.ts');
     dom.window.eval(bundle);
     await flush();
     assert.equal(doc.getElementById('extension-version')!.textContent, `AI Gauge ${installedVersion}`);

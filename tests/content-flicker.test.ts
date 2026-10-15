@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { buildSync } from 'esbuild';
+import { bundleEntry } from './helpers/bundle';
 import { UsageStrip } from '../src/content/usage-strip';
 import { defaults } from '../src/storage/settings';
 import { emptySnapshot } from '../src/storage/snapshots';
@@ -93,9 +93,7 @@ test('a temporary second editor does not remove the existing connected composer 
   } finally { dom.window.close(); }
 });
 
-const contentBundle = () => buildSync({
-  entryPoints: ['src/content/index.ts'], bundle: true, write: false, format: 'iife', target: 'chrome120'
-}).outputFiles[0]!.text;
+const contentBundle = () => bundleEntry('src/content/index.ts');
 const flush = () => new Promise(resolve => setTimeout(resolve, 10));
 
 test('bundled content keeps its strip through a transient runtime failure and later updates', async () => {

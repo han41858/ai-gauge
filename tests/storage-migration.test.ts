@@ -41,14 +41,15 @@ test('new settings distinguish three collectors from four page strips and keep G
   const base = defaults();
   assert.deepEqual(base.enabled, { chatgpt: false, claude: false, gemini: false });
   assert.deepEqual(base.strips, { chatgpt: true, codex: true, claude: true, gemini: true });
-  assert.equal(base.followTab, false);
+  assert.deepEqual(Object.keys(base).sort(), ['danger', 'enabled', 'strips', 'warning']);
   assert(isSettings(base));
   assert(!isSettings({ ...base, strips: { chatgpt: true, claude: true, gemini: true } }));
+  assert(!isSettings({ ...base, followTab: true }), 'retired keys are not part of the current settings shape');
   const parsed = parseSettings({ ...base, enabled: { ...base.enabled, gemini: true }, strips: { ...base.strips, codex: false }, followTab: true });
   assert.equal(parsed.enabled.gemini, true);
   assert.equal(parsed.strips.codex, false);
   assert.equal(parsed.strips.chatgpt, true);
-  assert.equal(parsed.followTab, true);
+  assert.equal(Object.hasOwn(parsed, 'followTab'), false, 'retired keys are dropped on parse');
 });
 
 test('legacy settings migrate the shared pool once while preserving page preferences', async () => {
@@ -59,8 +60,7 @@ test('legacy settings migrate the shared pool once while preserving page prefere
     assert.deepEqual(settings, {
       enabled: { chatgpt: true, claude: true, gemini: false },
       strips: { chatgpt: false, codex: true, claude: false, gemini: true },
-      selectedLimit: { chatgpt: 'shared:primary_window', claude: 'seven_day', gemini: null },
-      defaultProvider: 'chatgpt', followTab: true, warning: 60, danger: 85
+      warning: 60, danger: 85
     });
     assert.deepEqual(shared, snapshot());
     assert.equal(mock.writes.length, 1);
@@ -126,7 +126,7 @@ test('failed legacy collection preserves its last successful data and cooldown',
 test('existing new settings and snapshots take priority over legacy values', async () => {
   const settings = defaults();
   settings.enabled.gemini = true;
-  settings.defaultProvider = 'gemini';
+  settings.warning = 40;
   const stored: Record<string, unknown> = { settings: oldSettings(), [SETTINGS]: settings, [SHARED]: snapshot(70), [LEGACY]: { ...snapshot(15), provider: 'work_codex' } };
   const mock = installStorage(stored);
   try {
@@ -173,7 +173,7 @@ test('concurrent migration, reads and writes cannot overwrite a new collection o
   const mock = installStorage(stored, () => gate);
   try {
     const settings = defaults();
-    settings.followTab = true;
+    settings.strips.claude = false;
     const pending = [migrateStorage(), readSettings(), readSnapshot('chatgpt'), writeSettings(settings), writeSnapshot(snapshot(80))];
     assert.equal(mock.reads.length, 1);
     release();
