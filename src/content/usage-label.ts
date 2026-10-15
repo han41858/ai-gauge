@@ -1,4 +1,4 @@
-import { resetLabel, statusText, usagePercentLabel } from '../shared/format';
+import { resetCountdownLabel, statusText, usagePercentLabel } from '../shared/format';
 import type { Snapshot, UsageLimit } from '../shared/types';
 import { percent } from '../shared/validation';
 
@@ -14,7 +14,7 @@ export function usageParts(snapshot: Snapshot, limit: UsageLimit | undefined, no
   const currentData = snapshot.state === 'ok';
   const used = currentData ? percent(limit?.percent) : null;
   const current = usagePercentLabel(used);
-  const reset = resetLabel(currentData ? limit?.resetsAt : null, now);
+  const reset = resetCountdownLabel(currentData ? limit?.resetsAt : null, now);
   const status = currentData ? null : statusText(snapshot);
   return { current, reset, status, percent: used, label: [current, reset, status].filter(value => value !== null).join('  ') };
 }
