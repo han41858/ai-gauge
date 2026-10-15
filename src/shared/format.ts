@@ -22,7 +22,7 @@ function resetValue(value: string | null | undefined, now: number, compact = fal
     if (days > 0) return `${days}d`;
     if (hours > 0) return `${hours}h`;
     const minutes = Math.floor(remaining / 60_000);
-    return minutes > 0 ? `${minutes}m` : '1m 미만';
+    return minutes > 0 ? `${minutes}m` : '1분 미만';
   }
   return `${prefix}${days > 0 ? `${days}d ` : ''}${hours % 24}h 남음`;
 }

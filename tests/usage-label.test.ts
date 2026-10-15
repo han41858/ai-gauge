@@ -30,7 +30,7 @@ test('countdown changes units at the day, hour and minute boundaries without rou
   for (const [remaining, expected] of [
     [86_400_001, '1d'], [86_400_000, '1d'], [86_399_999, '23h'],
     [3_600_001, '1h'], [3_600_000, '1h'], [3_599_999, '59m'],
-    [60_001, '1m'], [60_000, '1m'], [59_999, '1m 미만'], [1, '1m 미만']
+    [60_001, '1m'], [60_000, '1m'], [59_999, '1분 미만'], [1, '1분 미만']
   ] as const) {
     assert.equal(usageLabel(snapshot(), item, reset - remaining),
       `사용량: 15%  🕒 사용량 초기화: ${expected}`, `${remaining}ms remaining`);
