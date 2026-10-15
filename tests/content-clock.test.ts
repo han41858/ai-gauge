@@ -72,10 +72,11 @@ async function page(view: View, path = '/') {
   dom.window.eval(bundle); await flush();
   const host = () => doc.getElementById('ai-gauge-usage-strip');
   const progress = () => roots.get(host()!)!.querySelector('progress')!;
+  const ticket = () => roots.get(host()!)!.querySelector<HTMLAnchorElement>('.tickets')!;
   const revoke = (origins = ['https://chatgpt.com/*'], id = 'fixture') => {
     for (const fn of runtimeListeners) fn({ type: 'permissions-revoked', origins }, { id });
   };
-  return { dom, host, progress, intervals, cleared, timeouts, clearedTimeouts, requests, runtimeListeners, storageListeners,
+  return { dom, host, progress, ticket, intervals, cleared, timeouts, clearedTimeouts, requests, runtimeListeners, storageListeners,
     fetches: () => fetches,
     async tick(at: number) { now = at; for (const timer of [...intervals.values()]) timer.run(); await flush(); },
     async storageChanged() { for (const fn of storageListeners) fn({ 'snapshot:v4:chatgpt': {} }, 'local'); await flush(); },
@@ -97,6 +98,32 @@ test('initial and same-document navigation notify context once without adding pe
     assert.equal(tab.requests.length, 2);
     assert.equal(tab.fetches(), 0);
   } finally { tab.close(); }
+});
+
+test('the existing 15-second clock switches shared tickets to the next expiry then hides them without collecting', async () => {
+  const snapshot = collected(37, base, base + 3_600_000);
+  snapshot.tickets = { checkedAt: base, failures: 0, inventory: { mode: 'detail', usableCount: null, cooldownUntil: null,
+    grants: [10_000, 90_000].map(offset => ({ kind: 'full', count: 1, startsAt: null,
+      expiresAt: new Date(base + offset).toISOString(), usableNow: true, clears: ['five_hour'],
+      requiresLimit: false, blocked: false, selected: null })) } };
+  const view = sharedView(snapshot), chat = await page(view), codex = await page(view, '/codex');
+  try {
+    for (const tab of [chat, codex]) {
+      const link = tab.ticket(), requests = structuredClone(tab.requests);
+      assert.deepEqual([...tab.intervals.values()].map(timer => timer.delay), [15_000]);
+      assert.equal(link.textContent, '🎫 티켓 만료: 1분 미만');
+      assert.equal(link.hidden, false);
+      await tab.tick(base + 15_000);
+      assert.equal(tab.ticket(), link); assert.equal(link.hidden, false);
+      assert.equal(link.textContent, '🎫 티켓 만료: 1분 후', 'the second ticket replaces the expired first ticket');
+      await tab.tick(base + 90_000);
+      assert.equal(tab.ticket(), link); assert.equal(link.hidden, true);
+      assert.equal(link.textContent, ''); assert.equal(link.hasAttribute('href'), false);
+      assert.equal(tab.progress().value, 37);
+      assert.deepEqual(tab.requests, requests); assert.equal(tab.fetches(), 0);
+    }
+    assert.equal(snapshot.tickets.inventory.grants.length, 2, 'rendering never mutates the shared ticket inventory');
+  } finally { chat.close(); codex.close(); }
 });
 
 test('a quiet content clock keeps successful cache older than ten minutes without requesting a refresh', async () => {

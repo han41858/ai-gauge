@@ -4,7 +4,7 @@ import { displayProvider, shouldShowStrip } from '../shared/display-policy';
 import { usageParts } from './usage-label';
 import { findComposerTarget, retainsComposerMarker, type ComposerTarget } from './selectors';
 import { effectiveSnapshot } from '../storage/snapshots';
-import { ticketDisplay } from '../shared/ticket-presentation';
+import { inlineTicketDisplay } from '../shared/ticket-presentation';
 import { UsageGauge, USAGE_GAUGE_CSS } from './usage-gauge';
 export class UsageStrip {
   private host: HTMLElement | null = null;
@@ -90,14 +90,12 @@ progress::-moz-progress-bar{background:currentColor;border-radius:999px}
       if (this.progress!.hasAttribute('value')) this.progress!.removeAttribute('value');
     } else if (this.progress!.getAttribute('value') !== String(parts.percent)) this.progress!.setAttribute('value', String(parts.percent));
     if (this.ticketLink) {
-      const tickets = ticketDisplay(view.snapshots[displayProvider(p)]);
+      const tickets = inlineTicketDisplay(view.snapshots[displayProvider(p)]);
       if (this.ticketLink.hidden !== (tickets === null)) this.ticketLink.hidden = tickets === null;
       if (tickets) {
-        if (this.ticketLink.textContent !== tickets.inline) this.ticketLink.textContent = tickets.inline;
+        if (this.ticketLink.textContent !== tickets.text) this.ticketLink.textContent = tickets.text;
         if (this.ticketLink.getAttribute('href') !== tickets.href) this.ticketLink.href = tickets.href;
         if (this.ticketLink.getAttribute('aria-label') !== tickets.accessible) this.ticketLink.setAttribute('aria-label', tickets.accessible);
-        if (this.ticketLink.title !== tickets.details) this.ticketLink.title = tickets.details;
-        if (this.ticketLink.getAttribute('aria-description') !== tickets.details) this.ticketLink.setAttribute('aria-description', tickets.details);
       } else {
         if (this.ticketLink.textContent) this.ticketLink.textContent = '';
         for (const attribute of ['href', 'aria-label', 'aria-description', 'title']) if (this.ticketLink.hasAttribute(attribute)) this.ticketLink.removeAttribute(attribute);
