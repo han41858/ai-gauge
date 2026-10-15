@@ -10,9 +10,10 @@
 | 저장소 변경 신호 | 탭과 팝업은 `settings:v2`·스냅샷 키의 local 변경만 반영합니다. 팝업의 변경 후 재읽기는 새 `read` 메시지를 사용해 수집을 시작하지 않습니다. 팝업을 열 때의 `view`는 기존대로 기한이 된 서비스만 갱신합니다. |
 | 게이지 | `usage-gauge.ts`가 `assets/gauge-*.svg`를 번들 텍스트로 읽어 사용합니다. 자산 ID에는 게이지별 접두어를 붙입니다. 사용하지 않는 `assets/logo-20x20.png`를 삭제했습니다. |
 | 설정 | 임계치는 0~100 범위의 숫자(소수 허용)이며 `checkUsageThresholds`가 범위·순서 원인과 대상 필드를 반환합니다. 사용하지 않던 `defaultProvider`·`selectedLimit`·`followTab`과 `strips`·`settings` 메시지를 제거했습니다. 이전 저장값의 퇴역 키는 읽을 때 무시되고 다음 저장 때 사라집니다. |
+| 파일 분리 | `scripts/browser-fixture.mjs`를 하네스와 `scripts/browser-fixture/` 아래 팝업·Codex·Claude·ChatGPT·Gemini·게이지 체크 모듈로 나눴습니다. 페이지 주입용 `collectInPage`는 `providers/openai-claude-transport.ts`로 옮기고 `tab-transport.ts`에는 워커 쪽 탭 선택·결과 해석만 남겼습니다. 콘텐츠 스크립트의 요청 직렬화·재시도·응답 완료 감지는 `content/view-requests.ts`, 변경 감지 필터는 `content/mutations.ts`로 분리했습니다. 동작은 바꾸지 않았고 200자를 넘던 코드 줄을 정리했습니다(CSS·선택자 상수 제외). |
 | 기타 | `readView` 저장소 읽기 1회 통합, ChatGPT/Claude JSON 응답 1 MiB 상한, 날짜 형식·Gemini 오류 문구·fetch 헬퍼 중복 제거, Gemini 정책 목록 일치 테스트, 릴리스 빌드 minify, 이전 설치 ZIP 정리(과거 링크는 커밋 고정 링크로 변경). |
 
-- `npm run check`: **513개 통과**, 실패·취소·스킵 0. TypeScript, 개발 빌드, 산출물 검사 통과. 릴리스 빌드(`--release`)도 확인했습니다.
+- `npm run check`: **516개 통과**, 실패·취소·스킵 0. TypeScript, 개발 빌드, 산출물 검사 통과. 릴리스 빌드(`--release`)도 확인했습니다. 분리한 fixture 모듈은 구문 검사와 TypeScript `checkJs`로 미정의 이름이 없음을 확인했습니다.
 - Chromium fixture(`npm run test:browser:fixture`, `test:browser:extension`)는 작업 환경에 Chromium이 없어 **실행하지 못했습니다.** 게이지 SVG 구성과 저장소 변경 신호 형식이 바뀌었으므로 병합 전 로컬 실행이 필요합니다. 실제 로그인한 서비스 화면에서도 미검증입니다.
 
 ## 2026-10-15 main 통합 — 동적 게이지와 표시 개선

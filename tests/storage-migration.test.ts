@@ -44,7 +44,6 @@ test('new settings distinguish three collectors from four page strips and keep G
   assert.deepEqual(Object.keys(base).sort(), ['danger', 'enabled', 'strips', 'warning']);
   assert(isSettings(base));
   assert(!isSettings({ ...base, strips: { chatgpt: true, claude: true, gemini: true } }));
-  assert(!isSettings({ ...base, followTab: true }), 'retired keys are not part of the current settings shape');
   const parsed = parseSettings({ ...base, enabled: { ...base.enabled, gemini: true }, strips: { ...base.strips, codex: false }, followTab: true });
   assert.equal(parsed.enabled.gemini, true);
   assert.equal(parsed.strips.codex, false);

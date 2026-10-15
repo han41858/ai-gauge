@@ -3,7 +3,15 @@ import { record } from './validation';
 import { isSettings, parseStrips, parseUsageThresholds } from '../storage/settings';
 import { parseSnapshot } from '../storage/snapshots';
 import { canRefreshFromPage } from './display-policy';
-export type Message = { type: 'view' } | { type: 'read' } | { type: 'context'; provider: Provider } | { type: 'enable'; provider: Provider } | { type: 'enable-many'; providers: Provider[] } | { type: 'disable'; provider: Provider } | { type: 'display-settings'; strips: Settings['strips']; warning: number; danger: number } | { type: 'refresh'; provider: Provider; trigger: 'manual' | 'event' };
+export type Message =
+  | { type: 'view' }
+  | { type: 'read' }
+  | { type: 'context'; provider: Provider }
+  | { type: 'enable'; provider: Provider }
+  | { type: 'enable-many'; providers: Provider[] }
+  | { type: 'disable'; provider: Provider }
+  | { type: 'display-settings'; strips: Settings['strips']; warning: number; danger: number }
+  | { type: 'refresh'; provider: Provider; trigger: 'manual' | 'event' };
 export type Reply = { ok: true; view: View } | { ok: false };
 export function parseMessage(input: unknown): Message | null {
   const r = record(input);
@@ -20,14 +28,19 @@ export function parseMessage(input: unknown): Message | null {
     const strips = parseStrips(r.strips), thresholds = parseUsageThresholds(r.warning, r.danger);
     if (strips && thresholds) return { type: 'display-settings', strips, ...thresholds };
   }
-  if (r.type === 'refresh' && keys === 'provider,trigger,type' && isProvider(r.provider) && (r.trigger === 'manual' || r.trigger === 'event')) return { type: 'refresh', provider: r.provider, trigger: r.trigger };
+  if (r.type === 'refresh' && keys === 'provider,trigger,type' && isProvider(r.provider) && (r.trigger === 'manual' || r.trigger === 'event')) {
+    return { type: 'refresh', provider: r.provider, trigger: r.trigger };
+  }
   return null;
 }
 export function authorized(message: Message, sender: chrome.runtime.MessageSender, extensionId: string): boolean {
   if (sender.id !== extensionId) return false;
   if (sender.tab) {
     const p = providerFromUrl(sender.url);
-    return p !== null && providerFromUrl(sender.tab.url) === p && sender.frameId === 0 && (message.type === 'view' || (message.type === 'context' && canRefreshFromPage(p, message.provider)) || (message.type === 'refresh' && canRefreshFromPage(p, message.provider) && message.trigger === 'event'));
+    if (p === null || providerFromUrl(sender.tab.url) !== p || sender.frameId !== 0) return false;
+    return message.type === 'view'
+      || (message.type === 'context' && canRefreshFromPage(p, message.provider))
+      || (message.type === 'refresh' && canRefreshFromPage(p, message.provider) && message.trigger === 'event');
   }
   return message.type !== 'context' && sender.url === `chrome-extension://${extensionId}/popup.html`;
 }

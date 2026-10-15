@@ -21,7 +21,9 @@ export async function reconcileContent(view: View): Promise<void> {
     if (enabled && present && existing.find(s => s.id === id)?.runAt === 'document_idle') await chrome.scripting.updateContentScripts([{ id, js: ['content.js'], runAt: 'document_start' }]);
     if (enabled) {
       const tabs = await chrome.tabs.query({ url: site.origin });
-      await Promise.all(tabs.filter(t => typeof t.id === 'number' && !t.discarded && !t.frozen).map(t => chrome.scripting.executeScript({ target: { tabId: t.id! }, files: ['content.js'] }).catch(() => undefined)));
+      const live = tabs.filter(t => typeof t.id === 'number' && !t.discarded && !t.frozen);
+      await Promise.all(live.map(t => chrome.scripting.executeScript({ target: { tabId: t.id! }, files: ['content.js'] })
+        .catch(() => undefined)));
     }
   }
 }

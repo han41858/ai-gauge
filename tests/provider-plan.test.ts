@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseChatGPTPlan, parseClaudePlan } from '../src/providers/openai-claude-plan';
-import { collectInPage } from '../src/providers/tab-transport';
+import { collectInPage } from '../src/providers/openai-claude-transport';
 import { collectChatGPT } from '../src/providers/chatgpt';
 import { collectClaude } from '../src/providers/claude';
 import { parseChatGPT, parseClaude } from '../src/providers/parsers';

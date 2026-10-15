@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { collectChatGPT } from '../src/providers/chatgpt';
-import { collectFromTab, collectInPage } from '../src/providers/tab-transport';
+import { collectFromTab } from '../src/providers/tab-transport';
+import { collectInPage } from '../src/providers/openai-claude-transport';
 import { parseChatGPT } from '../src/providers/parsers';
 import { Scheduler, success } from '../src/background/scheduler';
 import { CollectionError } from '../src/shared/errors';

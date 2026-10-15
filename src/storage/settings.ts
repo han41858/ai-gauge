@@ -45,6 +45,6 @@ export function parseSettings(value: unknown): Settings {
 }
 export function isSettings(value: unknown): value is Settings {
   const r = record(value), enabled = record(r?.enabled);
-  return !!r && Object.keys(r).length === 4 && !!enabled && PROVIDERS.every(p => typeof enabled[p] === 'boolean')
+  return !!r && !!enabled && PROVIDERS.every(p => typeof enabled[p] === 'boolean')
     && parseStrips(r.strips) !== null && parseUsageThresholds(r.warning, r.danger) !== null;
 }

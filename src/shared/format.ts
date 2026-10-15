@@ -25,7 +25,8 @@ export function usagePercentLabel(value: unknown): string {
   const used = percent(value);
   return `사용량: ${used === null ? '확인 불가' : `${Math.round(used)}%`}`;
 }
-export const usageValue = (limit: UsageLimit) => limit.percent !== null ? `${Math.round(limit.percent)}%` : limit.remaining !== null ? `${limit.remaining.toLocaleString()}${limit.unit ?? ''} 남음` : '확인 불가';
+export const usageValue = (limit: UsageLimit) => limit.percent !== null ? `${Math.round(limit.percent)}%`
+  : limit.remaining !== null ? `${limit.remaining.toLocaleString()}${limit.unit ?? ''} 남음` : '확인 불가';
 export const usageText = (limit: UsageLimit) => `${limit.label}: ${usageValue(limit)}`;
 const STATUS_TEXT: Record<ErrorCode, string> = {
   not_collected: '사용량 확인 중', signed_out: '로그인 필요', access_denied: '사이트 접근 거부',

@@ -7,28 +7,25 @@ import { authorizedDisplayRequest, createDisplayDiagnostic } from './display-dia
 import { resolvePageProvider } from './page-provider';
 import { DEVELOPMENT } from '../shared/build-mode';
 import { affectsView } from '../storage/snapshots';
+import { CompletionWatcher, LoadQueue, RetryTimer } from './view-requests';
+import { hasExternalChange, OBSERVED_ATTRIBUTES } from './mutations';
 
 declare global { interface Window { __aiGaugeMounted?: boolean } }
 if (resolvePageProvider(document, location.href) && !window.__aiGaugeMounted) {
   window.__aiGaugeMounted = true;
   let provider: PageProvider | null = null, strip: UsageStrip | null = null, view: View | null = null;
-  let stopped = false, timer: ReturnType<typeof setTimeout> | null = null, wasStreaming = false, lastSignal = 0, pending = false, loadAgain = false;
-  const refreshQueue = new Set<Provider>();
-  let viewRetryTimer: ReturnType<typeof setTimeout> | null = null, viewFailures = 0;
-  let completionTimer: ReturnType<typeof setTimeout> | null = null, completionProvider: Provider | null = null;
+  let stopped = false, timer: ReturnType<typeof setTimeout> | null = null, wasStreaming = false;
   let clockTimer: ReturnType<typeof setInterval> | null = null;
   let routeUrl: string | null = null;
   let contextPending = false;
-  const clearCompletion = () => {
-    if (completionTimer) clearTimeout(completionTimer);
-    completionTimer = null; completionProvider = null;
-  };
+  const queue = new LoadQueue();
+  const retry = new RetryTimer(() => { void load(); });
+  const completion = new CompletionWatcher(() => stopped ? null : view, source => { void load(source); });
   const route = () => {
     const next = resolvePageProvider(document, location.href);
     const navigated = routeUrl !== null && routeUrl !== location.href;
-    if (navigated || next !== provider) contextPending = true;
+    if (navigated || next !== provider) { contextPending = true; completion.clear(); }
     routeUrl = location.href;
-    if (navigated || next !== provider) clearCompletion();
     if (next === provider) {
       if (navigated) wasStreaming = next ? hasStreamingControl(document, next) : false;
       return navigated;
@@ -40,32 +37,19 @@ if (resolvePageProvider(document, location.href) && !window.__aiGaugeMounted) {
   };
   const stop = () => {
     stopped = true; window.__aiGaugeMounted = false; strip?.remove(); observer.disconnect(); if (timer) clearTimeout(timer);
-    if (viewRetryTimer) clearTimeout(viewRetryTimer);
+    retry.cancel();
     if (clockTimer) clearInterval(clockTimer);
-    clearCompletion();
+    completion.clear();
     document.removeEventListener('focusin', scheduleCheck);
     document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('popstate', onRoute);
     chrome.runtime.onMessage.removeListener(onMessage); chrome.storage.onChanged.removeListener(onStorage);
   };
-  const scheduleCompletion = () => {
-    if (stopped || !completionProvider || !view) return;
-    const source = completionProvider, snapshot = view.snapshots[source];
-    if (!view.settings.enabled[source] || !view.permissions[source]
-      || ['signed_out', 'permission_required', 'unsupported'].includes(snapshot.state)) { clearCompletion(); return; }
-    // A response completed during the worker's cooldown must remain pending.
-    // Stored retry/backoff deadlines are authoritative; this never forces a fetch.
-    const earliest = Math.max(snapshot.nextAttemptAt, snapshot.checkedAt === null ? 0 : snapshot.checkedAt + 60_000, lastSignal + 60_000);
-    const delay = earliest - Date.now();
-    if (completionTimer) { clearTimeout(completionTimer); completionTimer = null; }
-    if (delay > 0) completionTimer = setTimeout(() => { completionTimer = null; scheduleCompletion(); }, Math.min(delay + 100, 2_147_483_647));
-    else { completionProvider = null; lastSignal = Date.now(); void load(source); }
-  };
   const load = async (refresh?: Provider) => {
     if (stopped) return;
-    if (pending) { loadAgain = true; if (refresh) refreshQueue.add(refresh); return; }
+    if (queue.busy) { queue.defer(refresh); return; }
     route(); if (!provider) return;
     const current = provider;
-    pending = true;
+    queue.start();
     const context = contextPending;
     contextPending = false;
     try {
@@ -73,12 +57,12 @@ if (resolvePageProvider(document, location.href) && !window.__aiGaugeMounted) {
         : refresh && canRefreshFromPage(current, refresh) ? { type: 'refresh', provider: refresh, trigger: 'event' } : { type: 'view' });
       if (stopped) return;
       view = nextView;
-      viewFailures = 0; if (viewRetryTimer) { clearTimeout(viewRetryTimer); viewRetryTimer = null; }
-      route(); if (contextPending) loadAgain = true;
+      retry.succeeded();
+      route(); if (contextPending) queue.requestAgain();
       strip?.update(view);
       const group = SITE_GROUPS.find(g => g.providers.includes(current));
       if (!view.permissions[displayProvider(current)] || !group || !needsContent(view, group.providers)) stop();
-      else scheduleCompletion();
+      else completion.schedule();
     } catch {
       if (stopped) return;
       if (context) contextPending = true;
@@ -89,17 +73,11 @@ if (resolvePageProvider(document, location.href) && !window.__aiGaugeMounted) {
         // A sleeping/restarting worker or rejected transient reply is not a
         // permission revocation. Keep the last view and retry the local read.
         strip?.mount();
-        viewFailures++;
-        if (!viewRetryTimer) viewRetryTimer = setTimeout(() => { viewRetryTimer = null; void load(); }, Math.min(30_000, 1_000 * 2 ** Math.min(viewFailures - 1, 5)));
+        retry.failed();
       }
     } finally {
-      pending = false;
-      if (!stopped && (loadAgain || refreshQueue.size)) {
-        loadAgain = false;
-        const next = refreshQueue.values().next().value;
-        if (next) refreshQueue.delete(next);
-        void load(next);
-      }
+      const next = queue.finish();
+      if (!stopped && next) void load(next.refresh);
     }
   };
   const check = () => {
@@ -108,34 +86,18 @@ if (resolvePageProvider(document, location.href) && !window.__aiGaugeMounted) {
     const changed = route(); strip?.mount(); if (!provider) return;
     if (changed || contextPending) void load(displayProvider(provider));
     const streaming = hasStreamingControl(document, provider);
-    if (wasStreaming && !streaming) { completionProvider = displayProvider(provider); scheduleCompletion(); }
+    if (wasStreaming && !streaming) completion.arm(displayProvider(provider));
     wasStreaming = streaming;
   };
   const scheduleCheck = () => { if (!timer && !stopped) timer = setTimeout(check, 300); };
-  const ownNode = (node: Node) => {
-    const element = node.nodeType === Node.ELEMENT_NODE ? node as Element : node.parentElement;
-    return !!element?.closest('#ai-gauge-usage-strip');
-  };
   const observer = new MutationObserver(records => {
-    if (stopped) return;
-    const externalChange = records.some(record => {
-      if (ownNode(record.target)) return false;
-      const changed = [...record.addedNodes, ...record.removedNodes];
-      // Insertions/reordering made by either installation must not schedule
-      // another mount. A site removing our node alone does require recovery.
-      return record.type !== 'childList' || changed.length === 0 || changed.some(node => !ownNode(node)) || [...record.removedNodes].some(node => !node.isConnected);
-    });
-    if (externalChange) {
-      // Observe the appearance immediately so short responses are not lost
-      // between the debounced placement checks. Only control attributes are read.
-      if (provider && hasStreamingControl(document, provider)) wasStreaming = true;
-      scheduleCheck();
-    }
+    if (stopped || !hasExternalChange(records)) return;
+    // Observe the appearance immediately so short responses are not lost
+    // between the debounced placement checks. Only control attributes are read.
+    if (provider && hasStreamingControl(document, provider)) wasStreaming = true;
+    scheduleCheck();
   });
-  observer.observe(document, {
-    childList: true, subtree: true, attributes: true,
-    attributeFilter: ['hidden', 'aria-hidden', 'inert', 'style', 'class', 'contenteditable', 'aria-label', 'data-testid', 'data-test-id', 'data-cds']
-  });
+  observer.observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: OBSERVED_ATTRIBUTES });
   const onMessage = (message: unknown, sender: chrome.runtime.MessageSender, sendResponse?: (response: unknown) => void) => {
     if (DEVELOPMENT && authorizedDisplayRequest(message, sender, chrome.runtime.id)) {
       const current = resolvePageProvider(document, location.href);

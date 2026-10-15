@@ -11,19 +11,28 @@ export function emptySnapshot(provider: Provider): Snapshot {
 export function validLimits(input: unknown): input is UsageLimit[] {
   return Array.isArray(input) && input.length <= 150 && input.every(x => {
     const r = record(x);
-    return r && typeof r.id === 'string' && r.id.length > 0 && r.id.length <= 200 && label(r.label) && ['window', 'model', 'product'].includes(String(r.category)) && r.source === 'api' && (r.percent === null || percent(r.percent) !== null) && (r.resetsAt === null || resetTime(r.resetsAt) !== null) && (r.windowSeconds === null || nonnegative(r.windowSeconds) !== null) && (r.remaining === null || nonnegative(r.remaining) !== null) && (r.unit === null || label(r.unit));
+    return r && typeof r.id === 'string' && r.id.length > 0 && r.id.length <= 200 && label(r.label)
+      && ['window', 'model', 'product'].includes(String(r.category)) && r.source === 'api'
+      && (r.percent === null || percent(r.percent) !== null) && (r.resetsAt === null || resetTime(r.resetsAt) !== null)
+      && (r.windowSeconds === null || nonnegative(r.windowSeconds) !== null) && (r.remaining === null || nonnegative(r.remaining) !== null)
+      && (r.unit === null || label(r.unit));
   }) && new Set(input.map(x => x.id)).size === input.length;
 }
+const STATES: readonly string[] = ['ok', 'stale', 'signed_out', 'permission_required', 'rate_limited', 'unsupported', 'error'];
 export function parseSnapshot(input: unknown, provider: Provider): Snapshot {
   const r = record(input);
-  if (!r || r.provider !== provider || !['ok', 'stale', 'signed_out', 'permission_required', 'rate_limited', 'unsupported', 'error'].includes(String(r.state)) || !validLimits(r.limits) || !(r.collectedAt === null || finite(r.collectedAt)) || !(r.checkedAt === null || finite(r.checkedAt)) || !finite(r.nextAttemptAt) || !finite(r.failures) || !(r.errorCode === null || (typeof r.errorCode === 'string' && Object.hasOwn(ERROR_TEXT, r.errorCode)))) return emptySnapshot(provider);
+  if (!r || r.provider !== provider || !STATES.includes(String(r.state)) || !validLimits(r.limits)
+    || !(r.collectedAt === null || finite(r.collectedAt)) || !(r.checkedAt === null || finite(r.checkedAt))
+    || !finite(r.nextAttemptAt) || !finite(r.failures)
+    || !(r.errorCode === null || (typeof r.errorCode === 'string' && Object.hasOwn(ERROR_TEXT, r.errorCode)))) return emptySnapshot(provider);
   if (r.state === 'ok' && (r.collectedAt === null || r.limits.length === 0)) return emptySnapshot(provider);
   const limits: UsageLimit[] = r.limits.map(limit => ({
     id: limit.id, label: label(limit.label)!, category: limit.category, percent: limit.percent,
     resetsAt: limit.resetsAt === null ? null : resetTime(limit.resetsAt), windowSeconds: limit.windowSeconds,
     remaining: limit.remaining, unit: limit.unit === null ? null : label(limit.unit), source: 'api'
   }));
-  return { provider, state: r.state as Snapshot['state'], limits, collectedAt: r.collectedAt, checkedAt: r.checkedAt, nextAttemptAt: Math.max(0, r.nextAttemptAt), failures: Math.max(0, r.failures), errorCode: r.errorCode as Snapshot['errorCode'],
+  return { provider, state: r.state as Snapshot['state'], limits, collectedAt: r.collectedAt, checkedAt: r.checkedAt,
+    nextAttemptAt: Math.max(0, r.nextAttemptAt), failures: Math.max(0, r.failures), errorCode: r.errorCode as Snapshot['errorCode'],
     ...(Object.hasOwn(r, 'plan') ? { plan: parsePlan(provider, r.plan) } : {}),
     ...(Object.hasOwn(r, 'planRefreshPending') ? { planRefreshPending: r.planRefreshPending === true } : {}),
     ...(Object.hasOwn(r, 'tickets') ? { tickets: provider === 'gemini' ? null : parseTicketCache(r.tickets) } : {}),

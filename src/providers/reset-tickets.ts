@@ -7,7 +7,9 @@ import { record, resetTime } from '../shared/validation';
 const count = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
 const date = (v: unknown): string | null => typeof v === 'string' && v.length <= 64 ? resetTime(v) : null;
 const bool = (v: unknown): boolean | null => typeof v === 'boolean' ? v : null;
-const emptyGrant = (kind: ResetTicketKind, amount: number): ResetTicketGrant => ({ kind, count: amount, startsAt: null, expiresAt: null, usableNow: null, clears: [], requiresLimit: null, blocked: null, selected: null });
+const emptyGrant = (kind: ResetTicketKind, amount: number): ResetTicketGrant => ({
+  kind, count: amount, startsAt: null, expiresAt: null, usableNow: null, clears: [], requiresLimit: null, blocked: null, selected: null
+});
 
 export function parseChatGPTTicketSummary(value: unknown): ResetTicketInventory | null {
   const raw = record(value);

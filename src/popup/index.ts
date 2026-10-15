@@ -35,7 +35,11 @@ function render() {
   const needsSetup = PROVIDERS.every(p => !view!.settings.enabled[p] && !view!.permissions[p]);
   onboarding.hidden = !needsSetup; cards.hidden = needsSetup; preferences.hidden = needsSetup;
   renderSetup();
-  renderCards(cards, view, { enable: p => { void enable(p); }, disable: p => { void run(() => request({ type: 'disable', provider: p })); }, revoke: p => { void run(async () => { await chrome.permissions.remove({ origins: [ORIGINS[p]] }); return request({ type: 'view' }); }); } });
+  renderCards(cards, view, {
+    enable: p => { void enable(p); },
+    disable: p => { void run(() => request({ type: 'disable', provider: p })); },
+    revoke: p => { void run(async () => { await chrome.permissions.remove({ origins: [ORIGINS[p]] }); return request({ type: 'view' }); }); }
+  });
   if (!settingsDirty) {
     for (const p of PAGE_PROVIDERS) field(`strip-${p}`).checked = view.settings.strips[p];
     field('gauge-warning').value = String(view.settings.warning);
@@ -85,7 +89,9 @@ document.getElementById('settings-form')!.addEventListener('submit', event => {
   const checked = checkUsageThresholds(field('gauge-warning').valueAsNumber, field('gauge-danger').valueAsNumber);
   if (!checked.ok) {
     const fields = checked.fields.map(name => `gauge-${name}`);
-    showSettingsFeedback(checked.reason === 'order' ? '주의 시작 사용률은 경고 시작 사용률보다 작아야 합니다.' : '주의·경고 시작 사용률은 0~100 사이의 숫자로 입력해 주세요.', fields);
+    showSettingsFeedback(checked.reason === 'order'
+      ? '주의 시작 사용률은 경고 시작 사용률보다 작아야 합니다.'
+      : '주의·경고 시작 사용률은 0~100 사이의 숫자로 입력해 주세요.', fields);
     field(fields[0]!).focus();
     return;
   }

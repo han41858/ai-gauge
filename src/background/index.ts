@@ -149,7 +149,9 @@ chrome.permissions.onAdded.addListener(added => {
 chrome.permissions.onRemoved.addListener(removed => {
   // A revoked host no longer exposes its tab URL. Notify tab IDs without reading URLs/history.
   const origins = (removed?.origins ?? []).filter(origin => SITE_GROUPS.some(site => site.origin === origin));
-  void chrome.tabs.query({}).then(tabs => Promise.all(tabs.filter(t => typeof t.id === 'number').map(t => chrome.tabs.sendMessage(t.id!, { type: 'permissions-revoked', origins }).catch(() => undefined)))).catch(() => undefined);
+  const notice = { type: 'permissions-revoked', origins };
+  void chrome.tabs.query({}).then(tabs => Promise.all(tabs.filter(t => typeof t.id === 'number')
+    .map(t => chrome.tabs.sendMessage(t.id!, notice).catch(() => undefined)))).catch(() => undefined);
   void Promise.all(PROVIDERS.filter(provider => origins.includes(ORIGINS[provider])).map(provider => scheduler.invalidateTickets(provider)))
     .then(reconcile).then(() => publish(true)).catch(() => undefined);
 });
