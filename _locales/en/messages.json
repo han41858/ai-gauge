@@ -1,0 +1,338 @@
+{
+  "badge_disabled": {
+    "message": "Disabled"
+  },
+  "badge_permission_required": {
+    "message": "Permission required"
+  },
+  "badge_usage_unknown": {
+    "message": "Usage unavailable"
+  },
+  "diagnostics_checking_tab": {
+    "message": "Checking the display in the current tab."
+  },
+  "diagnostics_copied": {
+    "message": "Diagnostics copied."
+  },
+  "diagnostics_copy": {
+    "message": "Copy diagnostics"
+  },
+  "diagnostics_copy_failed": {
+    "message": "Clipboard access was denied. The text is selected so you can copy it manually."
+  },
+  "diagnostics_description": {
+    "message": "Shows the version, settings, errors, timestamps, and display target and element counts in the current tab. No input, account details, or URLs are included. Nothing is sent automatically."
+  },
+  "diagnostics_not_ready": {
+    "message": "Status is not available yet. Please try again shortly."
+  },
+  "diagnostics_output_label": {
+    "message": "Local diagnostics"
+  },
+  "diagnostics_show": {
+    "message": "Show current status"
+  },
+  "diagnostics_shown": {
+    "message": "Current status shown. Nothing is sent automatically."
+  },
+  "diagnostics_title": {
+    "message": "Diagnostics"
+  },
+  "error_access_denied": {
+    "message": "The site denied access. Security protections are not bypassed."
+  },
+  "error_ambiguous_account": {
+    "message": "Multiple Claude organizations were found. Check usage settings in your account."
+  },
+  "error_invalid_response": {
+    "message": "The usage response format could not be recognized."
+  },
+  "error_network": {
+    "message": "The connection failed or the request timed out."
+  },
+  "error_not_collected": {
+    "message": "Usage has not been collected yet."
+  },
+  "error_open_tab": {
+    "message": "Open a signed-in service tab, then reopen the popup."
+  },
+  "error_permission_required": {
+    "message": "Site access permission is required for this service."
+  },
+  "error_rate_limited": {
+    "message": "Request limit reached. Please wait until the next retry."
+  },
+  "error_server": {
+    "message": "The service returned an error. Another attempt will be made shortly."
+  },
+  "error_signed_out": {
+    "message": "Sign in to the site, then reopen the popup."
+  },
+  "error_tab_access_failed": {
+    "message": "Usage collection could not run in the open service tab. The last valid usage is kept while automatic retries continue."
+  },
+  "error_unsupported": {
+    "message": "A safe collection method could not be verified. This service is unsupported."
+  },
+  "extension_description": {
+    "message": "A local-only extension showing ChatGPT, Claude and Gemini usage and reset times."
+  },
+  "format_duration_left": {
+    "message": "$1 left"
+  },
+  "format_last_collected": {
+    "message": "Last successful collection: $1"
+  },
+  "format_less_than_minute": {
+    "message": "in less than a minute"
+  },
+  "format_not_collected": {
+    "message": "No successful collection yet"
+  },
+  "format_relative_day_one": {
+    "message": "in $1 day"
+  },
+  "format_relative_day_other": {
+    "message": "in $1 days"
+  },
+  "format_relative_hour_one": {
+    "message": "in $1 hour"
+  },
+  "format_relative_hour_other": {
+    "message": "in $1 hours"
+  },
+  "format_relative_minute_one": {
+    "message": "in $1 minute"
+  },
+  "format_relative_minute_other": {
+    "message": "in $1 minutes"
+  },
+  "format_remaining": {
+    "message": "$1 remaining"
+  },
+  "format_remaining_unknown": {
+    "message": "Time remaining unavailable"
+  },
+  "format_reset_countdown": {
+    "message": "🕒 Resets $1"
+  },
+  "format_reset_pending": {
+    "message": "Checking after reset"
+  },
+  "format_reset_popup": {
+    "message": "🕒 Reset: $1"
+  },
+  "format_reset_unavailable": {
+    "message": "🕒 Reset: $1"
+  },
+  "format_unknown": {
+    "message": "Unavailable"
+  },
+  "format_usage": {
+    "message": "Usage: $1"
+  },
+  "format_usage_name": {
+    "message": "Usage"
+  },
+  "limit_additional": {
+    "message": "Additional limit"
+  },
+  "limit_days_one": {
+    "message": "$1 day"
+  },
+  "limit_days_other": {
+    "message": "$1 days"
+  },
+  "limit_hours_one": {
+    "message": "$1 hour"
+  },
+  "limit_hours_other": {
+    "message": "$1 hours"
+  },
+  "limit_legacy_shared": {
+    "message": "Work / Codex shared"
+  },
+  "limit_primary": {
+    "message": "Primary limit"
+  },
+  "limit_weekly": {
+    "message": "Weekly"
+  },
+  "popup_communication_failed": {
+    "message": "Cannot communicate with the extension. Please reload it."
+  },
+  "popup_danger_threshold": {
+    "message": "Warning starts at"
+  },
+  "popup_disable": {
+    "message": "Disable"
+  },
+  "popup_disabled": {
+    "message": "Off"
+  },
+  "popup_enable": {
+    "message": "Enable"
+  },
+  "popup_grant_enable": {
+    "message": "Grant access and enable"
+  },
+  "popup_language": {
+    "message": "Language"
+  },
+  "popup_language_english": {
+    "message": "English"
+  },
+  "popup_language_korean": {
+    "message": "Korean"
+  },
+  "popup_language_system": {
+    "message": "System default"
+  },
+  "popup_limit_previous_usage": {
+    "message": "$1 usage (previous value)"
+  },
+  "popup_limit_usage": {
+    "message": "$1 usage"
+  },
+  "popup_local_only": {
+    "message": "Local only"
+  },
+  "popup_onboarding_description": {
+    "message": "Grant access to your selected services together to view usage."
+  },
+  "popup_onboarding_start": {
+    "message": "Grant access and start"
+  },
+  "popup_onboarding_title": {
+    "message": "Choose your services"
+  },
+  "popup_open_site": {
+    "message": "Open $1 (new tab)"
+  },
+  "popup_permission_canceled": {
+    "message": "Access request canceled."
+  },
+  "popup_previous_usage": {
+    "message": "Previous usage"
+  },
+  "popup_provider_plan": {
+    "message": "$1 plan: $2"
+  },
+  "popup_provider_usage": {
+    "message": "$1 usage"
+  },
+  "popup_revoke": {
+    "message": "Revoke access"
+  },
+  "popup_settings": {
+    "message": "Settings"
+  },
+  "popup_settings_saved": {
+    "message": "Settings saved."
+  },
+  "popup_show_in_composer": {
+    "message": "Show below $1 input"
+  },
+  "popup_threshold_order_error": {
+    "message": "The caution threshold must be lower than the warning threshold."
+  },
+  "popup_threshold_range_error": {
+    "message": "Enter caution and warning thresholds between 0 and 100."
+  },
+  "popup_usage_unavailable": {
+    "message": "Usage unavailable"
+  },
+  "popup_warning_threshold": {
+    "message": "Caution starts at"
+  },
+  "status_access_denied": {
+    "message": "Site access denied"
+  },
+  "status_ambiguous_account": {
+    "message": "Select a Claude organization"
+  },
+  "status_invalid_response": {
+    "message": "Usage unavailable"
+  },
+  "status_network": {
+    "message": "Checking connection"
+  },
+  "status_not_collected": {
+    "message": "Checking usage"
+  },
+  "status_ok": {
+    "message": "Successfully collected"
+  },
+  "status_open_tab": {
+    "message": "Open a service tab"
+  },
+  "status_permission_required": {
+    "message": "Site permission required"
+  },
+  "status_rate_limited": {
+    "message": "Check again shortly"
+  },
+  "status_server": {
+    "message": "Waiting for service"
+  },
+  "status_signed_out": {
+    "message": "Sign in required"
+  },
+  "status_tab_access_failed": {
+    "message": "Rechecking usage"
+  },
+  "status_unsupported": {
+    "message": "Usage collection unsupported"
+  },
+  "ticket_availability_unknown": {
+    "message": "Availability unknown"
+  },
+  "ticket_blocked": {
+    "message": "Currently restricted"
+  },
+  "ticket_count_one": {
+    "message": "$1 ticket"
+  },
+  "ticket_count_other": {
+    "message": "$1 tickets"
+  },
+  "ticket_expiry": {
+    "message": "Expires $1"
+  },
+  "ticket_inline": {
+    "message": "🎫 Ticket expires $1"
+  },
+  "ticket_kind_five_hour": {
+    "message": "5-hour limit"
+  },
+  "ticket_kind_full": {
+    "message": "All limits"
+  },
+  "ticket_kind_unspecified": {
+    "message": "Unknown type"
+  },
+  "ticket_kind_weekly": {
+    "message": "Weekly limit"
+  },
+  "ticket_management_action": {
+    "message": "Open official usage settings (new tab)"
+  },
+  "ticket_other_first": {
+    "message": "Another ticket takes priority"
+  },
+  "ticket_requires_limit": {
+    "message": "Limit must be reached"
+  },
+  "ticket_starts": {
+    "message": "From $1"
+  },
+  "ticket_total_one": {
+    "message": "🎫 $1 reset ticket"
+  },
+  "ticket_total_other": {
+    "message": "🎫 $1 reset tickets"
+  },
+  "ticket_unavailable_now": {
+    "message": "Not currently usable"
+  }
+}

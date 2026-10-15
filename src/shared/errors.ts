@@ -1,5 +1,6 @@
 import type { CollectionState, ErrorCode } from './types';
 import { geminiErrorText } from './format';
+import { t, type MessageKey } from './i18n';
 export class CollectionError extends Error {
   constructor(public code: ErrorCode, public state: CollectionState = 'error', public retryAfterMs = 0) { super(code); }
 }
@@ -15,20 +16,14 @@ export function httpError(status: number, wait = 0): CollectionError {
   if (status === 403) return new CollectionError('access_denied');
   return new CollectionError(status >= 500 ? 'server' : 'invalid_response');
 }
-const INVALID_RESPONSE_TEXT = '사용량 응답 형식을 확인할 수 없습니다.';
-export const ERROR_TEXT: Record<ErrorCode, string> = {
-  not_collected: '아직 수집하지 않았습니다.',
-  signed_out: '사이트에 로그인한 뒤 팝업을 다시 열어 주세요.',
-  access_denied: '사이트가 접근을 거부했습니다. 보호장치를 우회하지 않습니다.',
-  rate_limited: '요청 한도에 도달했습니다. 재시도 시각까지 기다려 주세요.',
-  network: '연결 또는 요청 시간이 초과되었습니다.',
-  invalid_response: INVALID_RESPONSE_TEXT,
-  ...geminiErrorText(INVALID_RESPONSE_TEXT),
-  open_tab: '로그인한 서비스 탭을 연 뒤 팝업을 다시 열어 주세요.',
-  ambiguous_account: '여러 Claude 조직이 확인되어 선택할 수 없습니다. 계정의 사용량 화면을 확인해 주세요.',
-  tab_access_failed: '열린 서비스 탭에서 수집 코드를 실행하지 못했습니다. 마지막 유효 사용량을 유지하며 자동으로 다시 시도합니다.',
-  unsupported: '안전한 수집 계약을 검증하지 못해 미지원입니다.',
-  permission_required: '이 서비스의 사이트 접근 권한이 필요합니다.',
-  server: '서비스 오류입니다. 잠시 후 다시 시도합니다.',
-  reset_pending: '초기화 후 확인 중'
+const ERROR_KEYS: Record<ErrorCode, MessageKey> = {
+  not_collected: 'error_not_collected', signed_out: 'error_signed_out', access_denied: 'error_access_denied',
+  rate_limited: 'error_rate_limited', network: 'error_network', invalid_response: 'error_invalid_response',
+  ...geminiErrorText('error_invalid_response'), open_tab: 'error_open_tab', ambiguous_account: 'error_ambiguous_account',
+  tab_access_failed: 'error_tab_access_failed', unsupported: 'error_unsupported', permission_required: 'error_permission_required',
+  server: 'error_server', reset_pending: 'format_reset_pending'
 };
+// Resolve on access so a saved language change also updates existing error states.
+export const ERROR_TEXT = Object.defineProperties({}, Object.fromEntries(
+  Object.entries(ERROR_KEYS).map(([code, key]) => [code, { enumerable: true, get: () => t(key) }])
+)) as Record<ErrorCode, string>;

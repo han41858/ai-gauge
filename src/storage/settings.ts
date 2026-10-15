@@ -1,4 +1,4 @@
-import { PAGE_PROVIDERS, PROVIDERS, type Settings } from '../shared/types';
+import { PAGE_PROVIDERS, PROVIDERS, type LanguagePreference, type Settings } from '../shared/types';
 import { finite, record } from '../shared/validation';
 
 export type ThresholdField = 'warning' | 'danger';
@@ -24,13 +24,15 @@ export function parseStrips(value: unknown): Settings['strips'] | null {
   return strips && Object.keys(strips).length === PAGE_PROVIDERS.length && PAGE_PROVIDERS.every(p => typeof strips[p] === 'boolean')
     ? Object.fromEntries(PAGE_PROVIDERS.map(p => [p, strips[p]])) as Settings['strips'] : null;
 }
+export const isLanguagePreference = (value: unknown): value is LanguagePreference => value === 'system' || value === 'en' || value === 'ko';
 export function defaults(): Settings {
-  return { enabled: { chatgpt: false, claude: false, gemini: false }, strips: { chatgpt: true, codex: true, claude: true, gemini: true }, warning: 70, danger: 90 };
+  return { enabled: { chatgpt: false, claude: false, gemini: false }, strips: { chatgpt: true, codex: true, claude: true, gemini: true }, language: 'system', warning: 70, danger: 90 };
 }
 /** Retired keys from earlier versions are ignored and dropped on the next write. */
 export function parseSettings(value: unknown): Settings {
   const out = defaults(), r = record(value);
   if (!r) return out;
+  if (isLanguagePreference(r.language)) out.language = r.language;
   for (const p of PROVIDERS) {
     const enabled = record(r.enabled)?.[p];
     if (typeof enabled === 'boolean') out.enabled[p] = enabled;
@@ -46,5 +48,5 @@ export function parseSettings(value: unknown): Settings {
 export function isSettings(value: unknown): value is Settings {
   const r = record(value), enabled = record(r?.enabled);
   return !!r && !!enabled && PROVIDERS.every(p => typeof enabled[p] === 'boolean')
-    && parseStrips(r.strips) !== null && parseUsageThresholds(r.warning, r.danger) !== null;
+    && isLanguagePreference(r.language) && parseStrips(r.strips) !== null && parseUsageThresholds(r.warning, r.danger) !== null;
 }

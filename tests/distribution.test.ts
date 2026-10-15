@@ -7,6 +7,9 @@ import { join } from 'node:path';
 import { JSDOM } from 'jsdom';
 import { defaults } from '../src/storage/settings';
 import { emptySnapshot } from '../src/storage/snapshots';
+const { createI18n } = await import(new URL('../scripts/i18n-fixture.mjs', import.meta.url).href) as {
+  createI18n(language?: string): typeof chrome.i18n;
+};
 
 test('release build omits diagnostic UI and responses, and ZIP contains only root runtime files', async () => {
   const temporary = await mkdtemp(join(tmpdir(), 'ai-gauge-distribution-'));
@@ -15,6 +18,12 @@ test('release build omits diagnostic UI and responses, and ZIP contains only roo
     const dist = join(temporary, 'release'), output = join(temporary, 'archives');
     execFileSync(process.execPath, ['scripts/build.mjs', '--release', '--outdir', dist], { stdio: 'pipe' });
     const manifest = JSON.parse(await readFile(join(dist, 'manifest.json'), 'utf8'));
+    assert.equal(manifest.default_locale, 'en');
+    assert.equal(manifest.description, '__MSG_extension_description__');
+    for (const language of ['en', 'ko']) {
+      const catalog = `_locales/${language}/messages.json`;
+      assert.deepEqual(await readFile(join(dist, catalog)), await readFile(catalog));
+    }
     assert.deepEqual(manifest.icons, { 16: 'assets/icon16.png', 32: 'assets/icon32.png', 48: 'assets/icon48.png', 128: 'assets/icon128.png' });
     assert.deepEqual(manifest.action.default_icon, manifest.icons);
     for (const size of [16, 32, 48, 128]) {
@@ -29,7 +38,7 @@ test('release build omits diagnostic UI and responses, and ZIP contains only roo
       chatgpt: emptySnapshot('chatgpt'), claude: emptySnapshot('claude'), gemini: emptySnapshot('gemini')
     } };
     const listeners: Array<(message: unknown, sender: unknown, reply: (value: unknown) => void) => void> = [];
-    const api = { runtime: { id: 'fixture', getManifest: () => manifest, sendMessage: async () => ({ ok: true, view }),
+    const api = { i18n: createI18n(), runtime: { id: 'fixture', getManifest: () => manifest, sendMessage: async () => ({ ok: true, view }),
       onMessage: { addListener(fn: typeof listeners[number]) { listeners.push(fn); }, removeListener() {} } },
       storage: { onChanged: { addListener() {}, removeListener() {} } } };
     popup = new JSDOM(html, { runScripts: 'outside-only' });
@@ -66,7 +75,7 @@ test('release build omits diagnostic UI and responses, and ZIP contains only roo
     execFileSync(process.execPath, ['scripts/package.mjs', '--build-dir', dist, '--output-dir', output], { stdio: 'pipe' });
     const archive = join(output, `ai-gauge-${manifest.version_name}.zip`);
     const entries = execFileSync('unzip', ['-Z1', archive], { encoding: 'utf8' }).trim().split('\n').sort();
-    assert.deepEqual(entries, ['assets/icon128.png', 'assets/icon16.png', 'assets/icon32.png', 'assets/icon48.png', 'background.js', 'content.js', 'manifest.json', 'popup.css', 'popup.html', 'popup.js']);
+    assert.deepEqual(entries, ['_locales/en/messages.json', '_locales/ko/messages.json', 'assets/icon128.png', 'assets/icon16.png', 'assets/icon32.png', 'assets/icon48.png', 'background.js', 'content.js', 'manifest.json', 'popup.css', 'popup.html', 'popup.js']);
     assert.deepEqual(JSON.parse(execFileSync('unzip', ['-p', archive, 'manifest.json'], { encoding: 'utf8' })), manifest);
     for (const entry of entries) assert.deepEqual(execFileSync('unzip', ['-p', archive, entry]), await readFile(join(dist, entry)));
     assert.throws(() => execFileSync(process.execPath, ['scripts/package.mjs', '--build-dir', dist, '--output-dir', output], { stdio: 'pipe' }), 'Do not overwrite an existing build archive');

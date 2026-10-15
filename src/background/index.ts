@@ -94,7 +94,7 @@ chrome.runtime.onMessage.addListener((input: unknown, sender, sendResponse: (rep
     }
     if (message.type === 'display-settings' || message.type === 'disable') {
       await changeSettings(settings => {
-        if (message.type === 'display-settings') { settings.strips = { ...message.strips }; settings.warning = message.warning; settings.danger = message.danger; }
+        if (message.type === 'display-settings') { settings.strips = { ...message.strips }; settings.language = message.language; settings.warning = message.warning; settings.danger = message.danger; }
         else settings.enabled[message.provider] = false;
       });
       const settings = await readSettings();

@@ -187,7 +187,7 @@ test('batch activation enables only hosts with actual permission and preserves u
 
 test('visibility and disable patches accept only their exact fields and cannot be sent by site content', () => {
   const content = { id: popupSender.id, url: 'https://claude.ai/new', frameId: 0, tab: { id: 2, url: 'https://claude.ai/new' } } as chrome.runtime.MessageSender;
-  for (const raw of [{ type: 'disable', provider: 'claude' }, { type: 'display-settings', strips: defaults().strips, warning: 70, danger: 90 }]) {
+  for (const raw of [{ type: 'disable', provider: 'claude' }, { type: 'display-settings', language: 'system', strips: defaults().strips, warning: 70, danger: 90 }]) {
     const message = parseMessage(raw);
     assert(message); assert(authorized(message, popupSender, popupSender.id));
     assert.equal(authorized(message, content, popupSender.id), false);
@@ -202,8 +202,8 @@ test('visibility and disable patches accept only their exact fields and cannot b
   ]) assert.equal(parseMessage(malformed), null);
 });
 
-test('display settings accept only validated thresholds and visibility fields from the popup', () => {
-  const raw = { type: 'display-settings', strips: defaults().strips, warning: 70, danger: 90 };
+test('display settings accept only validated language, thresholds and visibility fields from the popup', () => {
+  const raw = { type: 'display-settings', language: 'system', strips: defaults().strips, warning: 70, danger: 90 };
   const message = parseMessage(raw);
   assert(message); assert(authorized(message, popupSender, popupSender.id));
   assert.equal(authorized(message, { id: popupSender.id, url: 'https://claude.ai/new', frameId: 0,
@@ -211,12 +211,18 @@ test('display settings accept only validated thresholds and visibility fields fr
   assert.equal(authorized(message, { ...popupSender, id: 'other' }, popupSender.id), false);
   assert.equal(authorized(message, { ...popupSender, url: 'chrome-extension://activation-fixture/other.html' }, popupSender.id), false);
   for (const malformed of [
+    { ...raw, language: 'auto' }, { ...raw, language: 'ko-KR' }, { ...raw, language: null }, { ...raw, language: undefined },
     { ...raw, warning: -1 }, { ...raw, danger: 100.5 }, { ...raw, warning: -0.01 }, { ...raw, danger: NaN }, { ...raw, danger: Infinity },
     { ...raw, warning: 90 }, { ...raw, warning: 95 }, { ...raw, warning: '70' }, { ...raw, danger: undefined },
     { ...raw, enabled: defaults().enabled }, { ...raw, permissions: { claude: true } },
     { ...raw, strips: { chatgpt: true } }, { ...raw, strips: { ...raw.strips, claude: 'yes' } },
     { ...raw, strips: { ...raw.strips, extra: true } }
   ]) assert.equal(parseMessage(malformed), null);
+  const { language: _language, ...missingLanguage } = raw;
+  assert.equal(parseMessage(missingLanguage), null);
+  for (const language of ['system', 'en', 'ko']) {
+    assert.deepEqual(parseMessage({ ...raw, language }), { ...raw, language });
+  }
   for (const [warning, danger] of [[1, 99], [0, 100], [70.5, 90.25]]) {
     assert.deepEqual(parseMessage({ ...raw, warning, danger }), { ...raw, warning, danger });
   }
@@ -227,7 +233,7 @@ test('display settings and queued disable writes preserve each other and do not 
   const background = worker([ORIGINS.chatgpt, ORIGINS.claude], { 'settings:v2': settings, 'migration:shared-chatgpt:v2': true });
   await background.ready();
   const strips = { ...settings.strips, codex: false };
-  const display = background.send({ type: 'display-settings', strips, warning: 45, danger: 80 });
+  const display = background.send({ type: 'display-settings', language: 'en', strips, warning: 45, danger: 80 });
   const disabled = background.send({ type: 'disable', provider: 'chatgpt' });
   background.revoke(ORIGINS.claude);
   const replies = await Promise.all([display, disabled]);
@@ -235,10 +241,11 @@ test('display settings and queued disable writes preserve each other and do not 
   const current = background.settings();
   assert.deepEqual(current.enabled, { chatgpt: false, claude: true, gemini: false });
   assert.deepEqual(current.strips, strips); assert.equal(current.warning, 45); assert.equal(current.danger, 80);
+  assert.equal(current.language, 'en');
   assert.equal(background.permissions.has(ORIGINS.claude), false);
   assert.equal(background.permissions.has(ORIGINS.gemini), false);
   const before = background.storage();
-  assert.equal((await background.send({ type: 'display-settings', strips, warning: 80, danger: 45 })).ok, false);
+  assert.equal((await background.send({ type: 'display-settings', language: 'system', strips, warning: 80, danger: 45 })).ok, false);
   assert.deepEqual(background.settings(), current, 'invalid threshold writes must not modify saved settings');
   assert.deepEqual(background.storage()['settings:v2'], before['settings:v2']);
   const retired = await background.send({ type: 'strips', strips: settings.strips });
@@ -246,12 +253,35 @@ test('display settings and queued disable writes preserve each other and do not 
   assert.deepEqual(background.settings(), current);
 });
 
+test('a language-only display change publishes to all service tabs, persists on worker restart and never collects usage', async () => {
+  const settings = defaults(); settings.enabled = { chatgpt: true, claude: true, gemini: true };
+  const background = worker(Object.values(ORIGINS), { 'settings:v2': settings, 'migration:shared-chatgpt:v2': true });
+  await background.ready();
+  await waitFor(() => ['chatgpt', 'claude', 'gemini'].every(provider => background.snapshot(provider as Provider)?.state === 'ok'));
+  const before = background.storage();
+  background.requests.length = 0; background.notifications.length = 0;
+  const reply = await background.send({ type: 'display-settings', strips: settings.strips, language: 'en', warning: 70, danger: 90 });
+  assert(reply.ok);
+  assert.equal(reply.view.settings.language, 'en');
+  assert.deepEqual(background.requests, []);
+  assert.deepEqual(background.settings(), { ...settings, language: 'en' });
+  for (const [key, value] of Object.entries(before)) if (key.startsWith('snapshot:')) assert.deepEqual(background.storage()[key], value);
+  assert.deepEqual([...new Set(background.notifications.filter(item => (item.message as { type: string }).type === 'invalidate').map(item => item.tabId))].sort(), [1, 2, 3]);
+  const restarted = worker(Object.values(ORIGINS), background.storage());
+  await restarted.ready();
+  const restored = await restarted.send({ type: 'read' });
+  assert(restored.ok); assert.equal(restored.view.settings.language, 'en');
+  assert.deepEqual(restarted.requests, []);
+  const invalid = await restarted.send({ type: 'display-settings', strips: settings.strips, language: 'fr', warning: 70, danger: 90 });
+  assert.equal(invalid.ok, false); assert.equal(restarted.settings().language, 'en');
+});
+
 test('saving gauge thresholds publishes invalidation to every permitted service tab without changing activation', async () => {
   const settings = defaults(); settings.enabled = { chatgpt: true, claude: true, gemini: false };
   const background = worker(Object.values(ORIGINS), { 'settings:v2': settings, 'migration:shared-chatgpt:v2': true });
   await background.ready();
   background.notifications.length = 0;
-  const reply = await background.send({ type: 'display-settings', strips: settings.strips, warning: 40, danger: 60 });
+  const reply = await background.send({ type: 'display-settings', language: 'system', strips: settings.strips, warning: 40, danger: 60 });
   assert(reply.ok);
   assert.deepEqual([...new Set(background.notifications.filter(item => (item.message as { type: string }).type === 'invalidate').map(item => item.tabId))].sort(), [1, 2, 3]);
   assert.deepEqual(background.settings().enabled, settings.enabled);
@@ -387,8 +417,9 @@ for (const operation of ['display-settings', 'disable'] as const) {
         checkbox.checked = false;
         checkbox.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
         (dom.window.document.getElementById('gauge-warning') as HTMLInputElement).value = '55';
-        (dom.window.document.getElementById('gauge-danger') as HTMLInputElement).value = '85';
-        dom.window.document.getElementById('settings-form')!.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+        const danger = dom.window.document.getElementById('gauge-danger') as HTMLInputElement;
+        danger.value = '85';
+        danger.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
       } else {
         [...dom.window.document.querySelectorAll<HTMLButtonElement>('[data-provider="claude"] button')]
           .find(button => button.textContent === '끄기')!.click();

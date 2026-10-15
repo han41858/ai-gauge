@@ -57,16 +57,39 @@ export async function runPopupChecks({ cdp, session, evaluate, pause, port, buil
   assert.equal(await evaluate(`document.querySelectorAll('.plan-badge').length`), 2);
   await cdp('Emulation.setDeviceMetricsOverride', { width: 600, height: 1000, deviceScaleFactor: 1, mobile: false }, session);
   await evaluate('document.getElementById("preferences").open=true');
+  assert.equal(await evaluate("document.querySelectorAll('#settings-form button').length"), 0, 'Preferences apply automatically without a save button');
+  assert.deepEqual(await evaluate("[...document.getElementById('language').options].map(option=>[option.value,option.textContent])"), [['system','시스템 기본 언어'],['en','영어'],['ko','한국어']]);
+  assert.equal(await evaluate("document.getElementById('language').value"), 'system');
   assert.deepEqual(await evaluate("[document.getElementById('gauge-warning').valueAsNumber,document.getElementById('gauge-danger').valueAsNumber]"), [70,90]);
-  await evaluate("document.getElementById('gauge-warning').value='90';document.getElementById('gauge-danger').value='70';document.getElementById('settings-form').dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('#settings-form button').click()");
+  await evaluate("document.getElementById('gauge-warning').value='90';document.getElementById('gauge-danger').value='70';document.getElementById('gauge-warning').dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('gauge-warning').dispatchEvent(new Event('change',{bubbles:true}))");
   assert.equal(await evaluate('(window.__displaySettingsRequests??[]).length'), 0, 'An inverted threshold pair is not saved');
   assert(await evaluate("document.querySelector('[aria-invalid=\"true\"]')!==null"), 'Invalid thresholds expose an accessible error');
-  await evaluate('document.getElementById("gauge-warning").value="40";document.getElementById("gauge-danger").value="60";document.getElementById("strip-claude").checked=false;document.getElementById("settings-form").dispatchEvent(new Event("input",{bubbles:true}));document.getElementById("settings-form").dispatchEvent(new Event("submit",{bubbles:true,cancelable:true}))');
+  await evaluate('document.getElementById("gauge-warning").value="40";document.getElementById("gauge-danger").value="60";document.getElementById("gauge-danger").dispatchEvent(new Event("input",{bubbles:true}));document.getElementById("gauge-danger").dispatchEvent(new Event("change",{bubbles:true}))');
   for(let i=0;i<20;i++){if(await evaluate('window.__fixture.settings.warning===40&&window.__fixture.settings.danger===60'))break;await pause(50);}
-  assert.deepEqual(await evaluate('[window.__fixture.settings.warning,window.__fixture.settings.danger]'),[40,60], 'Valid custom thresholds save with the existing strip preferences');
+  assert.deepEqual(await evaluate('[window.__fixture.settings.warning,window.__fixture.settings.danger]'),[40,60], 'Valid custom thresholds save on change without form submission');
+  await evaluate('document.getElementById("strip-claude").click()');
   for (let i = 0; i < 20; i++) { if (await evaluate('window.__fixture.settings.strips.claude') === false) break; await pause(100); }
   assert.equal(await evaluate('window.__fixture.settings.strips.claude'), false);
   assert.equal(await evaluate('window.__fixture.settings.warning'), 40, 'Saving display preferences includes the custom gauge warning threshold');
+  await evaluate("document.getElementById('gauge-warning').focus();document.getElementById('gauge-warning').select()");
+  await cdp('Input.insertText', { text: '62' }, session);
+  await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 }, session);
+  await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 }, session);
+  assert.equal(await evaluate('document.activeElement.id'), 'gauge-danger', 'An invalid pair does not trap keyboard focus during automatic validation');
+  assert.deepEqual(await evaluate('[window.__fixture.settings.warning,window.__fixture.settings.danger]'), [40,60], 'An intermediate invalid value is not saved');
+  await evaluate('document.activeElement.select()');
+  await cdp('Input.insertText', { text: '65' }, session);
+  await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 }, session);
+  await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 }, session);
+  for(let i=0;i<20;i++){if(await evaluate('window.__fixture.settings.warning===62&&window.__fixture.settings.danger===65'))break;await pause(50);}
+  assert.deepEqual(await evaluate('[window.__fixture.settings.warning,window.__fixture.settings.danger]'), [62,65], 'Tabbing through the second threshold saves the corrected pair');
+  await evaluate("document.getElementById('gauge-warning').value='40';document.getElementById('gauge-warning').dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('gauge-danger').value='60';document.getElementById('gauge-danger').dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('gauge-danger').dispatchEvent(new Event('change',{bubbles:true}))");
+  for(let i=0;i<20;i++){if(await evaluate('window.__fixture.settings.warning===40&&window.__fixture.settings.danger===60'))break;await pause(50);}
+  await evaluate("document.getElementById('gauge-warning').value='41';document.getElementById('gauge-warning').dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('gauge-warning').focus()");
+  await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 }, session);
+  await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 }, session);
+  for(let i=0;i<20;i++){if(await evaluate('window.__fixture.settings.warning===41'))break;await pause(50);}
+  assert.equal(await evaluate('window.__fixture.settings.warning'), 41, 'Enter commits valid numeric input without a save button');
   assert.deepEqual(await evaluate('[...document.querySelectorAll("#strip-settings label")].map(node=>node.textContent)'), ['ChatGPT 입력창에 표시', 'Codex 입력창에 표시', 'Claude 입력창에 표시', 'Gemini 입력창에 표시']);
   assert.deepEqual(await evaluate('[...document.querySelectorAll(".card h2")].map(node=>node.textContent)'), ['ChatGPT', 'Claude', 'Gemini']);
   assert.equal(await evaluate('document.querySelectorAll(".card details,.card select,.card .time,#default-provider").length'), 0);

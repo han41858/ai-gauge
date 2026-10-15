@@ -1,5 +1,57 @@
 # 구현 및 검증 결과
 
+## 2026-10-16 언어 선택과 설정 자동 저장 — 202610160117
+
+영어·한국어 UI에 `시스템 기본 언어 / 영어 / 한국어` 선택을 추가하고 설정 저장 버튼을 제거했습니다. 검증한 설치 ZIP은 `main/downloads`에 게시되어 있으며 소스·명세 변경은 `feat/english-korean-ui` 브랜치에서 검토합니다.
+
+- `Settings.language`의 `system`·`en`·`ko`만 저장하며 이전 설정의 누락·손상 값은 `system`으로 복구합니다. 시스템 기본은 Chrome UI 언어가 한국어이면 한국어, 나머지는 영어입니다. 수동 선택은 확장에 포함된 두 카탈로그를 사용하며 각 카탈로그에는 112개 메시지가 있습니다.
+- 체크박스·언어 선택은 변경 즉시, 임계치는 입력 완료 또는 Enter 때 검증 후 저장합니다. 저장 중 연속 변경을 반영하고 실패 시 입력 초안을 유지합니다. 잘못된 임계치는 저장하지 않으며 다른 설정은 마지막 유효 임계치와 함께 저장할 수 있습니다. 자동 검증은 포커스를 강제로 옮기지 않아 Tab으로 다음 칸에 이동하여 잘못된 값을 고칠 수 있습니다. 수정 중인 필드만 보존하므로 다른 창에서 변경한 언어·미편집 필드를 이전 값으로 덮어쓰지 않습니다.
+- 기존 설정 저장·탭 알림을 재사용하여 팝업·열린 표시줄·배지 제목·오류·접근성 문구에 반영합니다. 설정 변경은 사용량 API를 호출하지 않으며 수집·스냅샷·요금제·티켓·캐시·권한·추가 의존성·타이머를 변경하지 않습니다. 언어 변경만으로 표시줄 노드나 동적 게이지를 다시 만들지 않습니다.
+
+주요 변경 파일:
+
+| 구분 | 파일 |
+| --- | --- |
+| 설정·저장·계약 | `src/shared/{types,contracts}.ts`, `src/storage/settings.ts`, `src/background/index.ts` |
+| 언어 적용·자동 저장 UI | `src/shared/{i18n,errors}.ts`, `src/popup/{index,render}.ts`, `src/popup/popup.{html,css}`, `src/content/usage-strip.ts`, `src/background/badge.ts`, `_locales/{en,ko}/messages.json` |
+| 검증 | `tests/{popup-language,gauge-settings,popup-compact,activation,contracts-ui,storage-migration,i18n,i18n-presentation}.test.ts`, `scripts/browser-fixture.mjs`, `scripts/browser-fixture/{fixture-data,popup-checks,i18n-checks,preference-checks}.mjs` |
+| 문서 | `AGENTS.md`, `AI_GAUGE_SPEC.md`, `README.md`, `docs/{installation,validation}.md` |
+
+검증 결과:
+
+- `npm run check`: **551개 통과**, 실패·취소·스킵 0. 타입 검사·개발 빌드·MV3 감사 통과. 정식 빌드와 두 카탈로그를 포함한 ZIP 검사도 통과했습니다.
+- 언어 선택·시스템 복귀·팝업 재열기·워커 재시작·이전 설정 마이그레이션, 열린 화면의 문구·접근성 갱신, 저장 실패·빠른 연속 변경·잘못된 숫자 초안과 독립 설정 저장, 외부 변경 덮어쓰기 방지를 검증했습니다. 설정 변경으로 추가 수집이나 스냅샷 변경이 생기지 않았습니다.
+- 같은 **202610160117** 빌드의 `node scripts/browser-fixture.mjs` 통과. 실제 Chromium 키 입력으로 잘못된 임계치 입력 후 Tab 이동·다음 값 수정·자동 저장과 Enter 저장을 확인했습니다. 영어·한국어·시스템 복귀, 기존 표시줄 노드·게이지 유지, 600/390/320px 넘침 없음, 세 서비스·Codex·사용량·요금제·티켓·권한·76회 표시줄 안정성 회귀를 통과했습니다. 영어 팝업 스크린샷도 확인했습니다.
+- [설치 ZIP 202610160117](https://github.com/han41858/ai-gauge/raw/refs/heads/main/downloads/ai-gauge-202610160117.zip): **101,382 bytes**, SHA-256 `bbb99298f9a913ef56d681f9c9a9b2bc236f026b0e645edbff90a9edd80fc673`. GitHub HTTP 200과 원본 바이트 일치를 확인했습니다. 루트 manifest·실행 파일·아이콘·두 카탈로그 총 12개이며 docs·INSTALL·상위 폴더는 없습니다. `main/downloads`에는 이 최신 ZIP 하나만 유지합니다.
+- **미검증:** 네이티브 Chrome 확장 설치 후 언어 선택·시스템 언어 변경 동작, 로그인한 실제 서비스의 표시줄 전환. Chromium 검증은 합성 DOM과 모의 Chrome API를 사용했으며 실계정 API 검증을 대신하지 않습니다.
+
+## 2026-10-16 영어·한국어 UI — 202610160042 (로컬)
+
+main `1421336`의 입력창 상대 시간 변경을 기준으로 최초 다국어 UI를 검증한 기록입니다. 이후 추가한 언어 선택·자동 저장과 최신 설치 파일의 검증 결과는 위 절을 참고합니다.
+
+- Chrome UI 언어가 `ko`/`ko-KR`이면 한국어, 나머지는 영어입니다. 영어 기본 Manifest와 `_locales/en/messages.json`·`ko/messages.json`의 109개 메시지를 사용합니다. 페이지 언어·navigator 언어·계정·서비스 설정을 언어 판단에 사용하지 않습니다.
+- 입력창은 영어 `🕒 Resets in 4 hours`, `🎫 Ticket expires in 2 days`와 한국어의 기존 콜론 형식을 제공합니다. 가장 큰 단위 내림·영어 단복수·`in less than a minute`·초기화 경과·티켓 전환 정책을 유지합니다.
+- 팝업·온보딩·설정·진단·오류·배지 제목·접근성·확장 설명을 번역합니다. 팝업의 정확한 날짜·시각·개별 티켓 만료와 수량을 유지하고 현지 요일만 언어에 맞춥니다. 기존 캐시의 앱 생성 기간 이름은 화면에서 번역하며 원본 데이터·요금제·모델 이름은 보존합니다. 미확인 요금제의 내부 반환값만 `null`로 바꿔 번역 문자열을 조건 판단에 사용하지 않습니다.
+- 수집 API·자동 갱신·캐시·권한·저장 형식·동적 게이지·진행 막대·배치·추가 의존성은 변경하지 않았습니다. 언어 설정이나 원격 번역·언어 정보 저장/전송을 추가하지 않았습니다. 기존 15초 타이머와 30px/12px/20px 규격을 유지합니다.
+
+주요 변경 파일:
+
+| 구분 | 파일 |
+| --- | --- |
+| 카탈로그·공통 표현 | `_locales/{en,ko}/messages.json`, `src/shared/{i18n,limit-label,format,errors,ticket-presentation,plan}.ts` |
+| UI | `src/popup/{index,render,diagnostics}.ts`, `src/popup/popup.html`, `src/content/usage-strip.ts`, `src/background/badge.ts` |
+| 빌드·패키징 | `manifest.json`, `scripts/{build,package,audit-build}.mjs`, `tsconfig.json` |
+| 검증 | `tests/i18n.test.ts`, `tests/i18n-presentation.test.ts`, `tests/{distribution,plan-cache}.test.ts`, `tests/helpers/{bundle.ts,i18n-loader.mjs}`, `scripts/i18n-fixture.mjs`, `scripts/browser-fixture.mjs`, `scripts/browser-fixture/i18n-checks.mjs`, `package.json` |
+| 문서 | `AI_GAUGE_SPEC.md`, `AGENTS.md`, `README.md`, `docs/{installation,reset-tickets,validation}.md` |
+
+검증 결과:
+
+- `npm run check`: **540개 통과**, 실패·취소·스킵 0. 타입 검사·개발 빌드·MV3 산출물 검사 통과. 배포 테스트에서 정식 빌드와 카탈로그가 포함된 ZIP도 검증했습니다.
+- 기존 한국어 회귀 테스트는 실제 카탈로그를 사용하는 모의 Chrome i18n API로 실행합니다. 별도 VM에서 영어·한국어·다른 언어의 fallback, 시간 경계·단복수, 티켓·요금제·모델명 보존, 기존 데이터 무변경, 영어 기본 대체 및 안전한 치환·DOM 삽입을 검증했습니다.
+- 같은 **202610160042** 빌드의 `node scripts/browser-fixture.mjs` 통과. Chromium 합성 DOM에서 `en`·`ko-KR`·`fr`·`ja` 문맥별 팝업·온보딩·설정·표시줄을 검증했고, 영어 팝업·표시줄의 600/390/320px 가로 넘침 없음과 기존 규격을 확인했습니다. ChatGPT/Codex 공유·Claude/Gemini·티켓 자동 만료·권한·게이지·76회 안정성 검사도 통과했습니다. 영어 팝업 스크린샷을 직접 확인했습니다.
+- 로컬 ZIP `/workspace/artifacts/ai-gauge-202610160042.zip`: **93,405 bytes**, SHA-256 `b2587a39f09ba9d2d275bb8fa866dd8cf010144c2032f4b439e6b0a57b166e95`. 루트 manifest·실행 파일·아이콘·두 번역 카탈로그 총 12개이며 검증한 dist와 바이트가 같습니다. docs·INSTALL·상위 폴더는 없습니다.
+- **미검증:** 실제 확장 설치에서 Chrome 기본 i18n의 로케일 선택·치환, Chrome UI 언어 변경 후 재시작, 로그인한 각 서비스 화면의 새 문구·공식 관리 링크. Chromium 검증은 실제 번역 카탈로그와 모의 `chrome.i18n`을 사용했으며 네이티브 확장 설치·실계정 API 검증을 대신하지 않습니다.
+
 ## 2026-10-15 입력창 초기화·티켓 만료 한국어 상대 시간 — 202610151456
 
 최신 main `ee6a3bb`를 기준으로 입력창 표시만 변경했습니다. `🕒 초기화: 4시간 후`, `🎫 티켓 만료: 2일 후`처럼 공통 포맷터로 가장 큰 단위 하나를 내림합니다. 1분 미만은 `1분 미만`이며, 초기화 경과 상태는 기존 정책을 유지합니다.

@@ -6,6 +6,7 @@ import { findComposerTarget, retainsComposerMarker, type ComposerTarget } from '
 import { effectiveSnapshot } from '../storage/snapshots';
 import { inlineTicketDisplay } from '../shared/ticket-presentation';
 import { UsageGauge, USAGE_GAUGE_CSS } from './usage-gauge';
+import { setLanguagePreference, t, uiLanguage } from '../shared/i18n';
 export class UsageStrip {
   private host: HTMLElement | null = null;
   private view: View | null = null;
@@ -15,6 +16,7 @@ export class UsageStrip {
   mount() {
     const view = this.view, p = this.provider;
     if (!view || !shouldShowStrip(view, p)) { this.remove(); return; }
+    setLanguagePreference(view.settings.language);
     // A second unpacked installation has a separate isolated world. Yield to its
     // connected strip instead of moving two identically named nodes endlessly.
     if ([...this.doc.querySelectorAll('#ai-gauge-usage-strip')].some(node => node !== this.host)) { this.remove(); return; }
@@ -33,6 +35,7 @@ export class UsageStrip {
       this.host = this.doc.createElement('div');
       this.host.id = 'ai-gauge-usage-strip';
       this.host.dataset.aiGaugeOwned = 'usage-strip';
+      this.host.lang = uiLanguage();
       const root = this.host.attachShadow({ mode: 'closed' });
       const style = this.doc.createElement('style');
       style.textContent = `
@@ -64,7 +67,7 @@ progress::-moz-progress-bar{background:currentColor;border-radius:999px}
       this.progress = this.doc.createElement('progress');
       this.progress.max = 100;
       this.progress.hidden = true;
-      this.progress.setAttribute('aria-label', '사용량');
+      this.progress.setAttribute('aria-label', t('format_usage_name'));
       current.append(this.currentText, this.progress);
       this.gauge = new UsageGauge(this.doc, parts.percent, view.settings);
       current.prepend(this.gauge.element);
@@ -79,6 +82,9 @@ progress::-moz-progress-bar{background:currentColor;border-radius:999px}
       root.append(style, row);
     }
     if (anchor.nextElementSibling !== this.host) anchor.after(this.host);
+    if (this.host.lang !== uiLanguage()) this.host.lang = uiLanguage();
+    const progressLabel = t('format_usage_name');
+    if (this.progress!.getAttribute('aria-label') !== progressLabel) this.progress!.setAttribute('aria-label', progressLabel);
     this.gauge!.update(parts.percent, view.settings);
     if (this.currentText!.textContent !== parts.current) this.currentText!.textContent = parts.current;
     if (this.resetText!.textContent !== parts.reset) this.resetText!.textContent = parts.reset;

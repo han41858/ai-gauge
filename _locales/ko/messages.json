@@ -1,0 +1,338 @@
+{
+  "badge_disabled": {
+    "message": "비활성"
+  },
+  "badge_permission_required": {
+    "message": "권한 필요"
+  },
+  "badge_usage_unknown": {
+    "message": "사용률 확인 불가"
+  },
+  "diagnostics_checking_tab": {
+    "message": "현재 탭의 표시 상태를 확인하고 있습니다."
+  },
+  "diagnostics_copied": {
+    "message": "진단 정보를 복사했습니다."
+  },
+  "diagnostics_copy": {
+    "message": "진단 정보 복사"
+  },
+  "diagnostics_copy_failed": {
+    "message": "자동 복사가 허용되지 않아 내용을 선택했습니다. 직접 복사해 주세요."
+  },
+  "diagnostics_description": {
+    "message": "버전·설정·오류·시각과 현재 탭의 표시 대상 발견 여부·요소 개수만 확인합니다. 입력 내용·계정·URL은 포함하지 않으며 자동으로 전송되지 않습니다."
+  },
+  "diagnostics_not_ready": {
+    "message": "상태를 아직 읽지 못했습니다. 잠시 후 다시 눌러 주세요."
+  },
+  "diagnostics_output_label": {
+    "message": "로컬 진단 정보"
+  },
+  "diagnostics_show": {
+    "message": "현재 상태 보기"
+  },
+  "diagnostics_shown": {
+    "message": "현재 상태를 표시했습니다. 자동으로 전송되지 않습니다."
+  },
+  "diagnostics_title": {
+    "message": "진단 정보"
+  },
+  "error_access_denied": {
+    "message": "사이트가 접근을 거부했습니다. 보호장치를 우회하지 않습니다."
+  },
+  "error_ambiguous_account": {
+    "message": "여러 Claude 조직이 확인되어 선택할 수 없습니다. 계정의 사용량 화면을 확인해 주세요."
+  },
+  "error_invalid_response": {
+    "message": "사용량 응답 형식을 확인할 수 없습니다."
+  },
+  "error_network": {
+    "message": "연결 또는 요청 시간이 초과되었습니다."
+  },
+  "error_not_collected": {
+    "message": "아직 수집하지 않았습니다."
+  },
+  "error_open_tab": {
+    "message": "로그인한 서비스 탭을 연 뒤 팝업을 다시 열어 주세요."
+  },
+  "error_permission_required": {
+    "message": "이 서비스의 사이트 접근 권한이 필요합니다."
+  },
+  "error_rate_limited": {
+    "message": "요청 한도에 도달했습니다. 재시도 시각까지 기다려 주세요."
+  },
+  "error_server": {
+    "message": "서비스 오류입니다. 잠시 후 다시 시도합니다."
+  },
+  "error_signed_out": {
+    "message": "사이트에 로그인한 뒤 팝업을 다시 열어 주세요."
+  },
+  "error_tab_access_failed": {
+    "message": "열린 서비스 탭에서 수집 코드를 실행하지 못했습니다. 마지막 유효 사용량을 유지하며 자동으로 다시 시도합니다."
+  },
+  "error_unsupported": {
+    "message": "안전한 수집 계약을 검증하지 못해 미지원입니다."
+  },
+  "extension_description": {
+    "message": "ChatGPT, Claude, Gemini 사용량과 초기화 시각을 보여주는 로컬 전용 확장입니다."
+  },
+  "format_duration_left": {
+    "message": "$1 남음"
+  },
+  "format_last_collected": {
+    "message": "마지막 정상 수집: $1"
+  },
+  "format_less_than_minute": {
+    "message": "1분 미만"
+  },
+  "format_not_collected": {
+    "message": "정상 수집 기록 없음"
+  },
+  "format_relative_day_one": {
+    "message": "$1일 후"
+  },
+  "format_relative_day_other": {
+    "message": "$1일 후"
+  },
+  "format_relative_hour_one": {
+    "message": "$1시간 후"
+  },
+  "format_relative_hour_other": {
+    "message": "$1시간 후"
+  },
+  "format_relative_minute_one": {
+    "message": "$1분 후"
+  },
+  "format_relative_minute_other": {
+    "message": "$1분 후"
+  },
+  "format_remaining": {
+    "message": "$1 남음"
+  },
+  "format_remaining_unknown": {
+    "message": "남은 시간 확인 불가"
+  },
+  "format_reset_countdown": {
+    "message": "🕒 초기화: $1"
+  },
+  "format_reset_pending": {
+    "message": "초기화 후 확인 중"
+  },
+  "format_reset_popup": {
+    "message": "🕒 사용량 초기화: $1"
+  },
+  "format_reset_unavailable": {
+    "message": "🕒 초기화: $1"
+  },
+  "format_unknown": {
+    "message": "확인 불가"
+  },
+  "format_usage": {
+    "message": "사용량: $1"
+  },
+  "format_usage_name": {
+    "message": "사용량"
+  },
+  "limit_additional": {
+    "message": "추가 제한"
+  },
+  "limit_days_one": {
+    "message": "$1일"
+  },
+  "limit_days_other": {
+    "message": "$1일"
+  },
+  "limit_hours_one": {
+    "message": "$1시간"
+  },
+  "limit_hours_other": {
+    "message": "$1시간"
+  },
+  "limit_legacy_shared": {
+    "message": "Work / Codex 공유"
+  },
+  "limit_primary": {
+    "message": "기본 제한"
+  },
+  "limit_weekly": {
+    "message": "주간"
+  },
+  "popup_communication_failed": {
+    "message": "확장 프로그램과 통신할 수 없습니다. 확장을 다시 로드해 주세요."
+  },
+  "popup_danger_threshold": {
+    "message": "경고 시작 사용률"
+  },
+  "popup_disable": {
+    "message": "끄기"
+  },
+  "popup_disabled": {
+    "message": "꺼짐"
+  },
+  "popup_enable": {
+    "message": "켜기"
+  },
+  "popup_grant_enable": {
+    "message": "권한 승인 및 켜기"
+  },
+  "popup_language": {
+    "message": "언어"
+  },
+  "popup_language_english": {
+    "message": "영어"
+  },
+  "popup_language_korean": {
+    "message": "한국어"
+  },
+  "popup_language_system": {
+    "message": "시스템 기본 언어"
+  },
+  "popup_limit_previous_usage": {
+    "message": "$1 사용량 (이전 값)"
+  },
+  "popup_limit_usage": {
+    "message": "$1 사용량"
+  },
+  "popup_local_only": {
+    "message": "로컬 전용"
+  },
+  "popup_onboarding_description": {
+    "message": "선택한 서비스의 권한을 한 번에 허용하고 사용량을 확인합니다."
+  },
+  "popup_onboarding_start": {
+    "message": "권한 허용 및 시작"
+  },
+  "popup_onboarding_title": {
+    "message": "사용할 서비스를 선택하세요"
+  },
+  "popup_open_site": {
+    "message": "$1 사이트 열기 (새 탭)"
+  },
+  "popup_permission_canceled": {
+    "message": "권한 승인이 취소되었습니다."
+  },
+  "popup_previous_usage": {
+    "message": "이전 수집값"
+  },
+  "popup_provider_plan": {
+    "message": "$1 요금제: $2"
+  },
+  "popup_provider_usage": {
+    "message": "$1 사용량"
+  },
+  "popup_revoke": {
+    "message": "권한 철회"
+  },
+  "popup_settings": {
+    "message": "설정"
+  },
+  "popup_settings_saved": {
+    "message": "설정을 저장했습니다."
+  },
+  "popup_show_in_composer": {
+    "message": "$1 입력창에 표시"
+  },
+  "popup_threshold_order_error": {
+    "message": "주의 시작 사용률은 경고 시작 사용률보다 작아야 합니다."
+  },
+  "popup_threshold_range_error": {
+    "message": "주의·경고 시작 사용률은 0~100 사이의 숫자로 입력해 주세요."
+  },
+  "popup_usage_unavailable": {
+    "message": "사용량 확인 불가"
+  },
+  "popup_warning_threshold": {
+    "message": "주의 시작 사용률"
+  },
+  "status_access_denied": {
+    "message": "사이트 접근 거부"
+  },
+  "status_ambiguous_account": {
+    "message": "Claude 조직 선택 필요"
+  },
+  "status_invalid_response": {
+    "message": "사용량 확인 불가"
+  },
+  "status_network": {
+    "message": "연결 확인 중"
+  },
+  "status_not_collected": {
+    "message": "사용량 확인 중"
+  },
+  "status_ok": {
+    "message": "최근 수집 성공"
+  },
+  "status_open_tab": {
+    "message": "서비스 탭 열기 필요"
+  },
+  "status_permission_required": {
+    "message": "사이트 권한 필요"
+  },
+  "status_rate_limited": {
+    "message": "잠시 후 다시 확인"
+  },
+  "status_server": {
+    "message": "서비스 응답 대기"
+  },
+  "status_signed_out": {
+    "message": "로그인 필요"
+  },
+  "status_tab_access_failed": {
+    "message": "사용량 다시 확인 중"
+  },
+  "status_unsupported": {
+    "message": "사용량 수집 미지원"
+  },
+  "ticket_availability_unknown": {
+    "message": "사용 가능 여부 확인 불가"
+  },
+  "ticket_blocked": {
+    "message": "사용 제한 중"
+  },
+  "ticket_count_one": {
+    "message": "$1개"
+  },
+  "ticket_count_other": {
+    "message": "$1개"
+  },
+  "ticket_expiry": {
+    "message": "$1 만료"
+  },
+  "ticket_inline": {
+    "message": "🎫 티켓 만료: $1"
+  },
+  "ticket_kind_five_hour": {
+    "message": "5시간 한도"
+  },
+  "ticket_kind_full": {
+    "message": "전체 한도"
+  },
+  "ticket_kind_unspecified": {
+    "message": "종류 확인 불가"
+  },
+  "ticket_kind_weekly": {
+    "message": "주간 한도"
+  },
+  "ticket_management_action": {
+    "message": "공식 사용량 관리 화면 열기 (새 탭)"
+  },
+  "ticket_other_first": {
+    "message": "다른 티켓 우선"
+  },
+  "ticket_requires_limit": {
+    "message": "한도 도달 조건"
+  },
+  "ticket_starts": {
+    "message": "$1부터"
+  },
+  "ticket_total_one": {
+    "message": "🎫 초기화 티켓 $1개"
+  },
+  "ticket_total_other": {
+    "message": "🎫 초기화 티켓 $1개"
+  },
+  "ticket_unavailable_now": {
+    "message": "현재 사용 불가"
+  }
+}

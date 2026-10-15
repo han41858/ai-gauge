@@ -1,6 +1,6 @@
 import { isProvider, providerFromUrl, PROVIDERS, PAGE_PROVIDERS, type Provider, type Settings, type View } from './types';
 import { record } from './validation';
-import { isSettings, parseStrips, parseUsageThresholds } from '../storage/settings';
+import { isLanguagePreference, isSettings, parseStrips, parseUsageThresholds } from '../storage/settings';
 import { parseSnapshot } from '../storage/snapshots';
 import { canRefreshFromPage } from './display-policy';
 export type Message =
@@ -10,7 +10,7 @@ export type Message =
   | { type: 'enable'; provider: Provider }
   | { type: 'enable-many'; providers: Provider[] }
   | { type: 'disable'; provider: Provider }
-  | { type: 'display-settings'; strips: Settings['strips']; warning: number; danger: number }
+  | { type: 'display-settings'; strips: Settings['strips']; language: Settings['language']; warning: number; danger: number }
   | { type: 'refresh'; provider: Provider; trigger: 'manual' | 'event' };
 export type Reply = { ok: true; view: View } | { ok: false };
 export function parseMessage(input: unknown): Message | null {
@@ -24,9 +24,9 @@ export function parseMessage(input: unknown): Message | null {
     && r.providers.every(isProvider) && new Set(r.providers).size === r.providers.length) {
     return { type: 'enable-many', providers: [...r.providers] };
   }
-  if (r.type === 'display-settings' && keys === 'danger,strips,type,warning') {
+  if (r.type === 'display-settings' && keys === 'danger,language,strips,type,warning') {
     const strips = parseStrips(r.strips), thresholds = parseUsageThresholds(r.warning, r.danger);
-    if (strips && thresholds) return { type: 'display-settings', strips, ...thresholds };
+    if (strips && thresholds && isLanguagePreference(r.language)) return { type: 'display-settings', strips, language: r.language, ...thresholds };
   }
   if (r.type === 'refresh' && keys === 'provider,trigger,type' && isProvider(r.provider) && (r.trigger === 'manual' || r.trigger === 'event')) {
     return { type: 'refresh', provider: r.provider, trigger: r.trigger };

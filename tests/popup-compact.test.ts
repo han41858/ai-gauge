@@ -247,6 +247,7 @@ test('popup keeps settings and diagnostics collapsed while removing persistent e
     assert.equal(doc.querySelector('#default-provider,#follow-tab,#warning,#danger'), null);
     assert(doc.getElementById('extension-version'));
     assert(doc.getElementById('settings-form'));
+    assert.equal(doc.querySelector('#settings-form button[type="submit"]'), null);
   } finally { dom.window.close(); }
 });
 
@@ -259,9 +260,9 @@ test('display-only settings expose page labels and preserve unrelated preference
   const flush = () => new Promise(resolve => setTimeout(resolve, 0));
   try {
     Object.assign(dom.window, { structuredClone, chrome: {
-      runtime: { getManifest: () => ({ version: '1.2.3' }), sendMessage: async (message: { type: string; strips?: View['settings']['strips']; warning?: number; danger?: number }) => {
+      runtime: { getManifest: () => ({ version: '1.2.3' }), sendMessage: async (message: { type: string; strips?: View['settings']['strips']; language?: View['settings']['language']; warning?: number; danger?: number }) => {
         assert.notEqual(message.type, 'settings', 'display-only changes must not submit an old whole-settings object');
-        if (message.type === 'display-settings') { v.settings.strips = structuredClone(message.strips!); v.settings.warning = message.warning!; v.settings.danger = message.danger!; saved = structuredClone(v.settings); }
+        if (message.type === 'display-settings') { v.settings.strips = structuredClone(message.strips!); v.settings.language = message.language!; v.settings.warning = message.warning!; v.settings.danger = message.danger!; saved = structuredClone(v.settings); }
         return { ok: true, view: structuredClone(v) };
       } },
       storage: { onChanged: { addListener() {} } }
@@ -272,7 +273,7 @@ test('display-only settings expose page labels and preserve unrelated preference
     assert.equal(doc.querySelector('#default-provider,#follow-tab,#warning,#danger'), null);
     const checkbox = doc.getElementById('strip-chatgpt') as HTMLInputElement;
     checkbox.checked = false; checkbox.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
-    doc.getElementById('settings-form')!.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+    checkbox.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
     await flush(); await flush();
     assert.deepEqual(saved, { ...before, strips: { ...before.strips, chatgpt: false } });
   } finally { dom.window.close(); }
