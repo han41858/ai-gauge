@@ -9,18 +9,25 @@ export function localStamp(at: Date): string {
 /** One text for every Gemini response-shape code; the codes stay distinct only for diagnostics. */
 export const geminiErrorText = (text: string) =>
   Object.fromEntries(GEMINI_RESPONSE_ERRORS.map(code => [code, text])) as Record<typeof GEMINI_RESPONSE_ERRORS[number], string>;
-function resetValue(value: string | null | undefined, now: number): string {
+function resetValue(value: string | null | undefined, now: number, compact = false): string {
   const reset = resetTime(value);
   if (reset === null) return '확인 불가';
   const at = new Date(reset);
-  const local = localStamp(at);
+  const prefix = compact ? '' : `${localStamp(at)}, `;
   const remaining = at.getTime() - now;
-  if (!Number.isFinite(remaining)) return `${local}, 남은 시간 확인 불가`;
-  if (remaining <= 0) return `${local}, 초기화 후 확인 중`;
+  if (!Number.isFinite(remaining)) return `${prefix}남은 시간 확인 불가`;
+  if (remaining <= 0) return `${prefix}초기화 후 확인 중`;
   const hours = Math.floor(remaining / 3_600_000), days = Math.floor(hours / 24);
-  return `${local}, ${days > 0 ? `${days}d ` : ''}${hours % 24}h 남음`;
+  if (compact) {
+    if (days > 0) return `${days}d`;
+    if (hours > 0) return `${hours}h`;
+    const minutes = Math.floor(remaining / 60_000);
+    return minutes > 0 ? `${minutes}m` : '1m 미만';
+  }
+  return `${prefix}${days > 0 ? `${days}d ` : ''}${hours % 24}h 남음`;
 }
 export const resetLabel = (reset: string | null | undefined, now = Date.now()) => `🕒 사용량 초기화: ${resetValue(reset, now)}`;
+export const resetCountdownLabel = (reset: string | null | undefined, now = Date.now()) => `🕒 사용량 초기화: ${resetValue(reset, now, true)}`;
 export function usagePercentLabel(value: unknown): string {
   const used = percent(value);
   return `사용량: ${used === null ? '확인 불가' : `${Math.round(used)}%`}`;

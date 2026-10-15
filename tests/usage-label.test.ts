@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { usageLabel, usageParts } from '../src/content/usage-label';
+import { resetLabel } from '../src/shared/format';
 import { emptySnapshot } from '../src/storage/snapshots';
 import type { Snapshot, UsageLimit } from '../src/shared/types';
 
@@ -11,30 +12,36 @@ const limit = (overrides: Partial<UsageLimit> = {}): UsageLimit => ({
   remaining: null, unit: null, source: 'api', ...overrides
 });
 
-test('usage label follows the exact requested current-usage and local-reset format', () => {
+test('input usage label keeps the largest countdown unit while popup keeps date and detailed duration', () => {
   const reset = new Date(2026, 9, 16, 9, 5).getTime();
-  assert.equal(usageLabel(snapshot(), limit(), reset - 49 * 3_600_000),
-    '사용량: 15%  🕒 사용량 초기화: 10/16(금) 09:05, 2d 1h 남음');
+  const now = reset - 119 * 3_600_000;
+  assert.equal(usageLabel(snapshot(), limit(), now), '사용량: 15%  🕒 사용량 초기화: 4d');
+  assert.equal(resetLabel(limit().resetsAt, now), '🕒 사용량 초기화: 10/16(금) 09:05, 4d 23h 남음');
 });
 
-test('a real zero usage remains zero while a sub-hour remainder omits zero days', () => {
+test('a real zero usage remains zero while a sub-hour countdown uses minutes', () => {
   const item = limit({ percent: 0 }), reset = Date.parse(item.resetsAt!);
   assert.equal(usageLabel(snapshot(), item, reset - 59 * 60_000),
-    '사용량: 0%  🕒 사용량 초기화: 10/16(금) 09:05, 0h 남음');
+    '사용량: 0%  🕒 사용량 초기화: 59m');
 });
 
-test('zero days are omitted below one day and retained from exactly one day onward', () => {
+test('countdown changes units at the day, hour and minute boundaries without rounding up', () => {
   const item = limit(), reset = Date.parse(item.resetsAt!);
-  assert.match(usageLabel(snapshot(), item, reset - 23.9 * 3_600_000), /, 23h 남음$/);
-  assert.doesNotMatch(usageLabel(snapshot(), item, reset - 23.9 * 3_600_000), /0d/);
-  assert.match(usageLabel(snapshot(), item, reset - 24 * 3_600_000), /, 1d 0h 남음$/);
+  for (const [remaining, expected] of [
+    [86_400_001, '1d'], [86_400_000, '1d'], [86_399_999, '23h'],
+    [3_600_001, '1h'], [3_600_000, '1h'], [3_599_999, '59m'],
+    [60_001, '1m'], [60_000, '1m'], [59_999, '1m 미만'], [1, '1m 미만']
+  ] as const) {
+    assert.equal(usageLabel(snapshot(), item, reset - remaining),
+      `사용량: 15%  🕒 사용량 초기화: ${expected}`, `${remaining}ms remaining`);
+  }
 });
 
 test('unknown or invalid percentages never convert remaining counts into percentage usage', () => {
   for (const percent of [null, Number.NaN, Number.POSITIVE_INFINITY, -1, 101]) {
     const item = limit({ percent, remaining: 73 }), reset = Date.parse(item.resetsAt!);
     assert.equal(usageLabel(snapshot(), item, reset - 3_600_000),
-      '사용량: 확인 불가  🕒 사용량 초기화: 10/16(금) 09:05, 1h 남음');
+      '사용량: 확인 불가  🕒 사용량 초기화: 1h');
   }
   assert.equal(usageLabel(snapshot(), undefined), '사용량: 확인 불가  🕒 사용량 초기화: 확인 불가');
 });
@@ -45,34 +52,34 @@ test('missing, malformed, impossible and timezone-free reset dates do not invent
   }
 });
 
-test('an elapsed reset formatter keeps the actual timestamp and gives a concise pending status', () => {
+test('an elapsed reset keeps the pending status without a date in the input strip', () => {
   const item = limit(), reset = Date.parse(item.resetsAt!);
   for (const now of [reset, reset + 1, reset + 86_400_000]) {
     assert.equal(usageLabel(snapshot(), item, now),
-      '사용량: 15%  🕒 사용량 초기화: 10/16(금) 09:05, 초기화 후 확인 중');
+      '사용량: 15%  🕒 사용량 초기화: 초기화 후 확인 중');
+    assert.equal(resetLabel(item.resetsAt, now), '🕒 사용량 초기화: 10/16(금) 09:05, 초기화 후 확인 중');
   }
 });
 
-test('month and year boundaries preserve the local weekday and midnight padding', () => {
+test('month and year boundaries preserve popup date details and the input countdown', () => {
   const reset = new Date(2027, 0, 1, 0, 0).getTime();
-  assert.equal(usageLabel(snapshot(), limit({ resetsAt: new Date(reset).toISOString() }), reset - 25 * 3_600_000),
-    '사용량: 15%  🕒 사용량 초기화: 1/1(금) 00:00, 1d 1h 남음');
+  const item = limit({ resetsAt: new Date(reset).toISOString() }), now = reset - 25 * 3_600_000;
+  assert.equal(usageLabel(snapshot(), item, now), '사용량: 15%  🕒 사용량 초기화: 1d');
+  assert.equal(resetLabel(item.resetsAt, now), '🕒 사용량 초기화: 1/1(금) 00:00, 1d 1h 남음');
 });
 
-test('reset date and weekday use the browser timezone while countdown uses elapsed hours', () => {
+test('popup reset date follows the browser timezone while input countdown is timezone-independent', () => {
   const original = process.env.TZ;
   const item = limit({ resetsAt: '2026-10-14T23:05:00Z' });
   const now = Date.parse(item.resetsAt!) - 26 * 3_600_000;
   try {
-    process.env.TZ = 'UTC';
-    assert.equal(usageLabel(snapshot(), item, now),
-      '사용량: 15%  🕒 사용량 초기화: 10/14(수) 23:05, 1d 2h 남음');
-    process.env.TZ = 'Asia/Seoul';
-    assert.equal(usageLabel(snapshot(), item, now),
-      '사용량: 15%  🕒 사용량 초기화: 10/15(목) 08:05, 1d 2h 남음');
-    process.env.TZ = 'America/Los_Angeles';
-    assert.equal(usageLabel(snapshot(), item, now),
-      '사용량: 15%  🕒 사용량 초기화: 10/14(수) 16:05, 1d 2h 남음');
+    for (const [timezone, stamp] of [
+      ['UTC', '10/14(수) 23:05'], ['Asia/Seoul', '10/15(목) 08:05'], ['America/Los_Angeles', '10/14(수) 16:05']
+    ]) {
+      process.env.TZ = timezone;
+      assert.equal(usageLabel(snapshot(), item, now), '사용량: 15%  🕒 사용량 초기화: 1d');
+      assert.equal(resetLabel(item.resetsAt, now), `🕒 사용량 초기화: ${stamp}, 1d 2h 남음`);
+    }
   } finally {
     if (original === undefined) delete process.env.TZ;
     else process.env.TZ = original;
