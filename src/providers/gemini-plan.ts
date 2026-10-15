@@ -8,6 +8,8 @@ const POLICY_LABELS: Readonly<Record<string, string>> = {
   brownfield_paid_policy: 'AI Plus', plus_policy: 'AI Pro', neon_policy: 'AI Ultra'
 };
 
+export const GEMINI_POLICY_IDS: readonly string[] = Object.keys(POLICY_LABELS);
+
 export function parseGeminiPlan(input: unknown): string | null {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
   const policies: unknown = (input as Record<string, unknown>).policies;

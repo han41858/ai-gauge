@@ -1,12 +1,19 @@
-import type { ErrorCode, Snapshot, UsageLimit } from './types';
+import { GEMINI_RESPONSE_ERRORS, type ErrorCode, type Snapshot, type UsageLimit } from './types';
 import { percent, resetTime } from './validation';
 const DAYS = ['일', '월', '화', '수', '목', '금', '토'];
 const twoDigits = (value: number) => String(value).padStart(2, '0');
+/** Local `M/D(요일) HH:mm`, shared by reset times and ticket expiry. */
+export function localStamp(at: Date): string {
+  return `${at.getMonth() + 1}/${at.getDate()}(${DAYS[at.getDay()]}) ${twoDigits(at.getHours())}:${twoDigits(at.getMinutes())}`;
+}
+/** One text for every Gemini response-shape code; the codes stay distinct only for diagnostics. */
+export const geminiErrorText = (text: string) =>
+  Object.fromEntries(GEMINI_RESPONSE_ERRORS.map(code => [code, text])) as Record<typeof GEMINI_RESPONSE_ERRORS[number], string>;
 function resetValue(value: string | null | undefined, now: number): string {
   const reset = resetTime(value);
   if (reset === null) return '확인 불가';
   const at = new Date(reset);
-  const local = `${at.getMonth() + 1}/${at.getDate()}(${DAYS[at.getDay()]}) ${twoDigits(at.getHours())}:${twoDigits(at.getMinutes())}`;
+  const local = localStamp(at);
   const remaining = at.getTime() - now;
   if (!Number.isFinite(remaining)) return `${local}, 남은 시간 확인 불가`;
   if (remaining <= 0) return `${local}, 초기화 후 확인 중`;
@@ -18,13 +25,13 @@ export function usagePercentLabel(value: unknown): string {
   const used = percent(value);
   return `사용량: ${used === null ? '확인 불가' : `${Math.round(used)}%`}`;
 }
-export const usageValue = (limit: UsageLimit) => limit.percent !== null ? `${Math.round(limit.percent)}%` : limit.remaining !== null ? `${limit.remaining.toLocaleString()}${limit.unit ?? ''} 남음` : '확인 불가';
+export const usageValue = (limit: UsageLimit) => limit.percent !== null ? `${Math.round(limit.percent)}%`
+  : limit.remaining !== null ? `${limit.remaining.toLocaleString()}${limit.unit ?? ''} 남음` : '확인 불가';
 export const usageText = (limit: UsageLimit) => `${limit.label}: ${usageValue(limit)}`;
 const STATUS_TEXT: Record<ErrorCode, string> = {
   not_collected: '사용량 확인 중', signed_out: '로그인 필요', access_denied: '사이트 접근 거부',
   rate_limited: '잠시 후 다시 확인', network: '연결 확인 중', server: '서비스 응답 대기',
-  invalid_response: '사용량 확인 불가', gemini_response_type: '사용량 확인 불가', gemini_response_read: '사용량 확인 불가',
-  gemini_frame_invalid: '사용량 확인 불가', gemini_rpc_missing: '사용량 확인 불가', gemini_rpc_invalid: '사용량 확인 불가', gemini_quota_invalid: '사용량 확인 불가',
+  invalid_response: '사용량 확인 불가', ...geminiErrorText('사용량 확인 불가'),
   open_tab: '서비스 탭 열기 필요', tab_access_failed: '사이트 접근 설정 확인', ambiguous_account: 'Claude 조직 선택 필요',
   unsupported: '사용량 수집 미지원', permission_required: '사이트 권한 필요', reset_pending: '초기화 후 확인 중'
 };

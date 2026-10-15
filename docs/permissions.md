@@ -38,6 +38,6 @@ ChatGPT 권한 철회는 일반 채팅·Codex의 수집과 표시 모두에 적�
 
 개발 빌드의 접힌 진단은 버전, 서비스별 켜기·권한·상태·오류·내부 시각, 화면별 표시 설정을 로컬에서 보여줍니다. 사용자가 요청할 때 활성 지원 탭의 편집기/iframe/표시줄 개수와 대상 발견·가시성도 확인합니다. 원본 HTML·클래스명·텍스트·URL·계정·대화·사용량 원문은 포함하지 않고 자동 전송하거나 별도 저장하지 않습니다. `build:release`는 진단 UI와 응답 처리를 제외합니다.
 
-앱 아이콘은 기존 `assets/logo.png`에서 준비한 로컬 PNG이고, 표시줄에는 사용자 제공 `assets/logo-20x20.png`를 그대로 data URL로 포함합니다. 런타임 외부 이미지 요청, GitHub 연결, `web_accessible_resources`는 없습니다.
+앱 아이콘은 기존 `assets/logo.png`에서 준비한 로컬 PNG이고, 표시줄 게이지는 `assets/gauge-*.svg`를 번들에 포함한 인라인 SVG입니다. 런타임 외부 이미지 요청, GitHub 연결, `web_accessible_resources`는 없습니다.
 
 백엔드·광고·추적·분석·서버 동기화·인증 우회·한도 우회는 구현하지 않습니다. 기술적 수집 가능성이 서비스 약관이나 Chrome Web Store 배포 허용을 확정하지는 않습니다.

@@ -1,5 +1,7 @@
 import type { Settings } from '../shared/types';
 import { percent as validPercent } from '../shared/validation';
+import backgroundSource from '../../assets/gauge-background.svg';
+import needleSource from '../../assets/gauge-needle.svg';
 
 type Thresholds = Pick<Settings, 'warning' | 'danger'>;
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -11,6 +13,15 @@ export const USAGE_GAUGE_CSS = `
 .gauge-arc{transition:stroke 300ms ease}
 @media (prefers-reduced-motion:reduce){.gauge-needle,.gauge-arc{transition:none}}`;
 
+// The bundled asset files are the single source of the gauge artwork. They are
+// parsed as XML (never as HTML) and only their element nodes are copied.
+function assetElements(doc: Document, source: string): Element[] {
+  const Parser = doc.defaultView?.DOMParser ?? globalThis.DOMParser;
+  const root = new Parser().parseFromString(source, 'image/svg+xml').documentElement;
+  if (root.namespaceURI !== SVG_NS || root.localName !== 'svg') throw new Error('invalid_gauge_asset');
+  return [...root.children].map(child => doc.importNode(child, true));
+}
+
 export class UsageGauge {
   readonly element: SVGSVGElement;
   private readonly needle: SVGGElement;
@@ -18,38 +29,28 @@ export class UsageGauge {
   private value: number | null | undefined;
 
   constructor(doc: Document, value: number | null, thresholds: Thresholds) {
-    const node = <K extends keyof SVGElementTagNameMap>(tag: K, attributes: Record<string, string>) => {
-      const element = doc.createElementNS(SVG_NS, tag);
-      for (const [name, attribute] of Object.entries(attributes)) element.setAttribute(name, attribute);
-      return element;
-    };
-    const id = `ai-gauge-${++nextId}`;
-    this.element = node('svg', {
-      viewBox: '0 0 64 64', width: '20', height: '20', fill: 'none',
-      class: 'usage-gauge brand-icon', 'aria-hidden': 'true', focusable: 'false'
-    });
-    // Keep the shapes and orange/blue finishes of the supplied gauge SVGs.
-    const defs = node('defs', {});
-    const hub = node('linearGradient', { id: `${id}-hub`, x1: '26', y1: '42', x2: '39', y2: '57', gradientUnits: 'userSpaceOnUse' });
-    hub.append(node('stop', { 'stop-color': '#80F7FF' }), node('stop', { offset: '0.45', 'stop-color': '#1970D0' }), node('stop', { offset: '1', 'stop-color': '#07275B' }));
-    const needleGradient = node('linearGradient', { id: `${id}-needle`, x1: '27', y1: '46', x2: '37', y2: '13', gradientUnits: 'userSpaceOnUse' });
-    needleGradient.append(node('stop', { 'stop-color': '#FF8A14' }), node('stop', { offset: '.55', 'stop-color': '#FFAD20' }), node('stop', { offset: '1', 'stop-color': '#FFE483' }));
-    defs.append(hub, needleGradient);
-    const arc = { d: 'M8 46 A24 24 0 0 1 56 46', 'stroke-linecap': 'round' };
-    this.arc = node('path', { ...arc, class: 'gauge-arc', 'stroke-width': '8' });
-    this.needle = node('g', { class: 'gauge-needle' });
-    this.needle.append(node('path', { d: 'M27.5 46 L32 13 L36.5 46 Z', fill: `url(#${id}-needle)`, stroke: '#FFB528', 'stroke-width': '.6', 'stroke-linejoin': 'round' }));
-    this.element.append(
-      defs,
-      node('path', { ...arc, stroke: '#073D85', 'stroke-width': '10', opacity: '.45' }),
-      this.arc,
-      node('path', { ...arc, stroke: 'white', 'stroke-width': '1.2', opacity: '.34' }),
-      node('circle', { cx: '32', cy: '46', r: '7', fill: '#06377E', stroke: '#3CAFFD', 'stroke-width': '1.5' }),
-      node('circle', { cx: '32', cy: '46', r: '5', fill: `url(#${id}-hub)` }),
-      this.needle,
-      node('circle', { cx: '32', cy: '46', r: '5.5', fill: '#0D4D9F', stroke: '#72E9FF', 'stroke-width': '1.5' }),
-      node('circle', { cx: '30.5', cy: '44.5', r: '2.1', fill: '#A8F9FF', opacity: '.75' })
-    );
+    this.element = doc.createElementNS(SVG_NS, 'svg');
+    for (const [name, attribute] of Object.entries({ viewBox: '0 0 64 64', width: '20', height: '20', fill: 'none',
+      class: 'usage-gauge brand-icon', 'aria-hidden': 'true', focusable: 'false' })) this.element.setAttribute(name, attribute);
+    this.element.append(...assetElements(doc, backgroundSource), ...assetElements(doc, needleSource));
+    // Asset IDs are local names; prefix them so several gauges in one tree never share gradients.
+    const prefix = `ai-gauge-${++nextId}-`;
+    for (const node of this.element.querySelectorAll('[id]')) {
+      const id = node.id;
+      node.id = prefix + id;
+      for (const shape of this.element.querySelectorAll('[fill],[stroke]')) {
+        for (const attribute of ['fill', 'stroke']) {
+          const current = shape.getAttribute(attribute);
+          if (current?.includes(`url(#${id})`)) shape.setAttribute(attribute, current.replace(`url(#${id})`, `url(#${prefix}${id})`));
+        }
+      }
+    }
+    const arc = [...this.element.querySelectorAll<SVGPathElement>('path[stroke]')].find(path => path.getAttribute('stroke')!.includes('--gauge-color'));
+    const needle = this.element.querySelector<SVGGElement>(`g[id="${prefix}needle-rotor"]`);
+    if (!arc || !needle) throw new Error('invalid_gauge_asset');
+    arc.classList.add('gauge-arc');
+    needle.classList.add('gauge-needle');
+    this.arc = arc; this.needle = needle;
     this.update(value, thresholds);
   }
 

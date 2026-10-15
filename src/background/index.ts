@@ -24,8 +24,12 @@ function reconcile(): Promise<void> {
   })().finally(() => { setupFlight = null; });
   return setupFlight;
 }
-async function publish(): Promise<View> {
-  const view = await readView();
+let publishedKey: string | null = null;
+/** Pushes badges and a tab invalidation only when the readable view changed (or when forced). */
+async function publish(force = false): Promise<View> {
+  const view = await readView(), key = JSON.stringify(view);
+  if (!force && key === publishedKey) return view;
+  publishedKey = key;
   await updateBadge(view);
   // Push only an invalidation signal, not usage payloads into tabs.
   await Promise.all(SITE_GROUPS.map(async site => {
@@ -34,6 +38,11 @@ async function publish(): Promise<View> {
     await Promise.all(tabs.filter(t => typeof t.id === 'number' && !t.discarded).map(t => chrome.tabs.sendMessage(t.id!, { type: 'invalidate' }).catch(() => undefined)));
   }));
   return view;
+}
+/** A navigated or activated tab needs its own badge even when the shared view is unchanged. */
+async function publishTab(tabId: number): Promise<void> {
+  const view = await publish();
+  await updateBadge(view, [tabId]);
 }
 async function refresh(p: Provider, trigger: Trigger) { await ticketReadiness; await scheduler.refresh(p, trigger); }
 async function refreshAll(trigger: Trigger) { await Promise.all(PROVIDERS.map(p => refresh(p, trigger))); await publish(); }
@@ -72,7 +81,7 @@ async function initialize() {
     await migrateStorage();
   });
   await reconcile();
-  await publish();
+  await publish(true);
   await refreshAll('periodic');
 }
 chrome.runtime.onMessage.addListener((input: unknown, sender, sendResponse: (reply: Reply) => void) => {
@@ -83,12 +92,10 @@ chrome.runtime.onMessage.addListener((input: unknown, sender, sendResponse: (rep
       const p = providerFromUrl(sender.url)!;
       if (!await chrome.permissions.contains({ origins: [ORIGINS[displayProvider(p)]] })) return { ok: false } as Reply;
     }
-    if (message.type === 'settings' || message.type === 'strips' || message.type === 'display-settings' || message.type === 'disable') {
+    if (message.type === 'display-settings' || message.type === 'disable') {
       await changeSettings(settings => {
-        if (message.type === 'strips') settings.strips = { ...message.strips };
-        else if (message.type === 'display-settings') { settings.strips = { ...message.strips }; settings.warning = message.warning; settings.danger = message.danger; }
-        else if (message.type === 'disable') settings.enabled[message.provider] = false;
-        else Object.assign(settings, parseSettings(message.settings));
+        if (message.type === 'display-settings') { settings.strips = { ...message.strips }; settings.warning = message.warning; settings.danger = message.danger; }
+        else settings.enabled[message.provider] = false;
       });
       const settings = await readSettings();
       await Promise.all(PROVIDERS.filter(provider => !settings.enabled[provider]).map(provider => scheduler.invalidateTickets(provider)));
@@ -99,7 +106,7 @@ chrome.runtime.onMessage.addListener((input: unknown, sender, sendResponse: (rep
     if (message.type === 'context') await refresh(message.provider, 'event');
     if (message.type === 'refresh') await refresh(message.provider, message.trigger);
     if (message.type === 'view' && !sender.tab) void refreshAll('event').catch(() => undefined);
-    const view = message.type === 'view' ? await readView() : await publish();
+    const view = message.type === 'view' || message.type === 'read' ? await readView() : await publish();
     return { ok: true, view } as Reply;
   })().then(sendResponse).catch(() => sendResponse({ ok: false }));
   return true;
@@ -108,9 +115,9 @@ chrome.alarms.onAlarm.addListener(a => { if (a.name === ALARM) void refreshAll('
 chrome.runtime.onInstalled.addListener(() => { void initialize().catch(() => undefined); });
 chrome.runtime.onStartup.addListener(() => { void initialize().catch(() => undefined); });
 chrome.tabs.onActivated.addListener(({ tabId }) => {
-  void chrome.tabs.get(tabId).then(async tab => { const p = providerFromUrl(tab.url); if (p) await refresh(displayProvider(p), 'tab'); await publish(); }).catch(() => undefined);
+  void chrome.tabs.get(tabId).then(async tab => { const p = providerFromUrl(tab.url); if (p) await refresh(displayProvider(p), 'tab'); await publishTab(tabId); }).catch(() => undefined);
 });
-chrome.tabs.onUpdated.addListener((_tabId, change, tab) => {
+chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
   if (change.status === 'loading' || change.status === 'complete' || change.url) void (async () => {
     const p = providerFromUrl(change.url ?? tab.url);
     if (p) {
@@ -119,11 +126,16 @@ chrome.tabs.onUpdated.addListener((_tabId, change, tab) => {
       if (change.status === 'loading') await scheduler.invalidatePlan(displayProvider(p));
       if (tab.active && change.status !== 'loading') await refresh(displayProvider(p), 'tab');
     }
-    await publish();
+    await publishTab(tabId);
   })().catch(() => undefined);
 });
 chrome.windows.onFocusChanged.addListener(windowId => { if (windowId !== -1) void updateBadgeFromFocus().catch(() => undefined); });
-async function updateBadgeFromFocus() { const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true }); const p = providerFromUrl(tabs[0]?.url); if (p) await refresh(displayProvider(p), 'tab'); await publish(); }
+async function updateBadgeFromFocus() {
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  const p = providerFromUrl(tab?.url);
+  if (p) await refresh(displayProvider(p), 'tab');
+  if (typeof tab?.id === 'number') await publishTab(tab.id); else await publish();
+}
 chrome.permissions.onAdded.addListener(added => {
   // Chrome may close the popup while showing its permission dialog. Complete
   // the granted site's activation in the worker instead of relying on that UI.
@@ -131,15 +143,17 @@ chrome.permissions.onAdded.addListener(added => {
   void (async () => {
     await enableProviders(providers);
     await reconcile();
-    await publish();
+    await publish(true);
   })().catch(() => undefined);
 });
 chrome.permissions.onRemoved.addListener(removed => {
   // A revoked host no longer exposes its tab URL. Notify tab IDs without reading URLs/history.
   const origins = (removed?.origins ?? []).filter(origin => SITE_GROUPS.some(site => site.origin === origin));
-  void chrome.tabs.query({}).then(tabs => Promise.all(tabs.filter(t => typeof t.id === 'number').map(t => chrome.tabs.sendMessage(t.id!, { type: 'permissions-revoked', origins }).catch(() => undefined)))).catch(() => undefined);
+  const notice = { type: 'permissions-revoked', origins };
+  void chrome.tabs.query({}).then(tabs => Promise.all(tabs.filter(t => typeof t.id === 'number')
+    .map(t => chrome.tabs.sendMessage(t.id!, notice).catch(() => undefined)))).catch(() => undefined);
   void Promise.all(PROVIDERS.filter(provider => origins.includes(ORIGINS[provider])).map(provider => scheduler.invalidateTickets(provider)))
-    .then(reconcile).then(publish).catch(() => undefined);
+    .then(reconcile).then(() => publish(true)).catch(() => undefined);
 });
 // Top-level repair handles worker restart too, rather than relying only on onStartup.
 void initialize().catch(() => undefined);

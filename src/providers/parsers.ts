@@ -2,7 +2,8 @@ import type { UsageLimit } from '../shared/types';
 import { label, nonnegative, percent, record, resetTime, unixReset } from '../shared/validation';
 
 export class InvalidResponse extends Error { constructor() { super('invalid_response'); } }
-const item = (id: string, name: string, category: UsageLimit['category'], value: unknown, reset: string | null, span: number | null): UsageLimit => ({ id, label: name, category, percent: percent(value), resetsAt: reset, windowSeconds: span, remaining: null, unit: null, source: 'api' });
+const item = (id: string, name: string, category: UsageLimit['category'], value: unknown, reset: string | null, span: number | null): UsageLimit =>
+  ({ id, label: name, category, percent: percent(value), resetsAt: reset, windowSeconds: span, remaining: null, unit: null, source: 'api' });
 export function parseClaude(input: unknown): UsageLimit[] {
   const data = record(input);
   if (!data) throw new InvalidResponse();

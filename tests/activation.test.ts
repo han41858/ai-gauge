@@ -2,14 +2,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
-import { buildSync } from 'esbuild';
+import { bundleEntry } from './helpers/bundle';
 import { JSDOM } from 'jsdom';
 import { authorized, parseMessage, type Reply } from '../src/shared/contracts';
 import { ORIGINS, type Provider, type Settings, type Snapshot } from '../src/shared/types';
 import { defaults } from '../src/storage/settings';
 
-const backgroundBundle = buildSync({ entryPoints: ['src/background/index.ts'], bundle: true, write: false, format: 'iife', target: 'chrome120' }).outputFiles[0]!.text;
-const popupBundle = buildSync({ entryPoints: ['src/popup/index.ts'], bundle: true, write: false, format: 'iife', target: 'chrome120' }).outputFiles[0]!.text;
+const backgroundBundle = bundleEntry('src/background/index.ts');
+const popupBundle = bundleEntry('src/popup/index.ts');
 const popupHtml = readFileSync(new URL('../src/popup/popup.html', import.meta.url), 'utf8');
 const popupSender = { id: 'activation-fixture', url: 'chrome-extension://activation-fixture/popup.html' };
 const pause = () => new Promise(resolve => setTimeout(resolve, 0));
@@ -187,13 +187,14 @@ test('batch activation enables only hosts with actual permission and preserves u
 
 test('visibility and disable patches accept only their exact fields and cannot be sent by site content', () => {
   const content = { id: popupSender.id, url: 'https://claude.ai/new', frameId: 0, tab: { id: 2, url: 'https://claude.ai/new' } } as chrome.runtime.MessageSender;
-  for (const raw of [{ type: 'disable', provider: 'claude' }, { type: 'strips', strips: defaults().strips }]) {
+  for (const raw of [{ type: 'disable', provider: 'claude' }, { type: 'display-settings', strips: defaults().strips, warning: 70, danger: 90 }]) {
     const message = parseMessage(raw);
     assert(message); assert(authorized(message, popupSender, popupSender.id));
     assert.equal(authorized(message, content, popupSender.id), false);
   }
   for (const malformed of [
     { type: 'disable', provider: 'unknown' }, { type: 'disable', provider: 'claude', enabled: true },
+    { type: 'strips', strips: defaults().strips }, { type: 'settings', settings: defaults() },
     { type: 'strips', strips: { chatgpt: true } },
     { type: 'strips', strips: { ...defaults().strips, extra: false } },
     { type: 'strips', strips: { ...defaults().strips, claude: 'yes' } },
@@ -210,13 +211,15 @@ test('display settings accept only validated thresholds and visibility fields fr
   assert.equal(authorized(message, { ...popupSender, id: 'other' }, popupSender.id), false);
   assert.equal(authorized(message, { ...popupSender, url: 'chrome-extension://activation-fixture/other.html' }, popupSender.id), false);
   for (const malformed of [
-    { ...raw, warning: 0 }, { ...raw, danger: 100 }, { ...raw, warning: 70.5 }, { ...raw, danger: NaN },
+    { ...raw, warning: -1 }, { ...raw, danger: 100.5 }, { ...raw, warning: -0.01 }, { ...raw, danger: NaN }, { ...raw, danger: Infinity },
     { ...raw, warning: 90 }, { ...raw, warning: 95 }, { ...raw, warning: '70' }, { ...raw, danger: undefined },
     { ...raw, enabled: defaults().enabled }, { ...raw, permissions: { claude: true } },
     { ...raw, strips: { chatgpt: true } }, { ...raw, strips: { ...raw.strips, claude: 'yes' } },
     { ...raw, strips: { ...raw.strips, extra: true } }
   ]) assert.equal(parseMessage(malformed), null);
-  assert.deepEqual(parseMessage({ ...raw, warning: 1, danger: 99 }), { ...raw, warning: 1, danger: 99 });
+  for (const [warning, danger] of [[1, 99], [0, 100], [70.5, 90.25]]) {
+    assert.deepEqual(parseMessage({ ...raw, warning, danger }), { ...raw, warning, danger });
+  }
 });
 
 test('display settings and queued disable writes preserve each other and do not grant revoked permissions', async () => {
@@ -234,14 +237,13 @@ test('display settings and queued disable writes preserve each other and do not 
   assert.deepEqual(current.strips, strips); assert.equal(current.warning, 45); assert.equal(current.danger, 80);
   assert.equal(background.permissions.has(ORIGINS.claude), false);
   assert.equal(background.permissions.has(ORIGINS.gemini), false);
-  assert.equal(current.defaultProvider, settings.defaultProvider);
-  assert.deepEqual(current.selectedLimit, settings.selectedLimit); assert.equal(current.followTab, settings.followTab);
   const before = background.storage();
   assert.equal((await background.send({ type: 'display-settings', strips, warning: 80, danger: 45 })).ok, false);
   assert.deepEqual(background.settings(), current, 'invalid threshold writes must not modify saved settings');
   assert.deepEqual(background.storage()['settings:v2'], before['settings:v2']);
-  const legacy = await background.send({ type: 'strips', strips: settings.strips });
-  assert(legacy.ok); assert.equal(background.settings().warning, 45); assert.equal(background.settings().danger, 80);
+  const retired = await background.send({ type: 'strips', strips: settings.strips });
+  assert.equal(retired.ok, false, 'the retired strips-only message is no longer accepted');
+  assert.deepEqual(background.settings(), current);
 });
 
 test('saving gauge thresholds publishes invalidation to every permitted service tab without changing activation', async () => {
@@ -314,7 +316,7 @@ test('already-granted permission still needs explicit activation, and one enable
     assert.equal(background.messages.filter(message => (message as { type: string }).type === 'enable').length, 1);
     assert.deepEqual(background.requests, ['claude']);
     const settings = background.settings(); settings.enabled.claude = false;
-    await background.send({ type: 'settings', settings }); background.events.startup.emit();
+    await background.send({ type: 'disable', provider: 'claude' }); background.events.startup.emit();
     await pause(); await pause();
     assert.equal(background.settings().enabled.claude, false, 'startup repair must preserve an explicit off setting');
   } finally { dom.window.close(); }

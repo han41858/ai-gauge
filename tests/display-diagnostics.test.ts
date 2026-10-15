@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildSync } from 'esbuild';
+import { bundleEntry } from './helpers/bundle';
 import { JSDOM } from 'jsdom';
 import { authorizedDisplayRequest, createDisplayDiagnostic, type DisplayDiagnostic, type ReadyDisplayDiagnostic } from '../src/content/display-diagnostics';
 import { bindDiagnostics, readActiveDisplayDiagnostic } from '../src/popup/diagnostics';
@@ -161,7 +161,7 @@ test('production content listener responds only to a trusted popup and leaves us
         onMessage: { addListener(fn: typeof listeners[number]) { listeners.push(fn); }, removeListener() {} } },
       storage: { onChanged: { addListener() {}, removeListener() {} } }
     } });
-    const bundle = buildSync({ entryPoints: ['src/content/index.ts'], bundle: true, write: false, format: 'iife', target: 'chrome120' }).outputFiles[0]!.text;
+    const bundle = bundleEntry('src/content/index.ts');
     dom.window.eval(bundle); await flush();
     assert.equal(listeners.length, 1);
     const beforeReads = viewReads, replies: unknown[] = [];

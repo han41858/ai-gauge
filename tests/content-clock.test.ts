@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSync } from 'esbuild';
+import { bundleEntry } from './helpers/bundle';
 import { JSDOM } from 'jsdom';
 import { defaults } from '../src/storage/settings';
 import { emptySnapshot } from '../src/storage/snapshots';
@@ -9,7 +9,7 @@ import type { Snapshot, View } from '../src/shared/types';
 
 const base = Date.UTC(2026, 9, 14, 12);
 const flush = async () => { for (let i = 0; i < 15; i++) await Promise.resolve(); };
-const bundle = buildSync({ entryPoints: ['src/content/index.ts'], bundle: true, write: false, format: 'iife', target: 'chrome120' }).outputFiles[0]!.text;
+const bundle = bundleEntry('src/content/index.ts');
 
 function collected(percent: number, collectedAt: number, resetsAt: number): Snapshot {
   return {
@@ -59,7 +59,7 @@ async function page(view: View, path = '/') {
   };
   const requests: Message[] = [];
   const runtimeListeners = new Set<(message: unknown, sender: { id: string }) => void>();
-  const storageListeners = new Set<() => void>();
+  const storageListeners = new Set<(...args: unknown[]) => void>();
   Object.assign(dom.window, { fetch: async () => { fetches++; throw new Error('Content clock must not collect usage'); }, chrome: {
     runtime: { id: 'fixture', sendMessage: async (message: Message) => {
       requests.push(structuredClone(message)); return { ok: true, view: structuredClone(view) };
@@ -78,7 +78,7 @@ async function page(view: View, path = '/') {
   return { dom, host, progress, intervals, cleared, timeouts, clearedTimeouts, requests, runtimeListeners, storageListeners,
     fetches: () => fetches,
     async tick(at: number) { now = at; for (const timer of [...intervals.values()]) timer.run(); await flush(); },
-    async storageChanged() { for (const fn of storageListeners) fn(); await flush(); },
+    async storageChanged() { for (const fn of storageListeners) fn({ 'snapshot:v4:chatgpt': {} }, 'local'); await flush(); },
     revoke,
     close() { revoke(); dom.window.close(); }
   };

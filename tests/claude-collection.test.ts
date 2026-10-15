@@ -71,7 +71,7 @@ test('multiple active Claude tabs prefer the last focused window without trying 
 });
 
 test('serialized MAIN collectors keep requests on their fixed origin despite a foreign document base URI', async () => {
-  const compiled = await build({ entryPoints: ['src/providers/tab-transport.ts'], bundle: true, write: false, format: 'cjs', target: 'chrome120', legalComments: 'none' });
+  const compiled = await build({ entryPoints: ['src/providers/openai-claude-transport.ts'], bundle: true, write: false, format: 'cjs', target: 'chrome120', legalComments: 'none' });
   const module = { exports: {} as { collectInPage: (provider: 'claude' | 'chatgpt') => Promise<TransportResult> } };
   runInNewContext(compiled.outputFiles[0]!.text, { module });
   for (const provider of ['claude', 'chatgpt'] as const) {

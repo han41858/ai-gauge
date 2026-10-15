@@ -41,7 +41,11 @@ export function renderCards(container: HTMLElement, view: View, actions: Actions
         line.append(el('span', name), el('span', usagePercentLabel(limit.percent), 'percent'));
         row.append(line);
         const used = percent(limit.percent);
-        if (used !== null) { const bar = el('progress'); bar.max = 100; bar.value = used; bar.setAttribute('aria-label', `${name} 사용량${s.state === 'ok' ? '' : ' (이전 값)'}`); row.append(bar); }
+        if (used !== null) {
+          const bar = el('progress'); bar.max = 100; bar.value = used;
+          bar.setAttribute('aria-label', `${name} 사용량${s.state === 'ok' ? '' : ' (이전 값)'}`);
+          row.append(bar);
+        }
         row.append(el('div', resetLabel(limit.resetsAt, now), 'reset')); card.append(row);
       }
     }
@@ -56,7 +60,9 @@ export function renderCards(container: HTMLElement, view: View, actions: Actions
       card.append(link);
     }
     const controls = el('div', undefined, 'actions');
-    const button = (parent: HTMLElement, text: string, fn: () => void, cls?: string) => { const b = el('button', text, cls); b.type = 'button'; b.addEventListener('click', fn); parent.append(b); return b; };
+    const button = (parent: HTMLElement, text: string, fn: () => void, cls?: string) => {
+      const b = el('button', text, cls); b.type = 'button'; b.addEventListener('click', fn); parent.append(b); return b;
+    };
     if (!enabled || !view.permissions[p]) button(controls, view.permissions[p] ? '켜기' : '권한 승인 및 켜기', () => actions.enable(p), 'grant');
     if (enabled) button(controls, '끄기', () => actions.disable(p));
     if (view.permissions[p]) button(controls, '권한 철회', () => actions.revoke(p));

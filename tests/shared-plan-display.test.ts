@@ -97,7 +97,7 @@ test('the general chat strip uses the highest actual usage even if an old prefer
   try {
     const view = enabledView();
     view.snapshots.chatgpt.limits.push(limit('other-window', '다른 기간', 32));
-    view.settings.selectedLimit.chatgpt = 'weekly';
+    Object.assign(view.settings, { selectedLimit: { chatgpt: 'weekly', claude: null, gemini: null } });
     new UsageStrip('chatgpt', dom.window.document).update(view);
     assert.match(stripLabel(dom.window.document), /사용량: 32%/);
     assert.doesNotMatch(stripLabel(dom.window.document), /15%/);

@@ -1,5 +1,21 @@
 # 구현 및 검증 결과
 
+## 2026-10-15 이벤트 경로 최적화·게이지 자산 단일화·설정 정리
+
+코드 점검 제안에 따른 PR입니다. 사용자 화면의 동작은 유지하고 반복 작업과 중복 정의를 줄였습니다. 새 설치 ZIP은 만들지 않았습니다.
+
+| 변경 | 내용 |
+| --- | --- |
+| 워커 게시 경로 | 읽기용 view가 바뀐 경우에만 전체 배지와 탭 무효화 신호를 보냅니다. 탭 이동·활성화·창 복귀는 해당 탭 배지만 갱신하고, 배지는 탭별로 마지막 값과 같으면 action API를 호출하지 않습니다. 권한 추가·철회와 초기화는 강제로 게시합니다. |
+| 저장소 변경 신호 | 탭과 팝업은 `settings:v2`·스냅샷 키의 local 변경만 반영합니다. 팝업의 변경 후 재읽기는 새 `read` 메시지를 사용해 수집을 시작하지 않습니다. 팝업을 열 때의 `view`는 기존대로 기한이 된 서비스만 갱신합니다. |
+| 게이지 | `usage-gauge.ts`가 `assets/gauge-*.svg`를 번들 텍스트로 읽어 사용합니다. 자산 ID에는 게이지별 접두어를 붙입니다. 사용하지 않는 `assets/logo-20x20.png`를 삭제했습니다. |
+| 설정 | 임계치는 0~100 범위의 숫자(소수 허용)이며 `checkUsageThresholds`가 범위·순서 원인과 대상 필드를 반환합니다. 사용하지 않던 `defaultProvider`·`selectedLimit`·`followTab`과 `strips`·`settings` 메시지를 제거했습니다. 이전 저장값의 퇴역 키는 읽을 때 무시되고 다음 저장 때 사라집니다. |
+| 파일 분리 | `scripts/browser-fixture.mjs`를 하네스와 `scripts/browser-fixture/` 아래 팝업·Codex·Claude·ChatGPT·Gemini·게이지 체크 모듈로 나눴습니다. 페이지 주입용 `collectInPage`는 `providers/openai-claude-transport.ts`로 옮기고 `tab-transport.ts`에는 워커 쪽 탭 선택·결과 해석만 남겼습니다. 콘텐츠 스크립트의 요청 직렬화·재시도·응답 완료 감지는 `content/view-requests.ts`, 변경 감지 필터는 `content/mutations.ts`로 분리했습니다. 동작은 바꾸지 않았고 200자를 넘던 코드 줄을 정리했습니다(CSS·선택자 상수 제외). |
+| 기타 | `readView` 저장소 읽기 1회 통합, ChatGPT/Claude JSON 응답 1 MiB 상한, 날짜 형식·Gemini 오류 문구·fetch 헬퍼 중복 제거, Gemini 정책 목록 일치 테스트, 릴리스 빌드 minify, 이전 설치 ZIP 정리(과거 링크는 커밋 고정 링크로 변경). |
+
+- `npm run check`: **516개 통과**, 실패·취소·스킵 0. TypeScript, 개발 빌드, 산출물 검사 통과. 릴리스 빌드(`--release`)도 확인했습니다. 분리한 fixture 모듈은 구문 검사와 TypeScript `checkJs`로 미정의 이름이 없음을 확인했습니다.
+- Chromium fixture(`npm run test:browser:fixture`, `test:browser:extension`)는 작업 환경에 Chromium이 없어 **실행하지 못했습니다.** 게이지 SVG 구성과 저장소 변경 신호 형식이 바뀌었으므로 병합 전 로컬 실행이 필요합니다. 실제 로그인한 서비스 화면에서도 미검증입니다.
+
 ## 2026-10-15 main 통합 — 동적 게이지와 표시 개선
 
 사용자의 명시적 main 반영 요청에 따라 동적 SVG 게이지·임계치 설정, 티켓 만료 날짜·단일 수량 생략, 서비스별 체크박스 색상과 관련 명세·지침·테스트를 함께 통합합니다. README 설치 링크는 검증된 `202610151051` ZIP으로 갱신합니다. PR은 생성하지 않습니다.
@@ -188,7 +204,7 @@ Gemini 전송 파서는 사용자가 제공한 HTTP 200 JSON 응답으로 재현
 
 아래는 이전 서비스별 체크박스 색상 배포본입니다.
 
-[서비스별 체크박스 색상 ZIP — 202610151029](https://github.com/han41858/ai-gauge/raw/refs/heads/main/downloads/ai-gauge-202610151029.zip)
+[서비스별 체크박스 색상 ZIP — 202610151029](https://github.com/han41858/ai-gauge/raw/83a1b00342a18a09ab5653cf44f4b0d0f83fe545/downloads/ai-gauge-202610151029.zip)
 
 - 크기: 82,584 bytes
 - SHA-256: 78b19902165212d7cf40da02875b157e75368a544af6fb31c75f33a85febbbb9
@@ -197,7 +213,7 @@ Gemini 전송 파서는 사용자가 제공한 HTTP 200 JSON 응답으로 재현
 
 아래는 이전 티켓 만료 표시 수정 배포본입니다.
 
-[티켓 만료 표시 수정 ZIP — 202610151017](https://github.com/han41858/ai-gauge/raw/refs/heads/main/downloads/ai-gauge-202610151017.zip)
+[티켓 만료 표시 수정 ZIP — 202610151017](https://github.com/han41858/ai-gauge/raw/83a1b00342a18a09ab5653cf44f4b0d0f83fe545/downloads/ai-gauge-202610151017.zip)
 
 - 크기: 82,531 bytes
 - SHA-256: db02b81fa4f712d6aa74ca5957c7abb9b72aaee92ced0655063e13b6b59c1aeb
@@ -206,7 +222,7 @@ Gemini 전송 파서는 사용자가 제공한 HTTP 200 JSON 응답으로 재현
 
 아래는 이전 팝업 제목 링크 배포본입니다.
 
-[팝업 제목 링크 ZIP — 202610150101](https://github.com/han41858/ai-gauge/raw/refs/heads/main/downloads/ai-gauge-202610150101.zip)
+[팝업 제목 링크 ZIP — 202610150101](https://github.com/han41858/ai-gauge/raw/83a1b00342a18a09ab5653cf44f4b0d0f83fe545/downloads/ai-gauge-202610150101.zip)
 
 - 크기: 82,505 bytes
 - SHA-256: a2f538cf8ba4d7d0d8d498e3d194b21d5356f6698f8e1c56acce90b24d91a185
@@ -215,7 +231,7 @@ Gemini 전송 파서는 사용자가 제공한 HTTP 200 JSON 응답으로 재현
 
 아래는 이전 팝업 기간 순서 수정 배포본입니다.
 
-[팝업 기간 순서 수정 ZIP — 202610150036](https://github.com/han41858/ai-gauge/raw/refs/heads/main/downloads/ai-gauge-202610150036.zip)
+[팝업 기간 순서 수정 ZIP — 202610150036](https://github.com/han41858/ai-gauge/raw/83a1b00342a18a09ab5653cf44f4b0d0f83fe545/downloads/ai-gauge-202610150036.zip)
 
 - 크기: 82,563 bytes
 - SHA-256: f3a996a12522259668b6a6e7c7ec6c6b7cf271be321d01094bc1f10f9c77b799
@@ -224,7 +240,7 @@ Gemini 전송 파서는 사용자가 제공한 HTTP 200 JSON 응답으로 재현
 
 아래는 이전 main 통합 배포본입니다.
 
-[main 통합·ChatGPT 중복 문구 수정 ZIP — 202610150007](https://github.com/han41858/ai-gauge/raw/refs/heads/main/downloads/ai-gauge-202610150007.zip)
+[main 통합·ChatGPT 중복 문구 수정 ZIP — 202610150007](https://github.com/han41858/ai-gauge/raw/83a1b00342a18a09ab5653cf44f4b0d0f83fe545/downloads/ai-gauge-202610150007.zip)
 
 - 크기: 82,525 bytes
 - SHA-256: 6c56937c3bb238d6f7b3920160152021bb807a939aef28fdf649cfed31d13354
@@ -232,7 +248,7 @@ Gemini 전송 파서는 사용자가 제공한 HTTP 200 JSON 응답으로 재현
 
 아래는 이전 일괄 권한·압축 팝업 배포본입니다.
 
-[일괄 권한·압축 팝업·탭 없는 수집 ZIP — 202610142353](https://github.com/han41858/ai-gauge/raw/refs/heads/main/downloads/ai-gauge-202610142353.zip)
+[일괄 권한·압축 팝업·탭 없는 수집 ZIP — 202610142353](https://github.com/han41858/ai-gauge/raw/83a1b00342a18a09ab5653cf44f4b0d0f83fe545/downloads/ai-gauge-202610142353.zip)
 
 - 크기: 82,511 bytes
 - SHA-256: 0bddea985e99010a991934bda3ca65688353b9626e4ed446e3d92f3fe4d8c65b
@@ -241,7 +257,7 @@ Gemini 전송 파서는 사용자가 제공한 HTTP 200 JSON 응답으로 재현
 
 아래는 이전 초기화 티켓 검토 배포본입니다.
 
-[초기화 티켓 검토 ZIP — 202610142258](https://github.com/han41858/ai-gauge/raw/refs/heads/main/downloads/ai-gauge-202610142258.zip)
+[초기화 티켓 검토 ZIP — 202610142258](https://github.com/han41858/ai-gauge/raw/83a1b00342a18a09ab5653cf44f4b0d0f83fe545/downloads/ai-gauge-202610142258.zip)
 
 - 크기: 79,647 bytes
 - SHA-256: b9fe74efbc46cc680ba657fa1b9f9d8348a8be71d36531a9068faa15014c9815
@@ -250,7 +266,7 @@ Gemini 전송 파서는 사용자가 제공한 HTTP 200 JSON 응답으로 재현
 
 아래는 이전 요금제 표시 수정 배포본입니다.
 
-[요금제 배지 수정 ZIP — 202610142207](https://github.com/han41858/ai-gauge/raw/refs/heads/main/downloads/ai-gauge-202610142207.zip)
+[요금제 배지 수정 ZIP — 202610142207](https://github.com/han41858/ai-gauge/raw/83a1b00342a18a09ab5653cf44f4b0d0f83fe545/downloads/ai-gauge-202610142207.zip)
 
 - 크기: 70,467 bytes
 - SHA-256: 62173b8a13e67822631ef8c3b873a7e6e3ba8a9f6a9f8cefc9505fe33fdae713
@@ -259,7 +275,7 @@ Gemini 전송 파서는 사용자가 제공한 HTTP 200 JSON 응답으로 재현
 
 아래는 기존 main 배포본입니다.
 
-[설치 ZIP — 202610142100](https://github.com/han41858/ai-gauge/raw/refs/heads/main/downloads/ai-gauge-202610142100.zip)
+[설치 ZIP — 202610142100](https://github.com/han41858/ai-gauge/raw/83a1b00342a18a09ab5653cf44f4b0d0f83fe545/downloads/ai-gauge-202610142100.zip)
 
 - 크기: 67,330 bytes
 - SHA-256: d47694ca4e3a3ec361dafe5e831c553ca58ec8a2d4133d8ffcc3f3de42322a57

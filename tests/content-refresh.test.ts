@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSync } from 'esbuild';
+import { bundleEntry } from './helpers/bundle';
 import { JSDOM } from 'jsdom';
 import { Scheduler, success } from '../src/background/scheduler';
 import { parseClaude } from '../src/providers/parsers';
@@ -55,10 +55,10 @@ async function harness(provider: 'claude' | 'gemini' = 'claude') {
     chatgpt: emptySnapshot('chatgpt'), gemini: emptySnapshot('gemini'), claude: emptySnapshot('claude'),
     [provider]: success(emptySnapshot(provider), collectedLimits(17), base - 10_000)
   } };
-  const storageListeners = new Set<() => void>();
+  const storageListeners = new Set<(...args: unknown[]) => void>();
   const runtimeListeners = new Set<(message: unknown, sender: { id: string }) => void>();
   const requests: Array<{ at: number; message: Message }> = [], collections: number[] = [];
-  const notifyStorage = () => { for (const fn of storageListeners) fn(); };
+  const notifyStorage = () => { for (const fn of storageListeners) fn({ 'snapshot:v4:chatgpt': {} }, 'local'); };
   const scheduler = new Scheduler({
     now: () => now, read: async provider => view.snapshots[provider],
     write: async snapshot => { view.snapshots[snapshot.provider] = snapshot; notifyStorage(); },
@@ -73,7 +73,7 @@ async function harness(provider: 'claude' | 'gemini' = 'claude') {
     }, onMessage: { addListener(fn: typeof runtimeListeners extends Set<infer T> ? T : never) { runtimeListeners.add(fn); }, removeListener(fn: typeof runtimeListeners extends Set<infer T> ? T : never) { runtimeListeners.delete(fn); } } },
     storage: { onChanged: { addListener(fn: () => void) { storageListeners.add(fn); }, removeListener(fn: () => void) { storageListeners.delete(fn); } } }
   } });
-  const bundle = buildSync({ entryPoints: ['src/content/index.ts'], bundle: true, write: false, format: 'iife', target: 'chrome120' }).outputFiles[0]!.text;
+  const bundle = bundleEntry('src/content/index.ts');
   dom.window.eval(bundle); await flush();
   const host = () => doc.getElementById('ai-gauge-usage-strip')!;
   const progress = () => roots.get(host())!.querySelector('progress')!;

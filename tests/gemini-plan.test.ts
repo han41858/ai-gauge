@@ -148,3 +148,14 @@ test('Gemini collector returns fresh plans independently from quota and never ke
     assert.equal(injections, 4, 'one page collection per scheduled provider collection');
   } finally { globalThis.chrome = previous; }
 });
+
+test('the in-page policy allowlist matches the worker policy vocabulary exactly', async () => {
+  // collectGeminiInPage is serialized into the page, so it keeps its own copy of the allowlist.
+  const { collectGeminiInPage } = await import('../src/providers/gemini-transport');
+  const { GEMINI_POLICY_IDS } = await import('../src/providers/gemini-plan');
+  const source = collectGeminiInPage.toString();
+  const known = /const known\s*=\s*new Set\(\[([^\]]*)\]\)/.exec(source)?.[1];
+  assert(known, 'in-page allowlist must remain a literal Set');
+  const inPage = [...known.matchAll(/['"]([a-z0-9_]+)['"]/g)].map(match => match[1]).sort();
+  assert.deepEqual(inPage, [...GEMINI_POLICY_IDS].sort());
+});

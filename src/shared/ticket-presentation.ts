@@ -1,5 +1,6 @@
 import type { Provider, ResetTicketGrant, ResetTicketKind, Snapshot } from './types';
 import { ticketSummary } from './tickets';
+import { localStamp } from './format';
 
 const MANAGEMENT_URLS: Partial<Record<Provider, string>> = {
   chatgpt: 'https://chatgpt.com/settings/usage?tab=overview',
@@ -8,12 +9,7 @@ const MANAGEMENT_URLS: Partial<Record<Provider, string>> = {
 const KIND_LABELS: Record<ResetTicketKind, string> = {
   full: '전체 한도', five_hour: '5시간 한도', weekly: '주간 한도', unspecified: '종류 확인 불가'
 };
-const DAYS = ['일', '월', '화', '수', '목', '금', '토'];
-const twoDigits = (n: number) => String(n).padStart(2, '0');
-export function ticketDate(value: string): string {
-  const at = new Date(value);
-  return `${at.getMonth() + 1}/${at.getDate()}(${DAYS[at.getDay()]}) ${twoDigits(at.getHours())}:${twoDigits(at.getMinutes())}`;
-}
+export const ticketDate = (value: string): string => localStamp(new Date(value));
 function grantDetail(grant: ResetTicketGrant, now: number): string {
   const conditions: string[] = [];
   if (grant.startsAt && Date.parse(grant.startsAt) > now) conditions.push(`${ticketDate(grant.startsAt)}부터`);

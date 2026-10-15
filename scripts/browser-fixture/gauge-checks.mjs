@@ -20,7 +20,7 @@ export async function checkGaugeMatchesUsage(evaluate, pause) {
 export async function checkGaugeMotion({ cdp, session, evaluate, pause }) {
   await evaluate(`window.__gaugeSavedSnapshot=structuredClone(window.__fixture.snapshots.chatgpt);window.__gaugeSavedSettings=structuredClone(window.__fixture.settings);window.__gaugeNode=window.__fixtureUsageRoot.querySelector('.usage-gauge');`);
   const setPercent = async percent => {
-    await evaluate(`{const s=window.__fixture.snapshots.chatgpt;s.state='ok';s.errorCode=null;s.failures=0;s.collectedAt=s.checkedAt=Date.now();s.limits=[{...s.limits[0],percent:${percent},resetsAt:new Date(Date.now()+7200000).toISOString()}];for(const fn of window.__storageListeners)fn({},'local');}`);
+    await evaluate(`{const s=window.__fixture.snapshots.chatgpt;s.state='ok';s.errorCode=null;s.failures=0;s.collectedAt=s.checkedAt=Date.now();s.limits=[{...s.limits[0],percent:${percent},resetsAt:new Date(Date.now()+7200000).toISOString()}];for(const fn of window.__storageListeners)fn({'settings:v2':{}},'local');}`);
     for (let i=0;i<20;i++) {
       if(await evaluate(`window.__fixtureUsageRoot.querySelector('progress').value===${percent}`)) return;
       await pause(25);
@@ -45,7 +45,7 @@ export async function checkGaugeMotion({ cdp, session, evaluate, pause }) {
     assert.equal(await stroke(),color,`Default threshold at ${percent}%`);
   }
   await setPercent(50); await pause(550);
-  await evaluate(`window.__gaugeNeedleChanges=0;window.__gaugeObserver=new MutationObserver(records=>{window.__gaugeNeedleChanges+=records.length});window.__gaugeObserver.observe(window.__gaugeNode.querySelector('.gauge-needle'),{attributes:true,subtree:true});window.__fixture.settings.warning=40;window.__fixture.settings.danger=60;for(const fn of window.__storageListeners)fn({},'local');`);
+  await evaluate(`window.__gaugeNeedleChanges=0;window.__gaugeObserver=new MutationObserver(records=>{window.__gaugeNeedleChanges+=records.length});window.__gaugeObserver.observe(window.__gaugeNode.querySelector('.gauge-needle'),{attributes:true,subtree:true});window.__fixture.settings.warning=40;window.__fixture.settings.danger=60;for(const fn of window.__storageListeners)fn({'settings:v2':{}},'local');`);
   await pause(350);
   assert.equal(await stroke(),'rgb(255, 174, 50)', 'Saved custom thresholds propagate through the existing storage listener');
   assert.equal(await evaluate('window.__gaugeNeedleChanges'),0, 'Threshold-only changes do not rotate or mutate the needle');
@@ -59,6 +59,6 @@ export async function checkGaugeMotion({ cdp, session, evaluate, pause }) {
   assert(await evaluate(`window.__gaugeNode.getAnimations({subtree:true}).length===0&&getComputedStyle(window.__gaugeNode.querySelector('.gauge-needle')).transitionDuration==='0s'&&getComputedStyle(window.__gaugeNode.querySelector('.gauge-arc')).transitionDuration==='0s'`), 'Reduced motion disables both needle and color transitions');
   await checkGaugeMatchesUsage(evaluate,pause);
   await cdp('Emulation.setEmulatedMedia', { features: [] }, session);
-  await evaluate(`window.__fixture.snapshots.chatgpt=window.__gaugeSavedSnapshot;window.__fixture.settings=window.__gaugeSavedSettings;for(const fn of window.__storageListeners)fn({},'local');`);
+  await evaluate(`window.__fixture.snapshots.chatgpt=window.__gaugeSavedSnapshot;window.__fixture.settings=window.__gaugeSavedSettings;for(const fn of window.__storageListeners)fn({'settings:v2':{}},'local');`);
   await checkGaugeMatchesUsage(evaluate,pause);
 }

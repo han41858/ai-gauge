@@ -11,18 +11,20 @@ import { providerFromUrl, type View } from '../src/shared/types';
 import { UsageStrip } from '../src/content/usage-strip';
 import { renderCards } from '../src/popup/render';
 const view = (): View => ({ settings: defaults(), permissions: { chatgpt: true, claude: true, gemini: true }, snapshots: { chatgpt: emptySnapshot('chatgpt'), claude: emptySnapshot('claude'), gemini: emptySnapshot('gemini') } });
-test('settings default to opt-in and sanitize invalid thresholds and providers', () => { const s = parseSettings({ warning: 90, danger: 70, defaultProvider: 'invalid', enabled: { claude: 'yes' } }); assert.deepEqual(s, defaults()); });
-test('message contracts reject malformed payloads, unexpected keys and invalid settings', () => { assert(parseMessage({ type: 'view' })); for (const v of [{ type: 'fetch', url: 'evil' }, { type: 'view', url: 'evil' }, { type: 'refresh', provider: 'claude', trigger: 'force' }, { type: 'settings', settings: {} }]) assert.equal(parseMessage(v), null); });
+test('settings default to opt-in and sanitize invalid thresholds and providers', () => { const s = parseSettings({ warning: 90, danger: 70, defaultProvider: 'invalid', enabled: { claude: 'yes' } }) as unknown; assert.deepEqual(s, defaults()); });
+test('message contracts reject malformed payloads, unexpected keys and invalid settings', () => { assert(parseMessage({ type: 'view' })); for (const v of [{ type: 'fetch', url: 'evil' }, { type: 'view', url: 'evil' }, { type: 'refresh', provider: 'claude', trigger: 'force' }, { type: 'settings', settings: {} }, { type: 'strips', strips: defaults().strips }]) assert.equal(parseMessage(v), null); });
 test('sender validation blocks spoofed origin, frame, cross-site/manual refresh and settings from content', () => {
   const sender = { id: 'ext', frameId: 0, url: 'https://claude.ai/new', tab: { id: 1, url: 'https://claude.ai/new' } } as chrome.runtime.MessageSender;
   assert(authorized({ type: 'refresh', provider: 'claude', trigger: 'event' }, sender, 'ext'));
   assert(!authorized({ type: 'refresh', provider: 'chatgpt', trigger: 'event' }, sender, 'ext'));
   assert(!authorized({ type: 'refresh', provider: 'claude', trigger: 'manual' }, sender, 'ext'));
-  assert(!authorized({ type: 'settings', settings: defaults() }, sender, 'ext'));
+  assert(!authorized({ type: 'display-settings', strips: defaults().strips, warning: 70, danger: 90 }, sender, 'ext'));
+  assert(!authorized({ type: 'read' }, sender, 'ext'));
   assert(!authorized({ type: 'view' }, { ...sender, frameId: 1 }, 'ext'));
   assert(!authorized({ type: 'view' }, { ...sender, id: 'other' }, 'ext'));
   assert(!authorized({ type: 'view' }, { ...sender, url: 'https://claude.ai.evil/new' }, 'ext'));
-  assert(authorized({ type: 'settings', settings: defaults() }, { id: 'ext', url: 'chrome-extension://ext/popup.html' }, 'ext'));
+  assert(authorized({ type: 'display-settings', strips: defaults().strips, warning: 70, danger: 90 }, { id: 'ext', url: 'chrome-extension://ext/popup.html' }, 'ext'));
+  assert(authorized({ type: 'read' }, { id: 'ext', url: 'chrome-extension://ext/popup.html' }, 'ext'));
 });
 test('ordinary ChatGPT content may refresh the shared display pool without gaining manual or cross-site access', () => {
   const ordinary = { id: 'ext', frameId: 0, url: 'https://chatgpt.com/c/synthetic', tab: { id: 1, url: 'https://chatgpt.com/c/synthetic' } } as chrome.runtime.MessageSender;
@@ -46,21 +48,21 @@ test('worker replies accept equivalent field order while rejecting unknown snaps
 });
 test('service detection only accepts exact HTTPS origins', () => { assert.equal(providerFromUrl('https://chatgpt.com/new'), 'chatgpt'); assert.equal(providerFromUrl('http://chatgpt.com'), null); assert.equal(providerFromUrl('https://chatgpt.com.evil'), null); });
 test('badge shows zero as zero and clears on unrelated tabs without borrowing another service', () => {
-  const v = view(); v.settings.enabled.claude = true; v.settings.defaultProvider = 'claude'; v.snapshots.claude = success(emptySnapshot('claude'), parseClaude({ five_hour: { utilization: 0 } }), 1000);
+  const v = view(); v.settings.enabled.claude = true; v.snapshots.claude = success(emptySnapshot('claude'), parseClaude({ five_hour: { utilization: 0 } }), 1000);
   assert.equal(badge(v, 'https://claude.ai/', 1001).text, '0%');
   for (const used of [0, 70, 90, 100]) {
     v.snapshots.claude.limits[0]!.percent = used;
     assert.equal(badge(v, 'https://claude.ai/', 1001).color, '#B16046');
     assert.equal(badge(v, 'https://claude.ai/', 1001).textColor, '#FFFFFF');
   }
-  v.settings.followTab = true; assert.equal(badge(v, 'https://chatgpt.com', 1001).text, '—'); assert.equal(badge(v, 'https://unrelated.invalid', 1001).text, '');
+  assert.equal(badge(v, 'https://chatgpt.com', 1001).text, '—'); assert.equal(badge(v, 'https://unrelated.invalid', 1001).text, '');
 });
 test('badge keeps valid cached usage by age while suppressing failed or denied data', () => {
-  const v = view(); v.settings.enabled.claude = true; v.settings.defaultProvider = 'claude'; v.snapshots.claude = success(emptySnapshot('claude'), parseClaude({ five_hour: { utilization: 55 } }), 1000);
+  const v = view(); v.settings.enabled.claude = true; v.snapshots.claude = success(emptySnapshot('claude'), parseClaude({ five_hour: { utilization: 55 } }), 1000);
   assert.equal(badge(v, 'https://claude.ai/', 601000).text, '55%'); v.snapshots.claude.state = 'error'; assert.equal(badge(v, 'https://claude.ai/', 1001).text, '—');
   v.snapshots.claude.state = 'ok'; v.permissions.claude = false; assert.equal(badge(v, 'https://claude.ai/', 1001).text, '—');
 });
-test('site badge uses the actual reported weekly limit without inventing a five-hour quota', () => { const v = view(); v.settings.enabled.claude = true; v.settings.defaultProvider = 'claude'; v.snapshots.claude = success(emptySnapshot('claude'), parseClaude({ seven_day: { utilization: 50 } }), 1000); assert.equal(badge(v, 'https://claude.ai/', 1001).text, '50%'); v.settings.selectedLimit.claude = 'seven_day'; assert.equal(badge(v, 'https://claude.ai/', 1001).text, '50%'); });
+test('site badge uses the actual reported weekly limit without inventing a five-hour quota', () => { const v = view(); v.settings.enabled.claude = true; v.snapshots.claude = success(emptySnapshot('claude'), parseClaude({ seven_day: { utilization: 50 } }), 1000); assert.equal(badge(v, 'https://claude.ai/', 1001).text, '50%'); });
 test('usage strip mounts once below form, preserves input, handles SPA recreation and cleanup', () => {
   const d = new JSDOM('<main><form><div role="textbox" contenteditable="true">private prompt</div><button>Send</button></form></main>').window.document;
   const v = view(); v.settings.enabled.claude = true; const strip = new UsageStrip('claude', d); strip.update(v); strip.mount();

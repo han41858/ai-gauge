@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseChatGPTTicketSummary, parseChatGPTTicketDetail, parseClaudeTickets, parseCollectedTickets } from '../src/providers/reset-tickets';
-import { collectFromTab, collectInPage } from '../src/providers/tab-transport';
+import { collectFromTab } from '../src/providers/tab-transport';
+import { collectInPage } from '../src/providers/openai-claude-transport';
 import { parseChatGPT, parseClaude } from '../src/providers/parsers';
 import { parseTicketInventory } from '../src/shared/tickets';
 
