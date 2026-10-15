@@ -100,11 +100,11 @@ test('usage and reset fit a 30px row that hides details before the current usage
     const current = view(17); strip.update(current);
     const { host, root, progress, current: label, reset } = elements();
     assert.equal(progress.previousElementSibling, label);
-    assert.match(reset.textContent!, /^🕒 사용량 초기화:/);
+    assert.match(reset.textContent!, /^🕒 초기화:/);
     assert.equal(label.parentElement?.nextElementSibling, reset);
     const parts = usageParts(current.snapshots.chatgpt, current.snapshots.chatgpt.limits[0]);
     assert.equal(host.getAttribute('aria-label'), parts.label);
-    assert.doesNotMatch(host.getAttribute('aria-label')!, /%, 사용량 초기화/);
+    assert.doesNotMatch(host.getAttribute('aria-label')!, /%, 초기화/);
     assert.equal(root.querySelector('[role="status"]')?.getAttribute('aria-live'), 'polite');
     assert.equal(root.querySelector('[role="status"]')?.getAttribute('aria-atomic'), 'true');
     const style = root.querySelector('style')!.textContent!;
@@ -124,7 +124,7 @@ test('known usage still has a valid progress bar when only the reset timestamp i
     strip.update(current);
     assert.equal(elements().progress.hidden, false);
     assert.equal(elements().progress.value, 45);
-    assert.equal(elements().reset.textContent, '🕒 사용량 초기화: 확인 불가');
+    assert.equal(elements().reset.textContent, '🕒 초기화: 확인 불가');
   } finally { dom.window.close(); }
 });
 

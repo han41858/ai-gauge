@@ -42,7 +42,7 @@ test('ChatGPT composer shows the plan pool with only the requested usage title a
     assert(host, 'the plan pool is visible in the general chat composer');
     assert.equal(doc.getElementById('composer')!.nextElementSibling, host);
     const text = stripLabel(doc);
-    assert.match(text, /^사용량: 15%  🕒 사용량 초기화:/);
+    assert.match(text, /^사용량: 15%  🕒 초기화:/);
     assert.doesNotMatch(text, /Chat|GPT|Work|Codex|공유|AI Gauge|15% 남음/);
   } finally { dom.window.close(); }
 });
@@ -129,7 +129,7 @@ test('a missing ChatGPT snapshot cannot be replaced with another provider or fab
     view.snapshots.chatgpt = emptySnapshot('chatgpt');
     new UsageStrip('chatgpt', dom.window.document).update(view);
     assert(dom.window.document.getElementById('ai-gauge-usage-strip'));
-    assert.match(stripLabel(dom.window.document), /^사용량: 확인 불가  🕒 사용량 초기화: 확인 불가/);
+    assert.match(stripLabel(dom.window.document), /^사용량: 확인 불가  🕒 초기화: 확인 불가/);
     assert.doesNotMatch(stripLabel(dom.window.document), /15%|0%|최근 수집 성공/);
   } finally { dom.window.close(); }
 });

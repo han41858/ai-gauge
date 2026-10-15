@@ -1,6 +1,6 @@
 import type { Provider, ResetTicketGrant, ResetTicketKind, Snapshot } from './types';
 import { ticketSummary } from './tickets';
-import { localStamp } from './format';
+import { localStamp, relativeTime } from './format';
 
 const MANAGEMENT_URLS: Partial<Record<Provider, string>> = {
   chatgpt: 'https://chatgpt.com/settings/usage?tab=overview',
@@ -9,6 +9,20 @@ const MANAGEMENT_URLS: Partial<Record<Provider, string>> = {
 const KIND_LABELS: Record<ResetTicketKind, string> = {
   full: '전체 한도', five_hour: '5시간 한도', weekly: '주간 한도', unspecified: '종류 확인 불가'
 };
+const MANAGEMENT_ACTION = '공식 사용량 관리 화면 열기 (새 탭)';
+export function inlineTicketDisplay(snapshot: Snapshot, now = Date.now()) {
+  // The popup keeps its existing cache grace; the strip requires a successful ticket check.
+  const usageReady = snapshot.state === 'ok' && snapshot.errorCode === null;
+  const resetElapsed = snapshot.state === 'error' && snapshot.errorCode === 'reset_pending';
+  if ((!usageReady && !resetElapsed) || snapshot.failures !== 0 || snapshot.usageInvalidated
+    || snapshot.tickets?.failures !== 0) return null;
+  const href = MANAGEMENT_URLS[snapshot.provider], summary = ticketSummary(snapshot, now);
+  if (!href || !summary?.expiresAt) return null;
+  const remaining = relativeTime(Date.parse(summary.expiresAt) - now);
+  if (!remaining) return null;
+  const text = `🎫 티켓 만료: ${remaining}`;
+  return { href, text, accessible: `${text}. ${MANAGEMENT_ACTION}` };
+}
 export const ticketDate = (value: string): string => localStamp(new Date(value));
 function grantDetail(grant: ResetTicketGrant, now: number): string {
   const conditions: string[] = [];
@@ -26,14 +40,11 @@ export function ticketDisplay(snapshot: Snapshot, now = Date.now()) {
   if (!href || !summary) return null;
   const expiry = summary.expiresAt ? `${ticketDate(summary.expiresAt)} 만료` : null;
   const count = `🎫 초기화 티켓 ${summary.held}개`;
-  const inline = expiry ? `🎫 초기화 티켓 ×${summary.held} · ${expiry}` : count;
   const entries = summary.grants.length === 1 && !summary.grants[0]!.expiresAt ? []
     : summary.grants.map(grant => grant.expiresAt
       ? `${grant.count > 1 ? `${grant.count}개 · ` : ''}${ticketDate(grant.expiresAt)} 만료`
       : `${grant.count}개`);
   const details = summary.grants.map(grant => grantDetail(grant, now)).join('\n');
-  const action = '공식 사용량 관리 화면 열기 (새 탭)';
-  return { href, count, entries, expiry, inline, details,
-    accessible: `${count}${expiry ? `, ${expiry}` : ''}. ${action}`,
-    popupAccessible: `${[count, ...entries].join(', ')}. ${action}` };
+  return { href, count, entries, expiry, details,
+    popupAccessible: `${[count, ...entries].join(', ')}. ${MANAGEMENT_ACTION}` };
 }

@@ -14,6 +14,8 @@ export async function runGeminiChecks({ cdp, session, evaluate, pause, waitForPl
   await evaluate(`window.__geminiStrip=document.getElementById('ai-gauge-usage-strip');window.__geminiProgress=window.__fixtureUsageRoot.querySelector('progress');`);
   await evaluate(content);
   assert(await evaluate(`document.querySelectorAll('#ai-gauge-usage-strip').length===1&&window.__geminiProgress.value===42&&document.querySelector('rich-textarea [contenteditable]').textContent==='private Gemini prompt'&&document.querySelectorAll('#gemini-toolbar button').length===2`), 'Gemini reuses one strip and highest reported limit without changing its input or controls');
+  assert.equal(await evaluate(`window.__fixtureUsageRoot.querySelector('.reset').textContent`), '🕒 초기화: 1일 후', 'Gemini uses the same largest-unit Korean reset countdown');
+  assert.equal(await evaluate(`window.__fixtureUsageRoot.querySelector('.tickets')`), null, 'Gemini has no ticket link');
   const geminiDiagnostic = await evaluate(`new Promise(resolve=>{for(const fn of window.__runtimeListeners)fn({type:'display-diagnostics'},{id:'fixture',url:'chrome-extension://fixture/popup.html'},resolve)})`);
   assert.equal(geminiDiagnostic.provider, 'gemini'); assert.equal(geminiDiagnostic.targetFound, true);
   assert.equal(geminiDiagnostic.stripVisible, true); assert.equal(geminiDiagnostic.stripCount, 1);

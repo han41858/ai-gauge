@@ -9,6 +9,14 @@ export function localStamp(at: Date): string {
 /** One text for every Gemini response-shape code; the codes stay distinct only for diagnostics. */
 export const geminiErrorText = (text: string) =>
   Object.fromEntries(GEMINI_RESPONSE_ERRORS.map(code => [code, text])) as Record<typeof GEMINI_RESPONSE_ERRORS[number], string>;
+/** Largest whole unit for a confirmed future reset or ticket expiry. */
+export function relativeTime(remaining: number): string | null {
+  if (!Number.isFinite(remaining) || remaining <= 0) return null;
+  for (const [unit, size] of [['일', 86_400_000], ['시간', 3_600_000], ['분', 60_000]] as const) {
+    if (remaining >= size) return `${Math.floor(remaining / size)}${unit} 후`;
+  }
+  return '1분 미만';
+}
 function resetValue(value: string | null | undefined, now: number, compact = false): string {
   const reset = resetTime(value);
   if (reset === null) return '확인 불가';
@@ -17,17 +25,12 @@ function resetValue(value: string | null | undefined, now: number, compact = fal
   const remaining = at.getTime() - now;
   if (!Number.isFinite(remaining)) return `${prefix}남은 시간 확인 불가`;
   if (remaining <= 0) return `${prefix}초기화 후 확인 중`;
+  if (compact) return relativeTime(remaining) ?? '남은 시간 확인 불가';
   const hours = Math.floor(remaining / 3_600_000), days = Math.floor(hours / 24);
-  if (compact) {
-    if (days > 0) return `${days}d`;
-    if (hours > 0) return `${hours}h`;
-    const minutes = Math.floor(remaining / 60_000);
-    return minutes > 0 ? `${minutes}m` : '1분 미만';
-  }
   return `${prefix}${days > 0 ? `${days}d ` : ''}${hours % 24}h 남음`;
 }
 export const resetLabel = (reset: string | null | undefined, now = Date.now()) => `🕒 사용량 초기화: ${resetValue(reset, now)}`;
-export const resetCountdownLabel = (reset: string | null | undefined, now = Date.now()) => `🕒 사용량 초기화: ${resetValue(reset, now, true)}`;
+export const resetCountdownLabel = (reset: string | null | undefined, now = Date.now()) => `🕒 초기화: ${resetValue(reset, now, true)}`;
 export function usagePercentLabel(value: unknown): string {
   const used = percent(value);
   return `사용량: ${used === null ? '확인 불가' : `${Math.round(used)}%`}`;

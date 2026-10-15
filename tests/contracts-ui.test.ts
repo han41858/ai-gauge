@@ -105,7 +105,7 @@ test('ordinary ChatGPT strip displays its single collected quota snapshot withou
   const before = structuredClone(v.snapshots);
   const strip = new UsageStrip('chatgpt', d); strip.update(v);
   const text = d.querySelector('#ai-gauge-usage-strip')!.getAttribute('aria-label')!;
-  assert.match(text, /^사용량: 88%  🕒 사용량 초기화: 확인 불가/);
+  assert.match(text, /^사용량: 88%  🕒 초기화: 확인 불가/);
   assert.doesNotMatch(text, /모델별 사용량은 확인 불가|AI Gauge/);
   assert.deepEqual(v.snapshots, before);
   assert.equal(v.snapshots.chatgpt.limits[0]!.percent, 88);

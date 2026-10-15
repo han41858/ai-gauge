@@ -1,5 +1,31 @@
 # 구현 및 검증 결과
 
+## 2026-10-15 입력창 초기화·티켓 만료 한국어 상대 시간 — 202610151456
+
+최신 main `ee6a3bb`를 기준으로 입력창 표시만 변경했습니다. `🕒 초기화: 4시간 후`, `🎫 티켓 만료: 2일 후`처럼 공통 포맷터로 가장 큰 단위 하나를 내림합니다. 1분 미만은 `1분 미만`이며, 초기화 경과 상태는 기존 정책을 유지합니다.
+
+- 입력창 티켓은 기존 선택 로직에서 만료가 확인된 유효 티켓의 가장 빠른 만료 하나만 사용합니다. 수량·다른 날짜는 툴팁과 접근성 설명에도 넣지 않습니다. 만료 미확인·수집 실패·정보 불확실·모두 만료 상태는 숨기며 공식 관리 링크와 키보드 접근성은 유지합니다.
+- 팝업의 정확한 초기화 날짜·시각, 개별 티켓 만료·수량·상세 정보는 유지합니다. ChatGPT 티켓 상세 조회 첫 실패의 캐시와 팝업 유예 정책도 유지하되 입력창 티켓은 첫 실패부터 숨깁니다. 사용량 초기화만 경과한 경우에는 유효 티켓을 유지하고, 실패가 `reset_pending`에 가려진 경우에는 실패 횟수로 차단합니다.
+- 수집·캐시·정규화·요금제·의존성·타이머를 변경하지 않았습니다. 기존 15초 표시 타이머로 다음 유효 티켓으로 전환하고 모두 만료되면 숨깁니다. ChatGPT/Codex 공유 데이터, Gemini 티켓 제외, 30px/12px/20px 규격·막대·동적 게이지·좁은 화면 우선 숨김도 유지합니다.
+
+변경 파일:
+
+| 구분 | 파일 |
+| --- | --- |
+| 구현 | `src/shared/format.ts`, `src/shared/ticket-presentation.ts`, `src/content/usage-strip.ts` |
+| 단위·통합 테스트 | `tests/usage-label.test.ts`, `tests/ticket-ui.test.ts`, `tests/content-clock.test.ts`, `tests/contracts-ui.test.ts`, `tests/shared-plan-display.test.ts`, `tests/usage-strip-progress.test.ts` |
+| 브라우저 fixture | `scripts/browser-fixture.mjs`, `scripts/browser-fixture/chatgpt-checks.mjs`, `codex-checks.mjs`, `claude-checks.mjs`, `gemini-checks.mjs` |
+| 문서 | `AI_GAUGE_SPEC.md`, `AGENTS.md`, `docs/installation.md`, `docs/reset-tickets.md`, `docs/validation.md` |
+
+검증 결과:
+
+- `npm run check`: **530개 통과**, 실패·취소·스킵 0. 타입 검사·개발 빌드·MV3 산출물 검사 통과. 요청한 7개 시간 예시와 단위 경계 ±1ms, 잘못된 시간, 일·시간·분 내림, 실제 0%·미확인·초기화 경과 및 팝업 날짜 유지 검증을 포함합니다.
+- 티켓 1개·복수·가장 빠른 만료·30초·모두 만료·만료 미확인·손상·실패·인증/계정 불확실·공식 링크·ChatGPT/Codex 공유·Gemini 제외를 검증했습니다. 기존 15초 타이머가 링크와 진행 막대 노드를 유지하며 다음 만료로 전환하고 추가 요청이나 원본 데이터 변경을 하지 않는지도 확인했습니다.
+- 같은 **202610151456** 빌드로 `node scripts/browser-fixture.mjs` 통과. 실제 Chromium의 합성 DOM에서 한국어 표기, 티켓 자동 전환·실패 시 숨김, 키보드 링크 활성화, 좁은 화면, 네 입력창 위치·중복 방지, 76회 안정성 검사, 팝업·게이지·요금제·권한·저장 갱신 회귀를 확인했습니다. 생성된 표시줄·팝업 스크린샷도 확인했습니다.
+- 설치 ZIP은 루트 manifest를 포함한 실행 파일 10개이며 검증한 dist와 바이트가 모두 일치합니다. **84,019 bytes**, SHA-256 `a4d566015873fc99719baa9515a1644c2c977cdf22a9e310ad7ead21947ab8b3`입니다. 설치 파일은 기존 배포 규칙에 따라 최신 한 개를 유지하며, 소스·문서는 별도 브랜치의 PR로 제출하고 main에 병합하지 않습니다.
+- GitHub 설치 링크의 HTTP 200과 다운로드 바이트 일치를 확인했습니다. main/downloads에는 `ai-gauge-202610151456.zip` 한 개만 남겼고 README 설치 링크를 갱신했습니다. 이 별도 배포 변경은 소스 PR에 중복 포함하지 않습니다.
+- 실제 로그인 Chrome 세션·API 호출은 이번 작업에서 검증하지 않았습니다. 실제 ChatGPT/Codex·Claude·Gemini 화면에서 상대 시간과 좁은 화면 배치, ChatGPT/Claude의 실티켓 만료 전환 및 공식 관리 링크의 로그인 후 도달 화면은 추가 확인이 필요합니다.
+
 ## 2026-10-15 1분 미만 표기 수정 — 202610151429
 
 - 입력창에서 60초 미만의 양수 잔여 시간을 `1분 미만`으로 표기합니다. 기존 `1m 미만` 출력과 문서의 `한 분 미만` 표현을 바로잡았습니다. 다른 단위와 시간 계산·갱신 정책은 동일합니다.

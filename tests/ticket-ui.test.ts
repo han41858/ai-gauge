@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { UsageStrip } from '../src/content/usage-strip';
 import { renderCards, type Actions } from '../src/popup/render';
-import { ticketDate, ticketDisplay } from '../src/shared/ticket-presentation';
+import { inlineTicketDisplay, ticketDate, ticketDisplay } from '../src/shared/ticket-presentation';
 import { defaults } from '../src/storage/settings';
-import { emptySnapshot } from '../src/storage/snapshots';
+import { effectiveSnapshot, emptySnapshot } from '../src/storage/snapshots';
 import type { PageProvider, ResetTicketGrant, Snapshot, View } from '../src/shared/types';
 
 const now = Date.UTC(2026, 9, 14, 12), hour = 3_600_000;
@@ -35,8 +35,11 @@ function stripFixture(provider: PageProvider = 'chatgpt') {
     ? '<main><div class="ComposerLayoutRoot-synthetic"><textarea></textarea></div></main>'
     : provider === 'claude'
       ? '<main><div data-cds="ChatComposerChin"><div contenteditable="true" class="ProseMirror"></div></div></main>'
+      : provider === 'gemini'
+        ? '<main><input-area-v2><rich-textarea><div class="ql-editor" contenteditable="true" role="textbox"></div></rich-textarea><button>Send</button></input-area-v2></main>'
       : '<main><form><div id="prompt-textarea" contenteditable="true"></div><button>Send</button></form></main>';
-  const dom = new JSDOM(markup, { url: provider === 'claude' ? 'https://claude.ai/new' : 'https://chatgpt.com/' });
+  const dom = new JSDOM(markup, { url: provider === 'claude' ? 'https://claude.ai/new'
+    : provider === 'gemini' ? 'https://gemini.google.com/app' : 'https://chatgpt.com/' });
   const roots = new Map<HTMLElement, ShadowRoot>(), original = dom.window.HTMLElement.prototype.attachShadow;
   dom.window.HTMLElement.prototype.attachShadow = function(this: HTMLElement, options: ShadowRootInit) {
     const root = original.call(this, options); roots.set(this, root); return root;
@@ -100,9 +103,10 @@ test('ticket summary without verified expiry shows count only and never invents 
   s.tickets!.inventory = { mode: 'summary', grants: [grant({ kind: 'unspecified', count: 2,
     expiresAt: null, usableNow: null, clears: [], requiresLimit: null, blocked: null })], usableCount: null, cooldownUntil: null };
   const display = ticketDisplay(s, now)!;
-  assert.equal(display.inline, '🎫 초기화 티켓 2개');
+  assert.equal(display.count, '🎫 초기화 티켓 2개');
+  assert.equal(inlineTicketDisplay(s, now), null);
   assert.equal(display.expiry, null); assert.deepEqual(display.entries, []);
-  assert.doesNotMatch(display.accessible, /0개|만료/);
+  assert.doesNotMatch(display.popupAccessible, /0개|만료/);
   const { dom, cards } = popup();
   try {
     renderCards(cards, v, noop, now);
@@ -153,15 +157,87 @@ test('ChatGPT and Codex share the same ticket link and Claude opens its own offi
     try {
       f.strip.update(v);
       assert.equal(f.link().hidden, false);
-      assert.equal(f.link().textContent, `🎫 초기화 티켓 ×1 · ${ticketDate(iso(24 * hour))} 만료`);
+      assert.equal(f.link().textContent, '🎫 티켓 만료: 1일 후');
       assert.equal(f.link().href, provider === 'claude' ? 'https://claude.ai/new#settings/usage' : 'https://chatgpt.com/settings/usage?tab=overview');
       assert.equal(f.link().tagName, 'A'); assert.equal(f.link().tabIndex, 0);
       assert.equal(f.link().target, '_blank'); assert.equal(f.link().rel, 'noopener noreferrer');
-      assert.match(f.link().getAttribute('aria-label')!, /초기화 티켓 1개.*새 탭/);
-      assert.doesNotMatch(f.link().getAttribute('aria-label')!, /지금 사용 가능/);
+      assert.equal(f.link().getAttribute('aria-label'), '🎫 티켓 만료: 1일 후. 공식 사용량 관리 화면 열기 (새 탭)');
+      assert.equal(f.link().hasAttribute('title'), false);
+      assert.equal(f.link().hasAttribute('aria-description'), false);
       assert.equal(f.root().querySelector('progress')!.value, 42);
     } finally { f.dom.window.close(); }
   }
+});
+
+test('inline tickets select only the earliest confirmed expiry and share the reset countdown format', () => {
+  for (const provider of ['chatgpt', 'claude'] as const) {
+    const s = snapshot(provider);
+    s.tickets!.inventory.grants = [grant({ expiresAt: iso(48 * hour) }),
+      grant({ count: 3, kind: 'weekly', expiresAt: iso(5 * hour) }), grant({ expiresAt: iso(-1) })];
+    assert.equal(inlineTicketDisplay(s, now)!.text, '🎫 티켓 만료: 5시간 후');
+    s.tickets!.inventory.grants = [grant({ expiresAt: iso(30_000) })];
+    assert.equal(inlineTicketDisplay(s, now)!.text, '🎫 티켓 만료: 1분 미만');
+    assert.equal(inlineTicketDisplay(s, now + 30_000), null);
+  }
+});
+
+test('inline tickets hide uncertain, failed or missing data without changing the popup cache grace', () => {
+  const s = snapshot('chatgpt');
+  s.tickets!.failures = 1;
+  assert.equal(inlineTicketDisplay(s, now), null);
+  assert.equal(ticketDisplay(s, now)!.count, '🎫 초기화 티켓 1개', 'popup retains its existing first-failure grace');
+  const cases: Array<(s: Snapshot) => void> = [
+    s => { s.tickets = null; },
+    s => { s.tickets!.inventory.grants = []; },
+    s => { s.tickets!.inventory.grants[0]!.count = 0; },
+    s => { s.tickets!.inventory.grants[0]!.expiresAt = null; },
+    s => { s.tickets!.inventory.grants[0]!.expiresAt = 'invalid'; },
+    s => { s.tickets!.checkedAt = now + 1; },
+    s => { s.tickets!.failures = 2; },
+    s => { s.failures = 1; },
+    s => { s.ticketRefreshPending = true; },
+    s => { s.usageInvalidated = true; },
+    s => { s.state = 'error'; s.errorCode = 'network'; },
+    s => { s.state = 'error'; s.errorCode = 'tab_access_failed'; },
+    s => { s.state = 'signed_out'; s.errorCode = 'signed_out'; },
+    s => { s.errorCode = 'ambiguous_account'; }
+  ];
+  for (const provider of ['chatgpt', 'claude'] as const) {
+    for (const change of cases) {
+      const candidate = snapshot(provider); change(candidate);
+      assert.equal(inlineTicketDisplay(candidate, now), null);
+    }
+  }
+});
+
+test('elapsed usage resets retain independently valid tickets after a worker view refresh', t => {
+  t.mock.method(Date, 'now', () => now);
+  const s = snapshot('chatgpt'); s.limits[0]!.resetsAt = iso(-1);
+  const elapsed = effectiveSnapshot(s, now);
+  assert.equal(elapsed.errorCode, 'reset_pending');
+  assert.equal(inlineTicketDisplay(elapsed, now)!.text, '🎫 티켓 만료: 1일 후');
+  const f = stripFixture(), v = view(); v.snapshots.chatgpt = elapsed;
+  try {
+    f.strip.update(v);
+    assert.equal(f.link().hidden, false);
+    assert.equal(f.link().textContent, '🎫 티켓 만료: 1일 후');
+    assert.equal(f.root().querySelector('progress')!.hidden, true);
+    assert.equal(f.root().querySelector('.status')!.textContent, '초기화 후 확인 중');
+  } finally { f.dom.window.close(); }
+  const failed = effectiveSnapshot({ ...s, state: 'error', errorCode: 'network', failures: 1 }, now);
+  assert.equal(failed.errorCode, 'reset_pending');
+  assert.equal(inlineTicketDisplay(failed, now), null, 'an elapsed reset must not hide evidence of a collection failure');
+});
+
+test('Gemini never renders ticket data even when an inventory is supplied', t => {
+  t.mock.method(Date, 'now', () => now);
+  assert.equal(inlineTicketDisplay(snapshot('gemini'), now), null);
+  const f = stripFixture('gemini');
+  try {
+    f.strip.update(view());
+    assert.equal(f.root().querySelector('.tickets'), null);
+    assert.equal(f.root().querySelector('progress')!.value, 42);
+  } finally { f.dom.window.close(); }
 });
 
 test('strip clock removes expired ticket content and attributes while retaining the usage node', t => {
