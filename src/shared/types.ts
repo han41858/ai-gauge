@@ -58,6 +58,7 @@ export interface Snapshot {
   nextAttemptAt: number;
   failures: number;
   errorCode: ErrorCode | null;
+  usageInvalidated?: boolean;
   plan?: PlanInfo | null;
   planRefreshPending?: boolean;
   tickets?: TicketCache | null;

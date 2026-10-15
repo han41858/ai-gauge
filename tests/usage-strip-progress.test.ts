@@ -238,3 +238,86 @@ test('the inline gauge follows the existing cache and unknown-state policy witho
     assert.equal(gauge.isConnected, false);
   } finally { dom.window.close(); }
 });
+
+test('first and repeated tab execution failures retain cached text, progress, gauge and reset without replaying motion', () => {
+  const { dom, strip, elements } = fixture();
+  try {
+    const current = view(63);
+    current.snapshots.chatgpt.collectedAt = Date.now() - FRESH_MS;
+    strip.update(current);
+    const before = elements(), gauge = before.root.querySelector('.usage-gauge')!;
+    const needle = gauge.querySelector<SVGGElement>('.gauge-needle')!;
+    const resetLabel = before.reset.textContent;
+    const observer = new dom.window.MutationObserver(() => undefined);
+    observer.observe(gauge, { attributes: true, childList: true, characterData: true, subtree: true });
+    for (const failures of [1, 2, 12]) {
+      current.snapshots.chatgpt.state = 'error';
+      current.snapshots.chatgpt.errorCode = 'tab_access_failed';
+      current.snapshots.chatgpt.failures = failures;
+      strip.update(current);
+      const next = elements();
+      assert.equal(next.host, before.host);
+      assert.equal(next.progress, before.progress);
+      assert.equal(next.progress.hidden, false);
+      assert.equal(next.progress.value, 63);
+      assert.equal(next.current.textContent, '사용량: 63%');
+      assert.equal(next.reset, before.reset);
+      assert.equal(next.reset.textContent, resetLabel);
+      assert.equal(next.root.querySelector<HTMLElement>('.status')!.hidden, true);
+      assert.equal(next.root.querySelector('.usage-gauge'), gauge);
+      assert.equal(gauge.getAttribute('data-usage-state'), 'known');
+      assert.equal(needle.getAttribute('visibility'), 'visible');
+      assert.equal(needle.style.transform, `rotate(${-90 + 63 * 1.8}deg)`);
+      assert.doesNotMatch(next.host.getAttribute('aria-label')!, /확인 불가|사이트 접근 설정|다시 확인/);
+      assert.equal(observer.takeRecords().length, 0, 'An unchanged cached value must not restart gauge animation');
+    }
+    const collected = view(71.5); strip.update(collected);
+    assert.equal(elements().host, before.host);
+    assert.equal(elements().progress, before.progress);
+    assert.equal(elements().progress.value, 71.5);
+    assert.equal(elements().current.textContent, '사용량: 72%');
+    assert.equal(elements().root.querySelector('.usage-gauge'), gauge);
+    assert.equal(needle.style.transform, `rotate(${-90 + 71.5 * 1.8}deg)`);
+    assert.equal(gauge.querySelector('.gauge-arc')!.getAttribute('stroke'), '#FFAE32');
+    observer.disconnect();
+  } finally { dom.window.close(); }
+});
+
+test('a cached tab execution failure stops displaying usage once the known reset has elapsed', () => {
+  const { dom, strip, elements } = fixture();
+  try {
+    const current = view(63);
+    current.snapshots.chatgpt.state = 'error';
+    current.snapshots.chatgpt.errorCode = 'tab_access_failed';
+    current.snapshots.chatgpt.failures = 3;
+    strip.update(current);
+    const before = elements(), gauge = before.root.querySelector('.usage-gauge')!;
+    assert.equal(before.progress.hidden, false);
+    current.snapshots.chatgpt.limits[0]!.resetsAt = new Date(Date.now() - 1000).toISOString();
+    strip.mount();
+    assert.equal(elements().progress, before.progress);
+    assert.equal(elements().progress.hidden, true);
+    assert.equal(elements().progress.hasAttribute('value'), false);
+    assert.equal(elements().current.textContent, '사용량: 확인 불가');
+    assert.equal(elements().root.querySelector('.status')!.textContent, '초기화 후 확인 중');
+    assert.equal(gauge.getAttribute('data-usage-state'), 'unknown');
+    assert.equal(gauge.querySelector('.gauge-needle')!.getAttribute('visibility'), 'hidden');
+  } finally { dom.window.close(); }
+});
+
+test('a tab execution failure without a successful cache stays neutral and does not blame site permissions', () => {
+  const { dom, strip, elements } = fixture();
+  try {
+    const current = view();
+    current.snapshots.chatgpt = { ...emptySnapshot('chatgpt'), state: 'error', errorCode: 'tab_access_failed', failures: 1 };
+    strip.update(current);
+    const { host, root, progress, current: label } = elements();
+    assert.equal(label.textContent, '사용량: 확인 불가');
+    assert.equal(progress.hidden, true);
+    assert.equal(progress.hasAttribute('value'), false);
+    assert.equal(root.querySelector('.status')!.textContent, '사용량 다시 확인 중');
+    assert.equal(root.querySelector('.usage-gauge')!.getAttribute('data-usage-state'), 'unknown');
+    assert.equal(root.querySelector('.gauge-needle')!.getAttribute('visibility'), 'hidden');
+    assert.doesNotMatch(host.getAttribute('aria-label')!, /사이트 접근 설정|사용량: 0%/);
+  } finally { dom.window.close(); }
+});

@@ -33,6 +33,7 @@ export function parseSnapshot(input: unknown, provider: Provider): Snapshot {
   }));
   return { provider, state: r.state as Snapshot['state'], limits, collectedAt: r.collectedAt, checkedAt: r.checkedAt,
     nextAttemptAt: Math.max(0, r.nextAttemptAt), failures: Math.max(0, r.failures), errorCode: r.errorCode as Snapshot['errorCode'],
+    ...(r.usageInvalidated === true ? { usageInvalidated: true } : {}),
     ...(Object.hasOwn(r, 'plan') ? { plan: parsePlan(provider, r.plan) } : {}),
     ...(Object.hasOwn(r, 'planRefreshPending') ? { planRefreshPending: r.planRefreshPending === true } : {}),
     ...(Object.hasOwn(r, 'tickets') ? { tickets: provider === 'gemini' ? null : parseTicketCache(r.tickets) } : {}),
@@ -46,15 +47,17 @@ export function hasElapsedReset(snapshot: Snapshot, now = Date.now()): boolean {
 }
 export function effectiveSnapshot(snapshot: Snapshot, now = Date.now()): Snapshot {
   const firstTransient = snapshot.failures === 1 && (snapshot.errorCode === 'network' || snapshot.errorCode === 'server');
+  const cachedFallback = !snapshot.usageInvalidated && (firstTransient || snapshot.errorCode === 'tab_access_failed');
   const legacyAgeOnly = snapshot.state === 'stale' && snapshot.errorCode === null && snapshot.failures === 0;
   const current = snapshot.state === 'ok';
-  if (!current && !legacyAgeOnly && !(snapshot.state === 'error' && firstTransient)) return snapshot;
-  if (current && snapshot.errorCode !== null && !firstTransient) return { ...snapshot, state: 'error' };
+  if (!current && !legacyAgeOnly && !(snapshot.state === 'error' && cachedFallback)) return snapshot;
+  if (snapshot.usageInvalidated || (current && snapshot.errorCode !== null && !cachedFallback)) return { ...snapshot, state: 'error' };
   const usable = finite(now) && finite(snapshot.collectedAt) && snapshot.collectedAt > 0
     && snapshot.collectedAt <= now + 60_000 && snapshot.limits.length > 0 && validLimits(snapshot.limits);
   if (!usable) return current || legacyAgeOnly ? { ...snapshot, state: 'error', errorCode: 'invalid_response' } : snapshot;
   if (hasElapsedReset(snapshot, now)) return { ...snapshot, state: 'error', errorCode: 'reset_pending' };
-  // A view may hide one transient failure, but storage retains its retry state.
+  // Failed tab injection does not invalidate usage. Storage keeps the failure
+  // count and retry deadline; only the view retains the last usable value.
   return current ? snapshot : { ...snapshot, state: 'ok' };
 }
 export async function readSnapshot(provider: Provider): Promise<Snapshot> {

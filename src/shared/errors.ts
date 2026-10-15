@@ -26,7 +26,7 @@ export const ERROR_TEXT: Record<ErrorCode, string> = {
   ...geminiErrorText(INVALID_RESPONSE_TEXT),
   open_tab: '로그인한 서비스 탭을 연 뒤 팝업을 다시 열어 주세요.',
   ambiguous_account: '여러 Claude 조직이 확인되어 선택할 수 없습니다. 계정의 사용량 화면을 확인해 주세요.',
-  tab_access_failed: '열린 서비스 탭에서 수집 코드를 실행하지 못했습니다. Chrome 확장 프로그램의 해당 사이트 접근 설정을 확인한 뒤 확장과 탭을 새로고침해 주세요.',
+  tab_access_failed: '열린 서비스 탭에서 수집 코드를 실행하지 못했습니다. 마지막 유효 사용량을 유지하며 자동으로 다시 시도합니다.',
   unsupported: '안전한 수집 계약을 검증하지 못해 미지원입니다.',
   permission_required: '이 서비스의 사이트 접근 권한이 필요합니다.',
   server: '서비스 오류입니다. 잠시 후 다시 시도합니다.',
