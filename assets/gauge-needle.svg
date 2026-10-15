@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <defs>
+    <linearGradient id="needle" x1="27" y1="46" x2="37" y2="13" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF8A14"/><stop offset=".55" stop-color="#FFAD20"/><stop offset="1" stop-color="#FFE483"/>
+    </linearGradient>
+  </defs>
+  <!-- Neutral orientation points upward (50 percent). Rotate the needle group around (32,46). -->
+  <g id="needle-rotor">
+    <path d="M27.5 46 L32 13 L36.5 46 Z" fill="url(#needle)" stroke="#FFB528" stroke-width=".6" stroke-linejoin="round"/>
+  </g>
+  <circle cx="32" cy="46" r="5.5" fill="#0D4D9F" stroke="#72E9FF" stroke-width="1.5"/>
+  <circle cx="30.5" cy="44.5" r="2.1" fill="#A8F9FF" opacity=".75"/>
+</svg>
