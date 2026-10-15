@@ -22,12 +22,19 @@ export function due(s: Snapshot, trigger: Trigger, now: number): boolean {
 }
 export function success(previous: Snapshot, limits: UsageLimit[], now: number, plan: unknown = null): Snapshot {
   const label = knownPlanLabel(previous.provider, plan);
-  return { ...previous, limits, state: 'ok', collectedAt: now, checkedAt: now, failures: 0, nextAttemptAt: now + 60_000, errorCode: null,
+  const { usageInvalidated: _usageInvalidated, ...retained } = previous;
+  return { ...retained, limits, state: 'ok', collectedAt: now, checkedAt: now, failures: 0, nextAttemptAt: now + 60_000, errorCode: null,
     plan: label ? { label, checkedAt: now } : null, planRefreshPending: false };
 }
 export function failure(previous: Snapshot, error: unknown, now: number): Snapshot {
   previous = { ...previous, plan: null, planRefreshPending: false };
   const e = error instanceof CollectionError ? error : new CollectionError('invalid_response');
+  // A later tab/network failure must not revive usage from a known invalid
+  // account or permission context, including after a worker restart.
+  const invalidatesUsage = (code: Snapshot['errorCode']) => code !== null
+    && ['signed_out', 'access_denied', 'permission_required', 'ambiguous_account', 'unsupported'].includes(code);
+  if (invalidatesUsage(e.code) || invalidatesUsage(previous.errorCode)
+    || ['signed_out', 'permission_required', 'unsupported'].includes(previous.state)) previous = { ...previous, usageInvalidated: true };
   if (Object.hasOwn(previous, 'tickets')) previous = { ...previous,
     tickets: ['signed_out', 'access_denied', 'permission_required', 'ambiguous_account', 'unsupported'].includes(e.code) ? null : previous.tickets ?? null,
     ticketRefreshPending: true };

@@ -44,7 +44,7 @@ test('popup preserves a collection error while timestamps remain available only 
     v.snapshots.claude.errorCode = 'tab_access_failed';
     renderCards(dom.window.document.getElementById('cards')!, v, actions, at + 1);
     const card = dom.window.document.querySelector('[data-provider="claude"]')!;
-    assert(card.textContent!.includes('사이트 접근 설정 확인'));
+    assert(card.textContent!.includes('사용량 다시 확인 중'));
     assert.equal(card.querySelector('details,select,.time'), null);
     assert.doesNotMatch(card.textContent!, /정상 수집 기록 없음|마지막 정상 수집:|최근 수집 성공|확인 시도|다음 갱신/);
     const report = createDiagnosticReport(v, 'fixture');

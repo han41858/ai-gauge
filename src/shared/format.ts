@@ -32,7 +32,7 @@ const STATUS_TEXT: Record<ErrorCode, string> = {
   not_collected: '사용량 확인 중', signed_out: '로그인 필요', access_denied: '사이트 접근 거부',
   rate_limited: '잠시 후 다시 확인', network: '연결 확인 중', server: '서비스 응답 대기',
   invalid_response: '사용량 확인 불가', ...geminiErrorText('사용량 확인 불가'),
-  open_tab: '서비스 탭 열기 필요', tab_access_failed: '사이트 접근 설정 확인', ambiguous_account: 'Claude 조직 선택 필요',
+  open_tab: '서비스 탭 열기 필요', tab_access_failed: '사용량 다시 확인 중', ambiguous_account: 'Claude 조직 선택 필요',
   unsupported: '사용량 수집 미지원', permission_required: '사이트 권한 필요', reset_pending: '초기화 후 확인 중'
 };
 export function statusText(snapshot: Snapshot): string {

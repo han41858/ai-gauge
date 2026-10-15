@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { failure, success } from '../src/background/scheduler';
 import { CollectionError, ERROR_TEXT } from '../src/shared/errors';
 import { resetLabel, statusText } from '../src/shared/format';
-import { GEMINI_RESPONSE_ERRORS, type ErrorCode, type Snapshot, type UsageLimit } from '../src/shared/types';
+import { GEMINI_RESPONSE_ERRORS, PROVIDERS, type ErrorCode, type Snapshot, type UsageLimit } from '../src/shared/types';
 import { defaults } from '../src/storage/settings';
 import { effectiveSnapshot, emptySnapshot, FRESH_MS, hasElapsedReset, parseSnapshot, readSnapshot, readView, writeSnapshot } from '../src/storage/snapshots';
 
@@ -59,13 +59,73 @@ test('one transient failure preserves valid cached usage and retries, a second f
 });
 
 test('first transient failure without usable cache remains a failure without invented usage', () => {
-  for (const code of ['network', 'server'] as const) {
+  for (const code of ['network', 'server', 'tab_access_failed'] as const) {
     const first = failure(emptySnapshot('claude'), new CollectionError(code), NOW);
     assert.equal(effectiveSnapshot(first, NOW), first);
     assert.equal(first.limits.length, 0);
     assert.equal(first.collectedAt, null);
     const impossible = failure({ ...collected(), collectedAt: NOW + 60_001 }, new CollectionError(code), NOW);
     assert.equal(effectiveSnapshot(impossible, NOW), impossible);
+  }
+});
+
+test('repeated tab execution failures preserve the last valid shared usage and the original retry state', () => {
+  for (const provider of PROVIDERS) {
+    const before = success(emptySnapshot(provider), [limit({ percent: 43.7, resetsAt: new Date(NOW + 86400_000).toISOString() })], NOW - FRESH_MS);
+    let cached = before;
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      cached = failure(cached, new CollectionError('tab_access_failed'), NOW + attempt * 60_000);
+      const persisted = parseSnapshot(cached, provider), visible = effectiveSnapshot(persisted, cached.checkedAt!);
+      assert.equal(visible.state, 'ok');
+      assert.deepEqual(visible.limits, before.limits);
+      assert.equal(visible.collectedAt, before.collectedAt);
+      assert.equal(visible.errorCode, 'tab_access_failed');
+      assert.equal(visible.failures, attempt);
+      assert.equal(visible.nextAttemptAt, cached.nextAttemptAt);
+      assert.deepEqual(persisted, cached);
+      assert.equal(cached.state, 'error');
+      assert.deepEqual(effectiveSnapshot(visible, cached.checkedAt!), visible);
+      assert.doesNotMatch(statusText(visible), /사이트 접근 설정 확인/);
+    }
+    const expired = effectiveSnapshot(cached, NOW + 86400_000);
+    assert.equal(expired.state, 'error');
+    assert.equal(expired.errorCode, 'reset_pending');
+    const recovered = success(cached, [limit({ percent: 0 })], cached.nextAttemptAt);
+    assert.equal(effectiveSnapshot(recovered, recovered.checkedAt!).limits[0]!.percent, 0);
+    assert.equal(recovered.failures, 0);
+    assert.equal(recovered.errorCode, null);
+  }
+});
+
+test('tab execution failures do not imply a missing permission or invent unknown percentages', () => {
+  const missing = failure(emptySnapshot('chatgpt'), new CollectionError('tab_access_failed'), NOW);
+  assert.equal(statusText(effectiveSnapshot(missing, NOW)), '사용량 다시 확인 중');
+  const unknown = failure(collected([limit({ percent: null })]), new CollectionError('tab_access_failed'), NOW);
+  assert.equal(effectiveSnapshot(unknown, NOW).limits[0]!.percent, null);
+});
+
+test('known account and permission failures cannot be revived by subsequent tab failures or a storage reload', () => {
+  for (const code of ['signed_out', 'access_denied', 'permission_required', 'ambiguous_account', 'unsupported'] as const) {
+    const before = collected([limit({ percent: 77 })]);
+    const denied = failure(before, new CollectionError(code), NOW);
+    assert.equal(denied.usageInvalidated, true);
+    assert.deepEqual(denied.limits, before.limits, 'the popup can still identify previous values');
+    const legacy = { ...denied }; delete legacy.usageInvalidated;
+    for (const stored of [denied, legacy]) {
+      let retry = failure(parseSnapshot(stored, 'claude'), new CollectionError('open_tab'), NOW + 60_000);
+      retry = failure(parseSnapshot(retry, 'claude'), new CollectionError('tab_access_failed'), NOW + 120_000);
+      assert.equal(retry.usageInvalidated, true);
+      assert.equal(effectiveSnapshot(retry, retry.checkedAt!).state, 'error');
+      const network = failure({ ...retry, failures: 0 }, new CollectionError('network'), NOW + 180_000);
+      assert.equal(effectiveSnapshot(network, network.checkedAt!).state, 'error');
+      const inconsistent = effectiveSnapshot({ ...retry, state: 'ok' }, retry.checkedAt!);
+      assert.equal(inconsistent.state, 'error');
+      assert.deepEqual(effectiveSnapshot(inconsistent, retry.checkedAt!), inconsistent);
+      const restored = success(retry, [limit({ percent: 12 })], NOW + 240_000);
+      assert.equal(restored.usageInvalidated, undefined);
+      assert.equal(effectiveSnapshot(restored, restored.checkedAt!).state, 'ok');
+      assert.deepEqual(parseSnapshot(restored, 'claude'), restored);
+    }
   }
 });
 
@@ -115,7 +175,7 @@ test('missing and malformed reset times are not guessed from window duration or 
 
 test('authentication, access, rate and response failures remain explicit even on the first failure with cached usage', () => {
   const codes: ErrorCode[] = ['signed_out', 'access_denied', 'permission_required', 'rate_limited', 'unsupported', 'invalid_response',
-    'open_tab', 'tab_access_failed', 'ambiguous_account', ...GEMINI_RESPONSE_ERRORS];
+    'open_tab', 'ambiguous_account', ...GEMINI_RESPONSE_ERRORS];
   const snapshot = collected([limit({ percent: 77, resetsAt: new Date(NOW - 1).toISOString() })]);
   for (const code of codes) {
     const failed = failure(snapshot, new CollectionError(code), NOW);
@@ -134,7 +194,8 @@ test('shared view grace survives storage reads without clearing the raw failure 
   const previous = globalThis.chrome;
   const settings = defaults(); settings.enabled.claude = true;
   const stored: Record<string, unknown> = { 'migration:shared-chatgpt:v2': true, 'settings:v2': settings };
-  globalThis.chrome = { permissions: { contains: async () => true }, storage: { local: {
+  let granted = true;
+  globalThis.chrome = { permissions: { contains: async () => granted }, storage: { local: {
     get: async (keys: string | string[]) => Object.fromEntries((Array.isArray(keys) ? keys : [keys]).filter(key => Object.hasOwn(stored, key)).map(key => [key, structuredClone(stored[key])])),
     set: async (values: Record<string, unknown>) => { Object.assign(stored, structuredClone(values)); }
   } } } as unknown as typeof chrome;
@@ -148,5 +209,12 @@ test('shared view grace survives storage reads without clearing the raw failure 
     assert.equal(first.snapshots.claude.failures, 1);
     assert.deepEqual(await readSnapshot('claude'), failed);
     assert.deepEqual(stored['snapshot:v2:claude'], failed);
+    const tabFailed = failure(failed, new CollectionError('tab_access_failed'), Date.now());
+    await writeSnapshot(tabFailed);
+    assert.equal((await readView()).snapshots.claude.state, 'ok');
+    assert.deepEqual(await readSnapshot('claude'), tabFailed);
+    granted = false;
+    assert.equal((await readView()).snapshots.claude.state, 'permission_required');
+    assert.deepEqual(await readSnapshot('claude'), tabFailed);
   } finally { globalThis.chrome = previous; }
 });

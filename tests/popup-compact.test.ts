@@ -6,7 +6,9 @@ import { JSDOM } from 'jsdom';
 import { renderCards, type Actions } from '../src/popup/render';
 import { defaults } from '../src/storage/settings';
 import { emptySnapshot } from '../src/storage/snapshots';
-import { success } from '../src/background/scheduler';
+import { failure, success } from '../src/background/scheduler';
+import { CollectionError } from '../src/shared/errors';
+import { badge } from '../src/background/badge';
 import { usageParts } from '../src/content/usage-label';
 import type { Provider, UsageLimit, View } from '../src/shared/types';
 
@@ -103,7 +105,7 @@ test('missing and failed quota stays visible without a fabricated zero or succes
     v.snapshots.chatgpt = { ...emptySnapshot('chatgpt'), errorCode: 'tab_access_failed', checkedAt: now };
     renderCards(cards, v, noop, now);
     const card = cards.querySelector('[data-provider="chatgpt"]')!;
-    assert.equal(card.querySelector('.status')!.textContent, '사이트 접근 설정 확인');
+    assert.equal(card.querySelector('.status')!.textContent, '사용량 다시 확인 중');
     assert.equal(card.querySelector('.status')!.closest('details'), null);
     assert.equal(card.querySelector('progress'), null);
     assert.doesNotMatch(card.textContent!, /0%|최근 수집 성공/);
@@ -111,6 +113,25 @@ test('missing and failed quota stays visible without a fabricated zero or succes
     v.snapshots.chatgpt.state = 'ok'; v.snapshots.chatgpt.collectedAt = now; v.snapshots.chatgpt.errorCode = null;
     renderCards(cards, v, noop, now);
     assert.equal(cards.querySelector('[data-provider="chatgpt"] .status')!.textContent, '사용량 확인 불가');
+  } finally { dom.window.close(); }
+});
+
+test('popup and all supported page badges retain cached usage after repeated tab execution failures', () => {
+  const { dom, cards } = fixture(), v = view();
+  try {
+    for (const provider of ['chatgpt', 'claude', 'gemini'] as const) {
+      let snapshot = v.snapshots[provider];
+      for (let i = 0; i < 3; i++) snapshot = failure(snapshot, new CollectionError('tab_access_failed'), now + i * 60_000);
+      v.snapshots[provider] = snapshot;
+    }
+    renderCards(cards, v, noop, now + 180_000);
+    assert.equal(cards.querySelector('.status,.old'), null);
+    assert.deepEqual([...cards.querySelectorAll('progress')].map(progress => progress.value), [15, 30, 42]);
+    for (const [url, expected] of [['https://chatgpt.com/', '15%'], ['https://chatgpt.com/codex/cloud', '15%'],
+      ['https://claude.ai/', '30%'], ['https://gemini.google.com/', '42%']]) {
+      assert.equal(badge(v, url, now + 180_000).text, expected);
+    }
+    assert.doesNotMatch(cards.textContent!, /확인 불가|사이트 접근 설정 확인|다시 확인 중|이전 수집값/);
   } finally { dom.window.close(); }
 });
 
