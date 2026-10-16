@@ -28,7 +28,7 @@ npm run check
 
 버전과 ZIP 이름은 빌드 시작 시각의 한국 시간 `YYYYMMDDHHmm`입니다. Chrome 내부 버전만 같은 시각의 `YYYY.M.D.HHmm`으로 변환합니다. 소스 버전은 `0.0.0`으로 두고 수동으로 증가시키지 않습니다.
 
-소스·문서는 GitHub main에서 확인할 수 있고 검증한 설치 ZIP은 기존 main의 `downloads`에 게시합니다. 설치 다운로드 파일은 최신 ZIP 한 개만 남깁니다. 새 ZIP의 내용과 다운로드를 검증한 뒤 이전 설치 ZIP을 제거하고 README 설치 링크를 최신 파일에 맞춥니다. 파일명은 `ai-gauge-YYYYMMDDHHmm.zip`이며 과거 Git 이력은 지우지 않습니다. 단순 ZIP 재배포를 위해 새 브랜치를 만들지 않으며, 동일 파일 재제공 시 원래 버전·바이트를 유지합니다.
+소스·문서는 GitHub main에서 확인할 수 있고 검증한 설치 ZIP은 기존 main의 `downloads`에 게시합니다. 개발용과 정식 배포용 최신 ZIP을 각각 한 개씩 유지하고 README에서 종류별 버전과 링크를 구분합니다. 정식 배포용은 `npm run build:release`로 생성하며 진단 UI와 응답이 비활성화됩니다. 새 ZIP의 내용을 검증한 뒤 같은 종류의 이전 ZIP과 해당 README 링크를 함께 교체하고 게시 후 다운로드를 확인합니다. 다른 종류의 최신 ZIP은 유지합니다. 파일명은 `ai-gauge-YYYYMMDDHHmm.zip`이며 과거 Git 이력은 지우지 않습니다. 단순 ZIP 재배포를 위해 새 브랜치를 만들지 않으며, 동일 파일 재제공 시 원래 버전·바이트를 유지합니다.
 
 ## 사용과 표시
 
