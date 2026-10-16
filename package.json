@@ -11,7 +11,7 @@
     "build": "node scripts/build.mjs",
     "build:release": "node scripts/build.mjs --release",
     "package": "node scripts/package.mjs",
-    "test": "tsx --import ./tests/helpers/svg-loader.mjs --test tests/*.test.ts",
+    "test": "tsx --import ./tests/helpers/svg-loader.mjs --import ./tests/helpers/i18n-loader.mjs --test tests/*.test.ts",
     "typecheck": "tsc --noEmit",
     "lint": "npm run typecheck",
     "check": "npm run lint && npm test && npm run build && npm run audit:extension",

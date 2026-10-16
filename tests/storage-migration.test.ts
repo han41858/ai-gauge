@@ -41,7 +41,7 @@ test('new settings distinguish three collectors from four page strips and keep G
   const base = defaults();
   assert.deepEqual(base.enabled, { chatgpt: false, claude: false, gemini: false });
   assert.deepEqual(base.strips, { chatgpt: true, codex: true, claude: true, gemini: true });
-  assert.deepEqual(Object.keys(base).sort(), ['danger', 'enabled', 'strips', 'warning']);
+  assert.deepEqual(Object.keys(base).sort(), ['danger', 'enabled', 'language', 'strips', 'warning']);
   assert(isSettings(base));
   assert(!isSettings({ ...base, strips: { chatgpt: true, claude: true, gemini: true } }));
   const parsed = parseSettings({ ...base, enabled: { ...base.enabled, gemini: true }, strips: { ...base.strips, codex: false }, followTab: true });
@@ -49,6 +49,38 @@ test('new settings distinguish three collectors from four page strips and keep G
   assert.equal(parsed.strips.codex, false);
   assert.equal(parsed.strips.chatgpt, true);
   assert.equal(Object.hasOwn(parsed, 'followTab'), false, 'retired keys are dropped on parse');
+});
+
+test('language settings accept only system, English and Korean while older or corrupt values follow Chrome', () => {
+  for (const language of ['system', 'en', 'ko'] as const) {
+    const settings = { ...defaults(), language };
+    assert(isSettings(settings));
+    assert.deepEqual(parseSettings(settings), settings);
+  }
+  const { language: _language, ...older } = defaults();
+  assert.equal(isSettings(older), false);
+  assert.equal(parseSettings(older).language, 'system');
+  for (const language of ['auto', 'ko-KR', 'fr', '', null, undefined, 0, {}, ['ko']]) {
+    const stored = { ...defaults(), language, warning: 50, danger: 80 };
+    assert.equal(isSettings(stored), false);
+    assert.deepEqual(parseSettings(stored), { ...defaults(), warning: 50, danger: 80 });
+  }
+});
+
+test('language selection persists across storage clients without changing activation or snapshots', async () => {
+  const stored: Record<string, unknown> = { [MIGRATION]: true, [SETTINGS]: defaults(), [SHARED]: snapshot(35) };
+  let mock = installStorage(stored);
+  try {
+    for (const language of ['en', 'ko', 'system'] as const) {
+      const settings = await readSettings();
+      settings.language = language;
+      await writeSettings(settings);
+      mock.restore(); mock = installStorage(stored);
+      assert.deepEqual(await readSettings(), { ...defaults(), language });
+      assert.deepEqual(await readSnapshot('chatgpt'), snapshot(35));
+      assert.equal(mock.writes.length, 0);
+    }
+  } finally { mock.restore(); }
 });
 
 test('legacy settings migrate the shared pool once while preserving page preferences', async () => {
@@ -59,7 +91,7 @@ test('legacy settings migrate the shared pool once while preserving page prefere
     assert.deepEqual(settings, {
       enabled: { chatgpt: true, claude: true, gemini: false },
       strips: { chatgpt: false, codex: true, claude: false, gemini: true },
-      warning: 60, danger: 85
+      language: 'system', warning: 60, danger: 85
     });
     assert.deepEqual(shared, snapshot());
     assert.equal(mock.writes.length, 1);

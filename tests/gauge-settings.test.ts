@@ -25,7 +25,7 @@ function popup() {
       assert.notEqual(message.type, 'settings', 'popup must send only display fields');
       if (message.type === 'display-settings') {
         await save?.();
-        Object.assign(state.settings, { strips: structuredClone(message.strips), warning: message.warning, danger: message.danger });
+        Object.assign(state.settings, { strips: structuredClone(message.strips), language: message.language, warning: message.warning, danger: message.danger });
       }
       return { ok: true, view: structuredClone(state) };
     } }, storage: { onChanged: { addListener(listener: () => void) { changed = listener; } } }
@@ -33,7 +33,7 @@ function popup() {
   dom.window.eval(bundle);
   const input = (id: string) => doc.getElementById(id) as HTMLInputElement;
   const edit = (id: string, value: string) => { input(id).value = value; input(id).dispatchEvent(new dom.window.Event('input', { bubbles: true })); };
-  const submit = () => doc.getElementById('settings-form')!.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
+  const submit = () => input('gauge-danger').dispatchEvent(new dom.window.Event('change', { bubbles: true }));
   return { dom, doc, state, messages, input, edit, submit, notify: () => changed({ 'settings:v2': {} }, 'local'), saveWith: (fn: () => Promise<void>) => { save = fn; } };
 }
 
@@ -62,7 +62,7 @@ test('threshold checks report the failing fields and whether the cause is range 
   assert.deepEqual(checkUsageThresholds(70.5, 90), { ok: true, value: { warning: 70.5, danger: 90 } });
 });
 
-test('invalid gauge edits explain the error in Korean, focus the field and do not save visibility or thresholds', async () => {
+test('invalid gauge autosaves explain the error without stealing focus or saving visibility or thresholds', async () => {
   const p = popup();
   try {
     await settled();
@@ -71,12 +71,13 @@ test('invalid gauge edits explain the error in Korean, focus the field and do no
       ['70', '100.5', 'gauge-danger'], ['', '90', 'gauge-warning'], ['90', '90', 'gauge-warning'], ['91', '90', 'gauge-warning']]) {
       p.edit('gauge-warning', warning!); p.edit('gauge-danger', danger!);
       p.input('strip-chatgpt').checked = false;
+      p.input('gauge-danger').focus();
       p.submit(); await settled();
       assert.match(p.doc.getElementById('settings-feedback')!.textContent!, /0~100.*숫자|작아야 합니다/);
       assert.equal(p.doc.getElementById('settings-feedback')!.getAttribute('role'), 'alert');
       assert.equal(p.input(focused!).getAttribute('aria-invalid'), 'true');
       assert.equal(p.input(focused!).getAttribute('aria-describedby'), 'settings-feedback');
-      assert.equal(p.doc.activeElement, p.input(focused!));
+      assert.equal(p.doc.activeElement, p.input('gauge-danger'), 'validation on change must allow focus to move to the next field');
       assert.equal(p.messages.filter(message => message.type === 'display-settings').length, 0);
       assert.equal(p.state.settings.strips.chatgpt, true);
       assert.equal(p.state.settings.warning, 70); assert.equal(p.state.settings.danger, 90);
@@ -92,7 +93,7 @@ test('a valid display save submits visibility and both thresholds together while
     p.edit('gauge-warning', '55.5'); p.edit('gauge-danger', '85');
     p.input('strip-codex').checked = false;
     p.submit(); await settled();
-    const expected = { type: 'display-settings', strips: { ...before.strips, codex: false }, warning: 55.5, danger: 85 };
+    const expected = { type: 'display-settings', strips: { ...before.strips, codex: false }, language: 'system', warning: 55.5, danger: 85 };
     assert.deepEqual(p.messages.filter(message => message.type === 'display-settings'), [expected]);
     assert.deepEqual(p.state.settings, { ...before, strips: expected.strips, warning: 55.5, danger: 85 });
     assert.equal(p.input('gauge-warning').getAttribute('aria-invalid'), null);

@@ -1,15 +1,16 @@
 import type { Provider, ResetTicketGrant, ResetTicketKind, Snapshot } from './types';
 import { ticketSummary } from './tickets';
 import { localStamp, relativeTime } from './format';
+import { t, type MessageKey } from './i18n';
 
 const MANAGEMENT_URLS: Partial<Record<Provider, string>> = {
   chatgpt: 'https://chatgpt.com/settings/usage?tab=overview',
   claude: 'https://claude.ai/new#settings/usage'
 };
-const KIND_LABELS: Record<ResetTicketKind, string> = {
-  full: '전체 한도', five_hour: '5시간 한도', weekly: '주간 한도', unspecified: '종류 확인 불가'
+const KIND_KEYS: Record<ResetTicketKind, MessageKey> = {
+  full: 'ticket_kind_full', five_hour: 'ticket_kind_five_hour', weekly: 'ticket_kind_weekly', unspecified: 'ticket_kind_unspecified'
 };
-const MANAGEMENT_ACTION = '공식 사용량 관리 화면 열기 (새 탭)';
+const ticketCount = (count: number) => t(count === 1 ? 'ticket_count_one' : 'ticket_count_other', String(count));
 export function inlineTicketDisplay(snapshot: Snapshot, now = Date.now()) {
   // The popup keeps its existing cache grace; the strip requires a successful ticket check.
   const usageReady = snapshot.state === 'ok' && snapshot.errorCode === null;
@@ -20,31 +21,31 @@ export function inlineTicketDisplay(snapshot: Snapshot, now = Date.now()) {
   if (!href || !summary?.expiresAt) return null;
   const remaining = relativeTime(Date.parse(summary.expiresAt) - now);
   if (!remaining) return null;
-  const text = `🎫 티켓 만료: ${remaining}`;
-  return { href, text, accessible: `${text}. ${MANAGEMENT_ACTION}` };
+  const text = t('ticket_inline', remaining);
+  return { href, text, accessible: `${text}. ${t('ticket_management_action')}` };
 }
 export const ticketDate = (value: string): string => localStamp(new Date(value));
 function grantDetail(grant: ResetTicketGrant, now: number): string {
   const conditions: string[] = [];
-  if (grant.startsAt && Date.parse(grant.startsAt) > now) conditions.push(`${ticketDate(grant.startsAt)}부터`);
-  if (grant.expiresAt) conditions.push(`${ticketDate(grant.expiresAt)} 만료`);
-  if (grant.requiresLimit) conditions.push('한도 도달 조건');
-  if (grant.blocked) conditions.push('사용 제한 중');
-  if (grant.selected === false) conditions.push('다른 티켓 우선');
-  if (grant.usableNow === false) conditions.push('현재 사용 불가');
-  if (grant.usableNow === null) conditions.push('사용 가능 여부 확인 불가');
-  return `${KIND_LABELS[grant.kind]} ${grant.count}개${conditions.length ? ` · ${conditions.join(' · ')}` : ''}`;
+  if (grant.startsAt && Date.parse(grant.startsAt) > now) conditions.push(t('ticket_starts', ticketDate(grant.startsAt)));
+  if (grant.expiresAt) conditions.push(t('ticket_expiry', ticketDate(grant.expiresAt)));
+  if (grant.requiresLimit) conditions.push(t('ticket_requires_limit'));
+  if (grant.blocked) conditions.push(t('ticket_blocked'));
+  if (grant.selected === false) conditions.push(t('ticket_other_first'));
+  if (grant.usableNow === false) conditions.push(t('ticket_unavailable_now'));
+  if (grant.usableNow === null) conditions.push(t('ticket_availability_unknown'));
+  return `${t(KIND_KEYS[grant.kind])} ${ticketCount(grant.count)}${conditions.length ? ` · ${conditions.join(' · ')}` : ''}`;
 }
 export function ticketDisplay(snapshot: Snapshot, now = Date.now()) {
   const href = MANAGEMENT_URLS[snapshot.provider], summary = ticketSummary(snapshot, now);
   if (!href || !summary) return null;
-  const expiry = summary.expiresAt ? `${ticketDate(summary.expiresAt)} 만료` : null;
-  const count = `🎫 초기화 티켓 ${summary.held}개`;
+  const expiry = summary.expiresAt ? t('ticket_expiry', ticketDate(summary.expiresAt)) : null;
+  const count = t(summary.held === 1 ? 'ticket_total_one' : 'ticket_total_other', String(summary.held));
   const entries = summary.grants.length === 1 && !summary.grants[0]!.expiresAt ? []
     : summary.grants.map(grant => grant.expiresAt
-      ? `${grant.count > 1 ? `${grant.count}개 · ` : ''}${ticketDate(grant.expiresAt)} 만료`
-      : `${grant.count}개`);
+      ? `${grant.count > 1 ? `${ticketCount(grant.count)} · ` : ''}${t('ticket_expiry', ticketDate(grant.expiresAt))}`
+      : ticketCount(grant.count));
   const details = summary.grants.map(grant => grantDetail(grant, now)).join('\n');
   return { href, count, entries, expiry, details,
-    popupAccessible: `${[count, ...entries].join(', ')}. ${MANAGEMENT_ACTION}` };
+    popupAccessible: `${[count, ...entries].join(', ')}. ${t('ticket_management_action')}` };
 }

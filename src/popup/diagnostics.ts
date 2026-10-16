@@ -1,6 +1,7 @@
 import { ORIGINS, PAGE_PROVIDERS, PROVIDERS, providerFromUrl, type PageProvider, type Provider, type Snapshot, type View } from '../shared/types';
 import { displayProvider } from '../shared/display-policy';
 import type { DisplayDiagnostic, ReadyDisplayDiagnostic } from '../content/display-diagnostics';
+import { t } from '../shared/i18n';
 
 type ProviderDiagnostic = Pick<Snapshot, 'state' | 'errorCode' | 'checkedAt' | 'collectedAt' | 'nextAttemptAt'> & {
   enabled: boolean;
@@ -65,18 +66,18 @@ export function bindDiagnostics(doc: Document, getView: () => View | null, exten
   const show = async () => {
     const currentRevision = ++revision;
     const view = getView();
-    if (!view) { feedback.textContent = '상태를 아직 읽지 못했습니다. 잠시 후 다시 눌러 주세요.'; return null; }
+    if (!view) { feedback.textContent = t('diagnostics_not_ready'); return null; }
     const report = createDiagnosticReport(view, extensionVersion);
     output.value = JSON.stringify(report, null, 2); output.hidden = false;
     if (readDisplay) {
-      feedback.textContent = '현재 탭의 표시 상태를 확인하고 있습니다.';
+      feedback.textContent = t('diagnostics_checking_tab');
       try { report.display = await readDisplay(view); }
       catch { report.display = { status: 'content_unavailable' }; }
       if (revision !== currentRevision) return null;
     }
     const text = JSON.stringify(report, null, 2);
     output.value = text;
-    feedback.textContent = '현재 상태를 표시했습니다. 자동으로 전송되지 않습니다.';
+    feedback.textContent = t('diagnostics_shown');
     return text;
   };
   doc.getElementById('diagnostics-show')!.addEventListener('click', () => { void show(); });
@@ -84,8 +85,8 @@ export function bindDiagnostics(doc: Document, getView: () => View | null, exten
     void (async () => {
       const text = await show();
       if (text === null) return;
-      try { await copy(text); feedback.textContent = '진단 정보를 복사했습니다.'; }
-      catch { output.focus(); output.select(); feedback.textContent = '자동 복사가 허용되지 않아 내용을 선택했습니다. 직접 복사해 주세요.'; }
+      try { await copy(text); feedback.textContent = t('diagnostics_copied'); }
+      catch { output.focus(); output.select(); feedback.textContent = t('diagnostics_copy_failed'); }
     })();
   });
 }

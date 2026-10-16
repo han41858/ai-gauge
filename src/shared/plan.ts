@@ -14,7 +14,7 @@ export function parsePlan(provider: Provider, input: unknown): PlanInfo | null {
   const raw = record(input), label = knownPlanLabel(provider, raw?.label);
   return label && finite(raw?.checkedAt) && raw.checkedAt > 0 ? { label, checkedAt: raw.checkedAt } : null;
 }
-export function currentPlanLabel(snapshot: Snapshot, now = Date.now()): string {
+export function currentPlanLabel(snapshot: Snapshot, now = Date.now()): string | null {
   const plan = parsePlan(snapshot.provider, snapshot.plan);
   // A routine attempt can advance checkedAt while its fresh successful plan
   // remains usable. Document changes, failures and expiry still invalidate it.
@@ -22,5 +22,5 @@ export function currentPlanLabel(snapshot: Snapshot, now = Date.now()): string {
     && plan.checkedAt === snapshot.collectedAt && finite(snapshot.checkedAt)
     && plan.checkedAt <= snapshot.checkedAt && snapshot.checkedAt <= now
     && finite(now) && plan.checkedAt <= now && now - plan.checkedAt < PLAN_MAX_AGE_MS
-    ? plan.label : '확인 불가';
+    ? plan.label : null;
 }

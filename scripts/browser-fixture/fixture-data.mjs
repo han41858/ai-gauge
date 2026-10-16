@@ -1,7 +1,7 @@
 // Synthetic view served by the mocked extension APIs; no real account data.
 export function createFixture() {
   const fixture = {
-    settings: { enabled: { chatgpt: true, claude: true, gemini: true }, strips: { chatgpt: true, codex: true, claude: true, gemini: true }, warning: 70, danger: 90 },
+    settings: { enabled: { chatgpt: true, claude: true, gemini: true }, strips: { chatgpt: true, codex: true, claude: true, gemini: true }, warning: 70, danger: 90, language: 'system' },
     permissions: { chatgpt: true, claude: true, gemini: true },
     snapshots: {
       chatgpt: { provider: 'chatgpt', state: 'ok', limits: [{ id: 'shared:primary_window', label: 'ChatGPT · 7일', category: 'product', percent: 42, resetsAt: new Date(Date.now() + 3600000).toISOString(), windowSeconds: 604800, remaining: null, unit: null, source: 'api' }], collectedAt: Date.now(), checkedAt: Date.now(), nextAttemptAt: 0, failures: 0, errorCode: null },

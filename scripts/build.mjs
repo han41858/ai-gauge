@@ -20,4 +20,8 @@ await writeFile(join(outdir, 'popup.html'), popup);
 await copyFile('src/popup/popup.css', join(outdir, 'popup.css'));
 await mkdir(join(outdir, 'assets'), { recursive: true });
 for (const size of [16, 32, 48, 128]) await copyFile(`assets/icon${size}.png`, join(outdir, `assets/icon${size}.png`));
+for (const language of ['en', 'ko']) {
+  await mkdir(join(outdir, '_locales', language), { recursive: true });
+  await copyFile(`_locales/${language}/messages.json`, join(outdir, '_locales', language, 'messages.json'));
+}
 console.log(`Built ${values.release ? 'release' : 'development'} MV3 extension: ${outdir}/ (${version.version_name}, Asia/Seoul)`);

@@ -31,7 +31,7 @@ test('snapshots written before optional plans remain usable and legacy shared us
     const { plan: _plan, ...old } = success(emptySnapshot(provider), limits, base);
     const restored = parseSnapshot(old, provider);
     assert.deepEqual(restored, old);
-    assert.equal(currentPlanLabel(restored, base), '확인 불가');
+    assert.equal(currentPlanLabel(restored, base), null);
     assert.equal(effectiveSnapshot(restored, base).state, 'ok');
   }
   const { plan: _plan, ...old } = success(emptySnapshot('chatgpt'), limits, base);
@@ -41,7 +41,7 @@ test('snapshots written before optional plans remain usable and legacy shared us
     assert.deepEqual(migrated.limits, limits);
     assert.equal(migrated.collectedAt, base);
     assert.equal(migrated.plan, undefined);
-    assert.equal(currentPlanLabel(migrated, base), '확인 불가');
+    assert.equal(currentPlanLabel(migrated, base), null);
   });
 });
 
@@ -63,7 +63,7 @@ test('malformed, cross-provider and private plan labels are discarded without di
       assert.deepEqual(restored.limits, limits);
       assert.equal(restored.collectedAt, base);
       assert.equal(restored.state, 'ok');
-      assert.equal(currentPlanLabel(restored, base), '확인 불가');
+      assert.equal(currentPlanLabel(restored, base), null);
       assert.doesNotMatch(JSON.stringify(restored), /example\.test|onerror|future-paid-tier/);
     }
   }
@@ -87,7 +87,7 @@ test('successful collections replace a subscription change and then clear an unk
     assert.equal(snapshot.state, 'ok');
     assert.equal(snapshot.collectedAt, now);
     assert.equal(snapshot.plan, null);
-    assert.equal(currentPlanLabel(snapshot, now), '확인 불가');
+    assert.equal(currentPlanLabel(snapshot, now), null);
     assert.deepEqual(snapshot.limits, limits);
     assert.equal(calls, 3);
   }
@@ -101,7 +101,7 @@ test('failed collection clears a plan while the first transient failure keeps va
       assert.equal(failed.plan, null);
       assert.deepEqual(failed.limits, limits);
       assert.equal(failed.collectedAt, base);
-      assert.equal(currentPlanLabel(effectiveSnapshot(failed, base + 60_000), base + 60_000), '확인 불가');
+      assert.equal(currentPlanLabel(effectiveSnapshot(failed, base + 60_000), base + 60_000), null);
       if (code === 'network' || code === 'server') assert.equal(effectiveSnapshot(failed, base + 60_000).state, 'ok');
     }
   }
@@ -122,7 +122,7 @@ test('a routine refresh preserves each fresh plan while awaiting its new respons
     assert.equal(restored.checkedAt, now, 'the persisted attempt lease still protects against worker restarts');
     assert.equal(restored.plan?.checkedAt, base, 'an attempt cannot extend the lifetime of the old plan');
     assert.equal(currentPlanLabel(restored, now), plans[provider]);
-    assert.equal(currentPlanLabel(restored, base + PLAN_MAX_AGE_MS), '확인 불가');
+    assert.equal(currentPlanLabel(restored, base + PLAN_MAX_AGE_MS), null);
     response.resolve({ limits, plan: changedPlans[provider] });
     await pending;
     assert.equal(currentPlanLabel(snapshot, now), changedPlans[provider]);
@@ -137,13 +137,13 @@ test('a plan expires at ten minutes independently of valid usage and cannot clai
     const aged = effectiveSnapshot(before, base + PLAN_MAX_AGE_MS);
     assert.equal(aged.state, 'ok');
     assert.deepEqual(aged.limits, limits);
-    assert.equal(currentPlanLabel(aged, base + PLAN_MAX_AGE_MS), '확인 불가');
-    assert.equal(currentPlanLabel(before, base - 1), '확인 불가');
+    assert.equal(currentPlanLabel(aged, base + PLAN_MAX_AGE_MS), null);
+    assert.equal(currentPlanLabel(before, base - 1), null);
     assert.equal(currentPlanLabel({ ...before, checkedAt: base + 1 }, base + 1), plans[provider], 'a new attempt does not invalidate a fresh successful plan');
-    assert.equal(currentPlanLabel({ ...before, checkedAt: base + 1 }, base), '확인 불가');
-    assert.equal(currentPlanLabel({ ...before, checkedAt: base - 1 }, base), '확인 불가');
-    assert.equal(currentPlanLabel({ ...before, collectedAt: base - 1 }, base), '확인 불가');
-    assert.equal(currentPlanLabel({ ...before, errorCode: 'network' }, base), '확인 불가');
+    assert.equal(currentPlanLabel({ ...before, checkedAt: base + 1 }, base), null);
+    assert.equal(currentPlanLabel({ ...before, checkedAt: base - 1 }, base), null);
+    assert.equal(currentPlanLabel({ ...before, collectedAt: base - 1 }, base), null);
+    assert.equal(currentPlanLabel({ ...before, errorCode: 'network' }, base), null);
   }
 });
 
@@ -163,7 +163,7 @@ test('an account context change clears only the plan during cooldown and preserv
     assert.equal(due(snapshot, 'manual', base + 1), false);
     await scheduler.refresh('chatgpt', 'manual');
     assert.equal(calls, 0);
-    assert.equal(currentPlanLabel(snapshot, base + 1), '확인 불가');
+    assert.equal(currentPlanLabel(snapshot, base + 1), null);
   }
 });
 
@@ -231,7 +231,7 @@ test('worker restart honors persisted plan expiry, renews once, and stores no ac
     const restored = await readSnapshot('gemini');
     assert.deepEqual(restored.plan, { label: 'AI Pro', checkedAt: base });
     assert.equal(currentPlanLabel(restored, base + PLAN_MAX_AGE_MS - 1), 'AI Pro');
-    assert.equal(currentPlanLabel(restored, base + PLAN_MAX_AGE_MS), '확인 불가');
+    assert.equal(currentPlanLabel(restored, base + PLAN_MAX_AGE_MS), null);
     assert.equal(effectiveSnapshot(restored, base + PLAN_MAX_AGE_MS).state, 'ok');
     let calls = 0;
     const io = { read: readSnapshot, write: writeSnapshot, enabled: async () => true, now: () => base + PLAN_MAX_AGE_MS,
@@ -259,7 +259,7 @@ test('a deferred context refresh survives worker restart and collects once at th
       await new Scheduler(io).invalidatePlan('chatgpt');
       const pending = await readSnapshot('chatgpt');
       assert.equal(pending.planRefreshPending, true);
-      assert.equal(currentPlanLabel(pending, now), '확인 불가');
+      assert.equal(currentPlanLabel(pending, now), null);
       const restarted = new Scheduler(io);
       now = pending.nextAttemptAt - 1;
       await restarted.refresh('chatgpt', 'periodic');
@@ -269,7 +269,7 @@ test('a deferred context refresh survives worker restart and collects once at th
       assert.equal(calls, 1);
       const renewed = await readSnapshot('chatgpt');
       assert.equal(renewed.planRefreshPending, false);
-      assert.equal(currentPlanLabel(renewed, now), plan ?? '확인 불가');
+      assert.equal(currentPlanLabel(renewed, now), plan ?? null);
       assert.deepEqual(renewed.limits, limits);
       now += PLAN_MAX_AGE_MS - 1;
       await new Scheduler(io).refresh('chatgpt', 'periodic');

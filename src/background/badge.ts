@@ -3,16 +3,18 @@ import { displayProvider } from '../shared/display-policy';
 import { highestUsageLimit } from '../shared/usage-selection';
 import { effectiveSnapshot } from '../storage/snapshots';
 import { usageText, statusText } from '../shared/format';
+import { setLanguagePreference, t } from '../shared/i18n';
 const SERVICE_COLORS: Record<Provider, string> = { chatgpt: '#0D8669', claude: '#B16046', gemini: '#3569C8' };
 type BadgeValue = { text: string; color: string; textColor: string; title: string };
 const EMPTY: BadgeValue = { text: '', color: '#697386', textColor: '#FFFFFF', title: 'AI Gauge' };
 export function badge(view: View, activeUrl?: string, now = Date.now()): BadgeValue {
+  setLanguagePreference(view.settings.language);
   const page = providerFromUrl(activeUrl);
   if (!page) return EMPTY;
   const p = displayProvider(page);
   const s = effectiveSnapshot(view.snapshots[p], now), limit = highestUsageLimit(s.limits);
   if (!view.settings.enabled[p] || !view.permissions[p] || s.state !== 'ok' || !limit || limit.percent === null) {
-    const reason = !view.settings.enabled[p] ? '비활성' : !view.permissions[p] ? '권한 필요' : s.state !== 'ok' ? statusText(s) : '사용률 확인 불가';
+    const reason = !view.settings.enabled[p] ? t('badge_disabled') : !view.permissions[p] ? t('badge_permission_required') : s.state !== 'ok' ? statusText(s) : t('badge_usage_unknown');
     return { text: '—', color: '#697386', textColor: '#FFFFFF', title: `AI Gauge · ${NAMES[p]} · ${reason}` };
   }
   return { text: `${Math.round(limit.percent)}%`, color: SERVICE_COLORS[p], textColor: '#FFFFFF', title: `AI Gauge · ${NAMES[p]} · ${usageText(limit)}` };

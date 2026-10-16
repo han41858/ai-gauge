@@ -18,12 +18,12 @@ test('sender validation blocks spoofed origin, frame, cross-site/manual refresh 
   assert(authorized({ type: 'refresh', provider: 'claude', trigger: 'event' }, sender, 'ext'));
   assert(!authorized({ type: 'refresh', provider: 'chatgpt', trigger: 'event' }, sender, 'ext'));
   assert(!authorized({ type: 'refresh', provider: 'claude', trigger: 'manual' }, sender, 'ext'));
-  assert(!authorized({ type: 'display-settings', strips: defaults().strips, warning: 70, danger: 90 }, sender, 'ext'));
+  assert(!authorized({ type: 'display-settings', language: 'system', strips: defaults().strips, warning: 70, danger: 90 }, sender, 'ext'));
   assert(!authorized({ type: 'read' }, sender, 'ext'));
   assert(!authorized({ type: 'view' }, { ...sender, frameId: 1 }, 'ext'));
   assert(!authorized({ type: 'view' }, { ...sender, id: 'other' }, 'ext'));
   assert(!authorized({ type: 'view' }, { ...sender, url: 'https://claude.ai.evil/new' }, 'ext'));
-  assert(authorized({ type: 'display-settings', strips: defaults().strips, warning: 70, danger: 90 }, { id: 'ext', url: 'chrome-extension://ext/popup.html' }, 'ext'));
+  assert(authorized({ type: 'display-settings', language: 'system', strips: defaults().strips, warning: 70, danger: 90 }, { id: 'ext', url: 'chrome-extension://ext/popup.html' }, 'ext'));
   assert(authorized({ type: 'read' }, { id: 'ext', url: 'chrome-extension://ext/popup.html' }, 'ext'));
 });
 test('ordinary ChatGPT content may refresh the shared display pool without gaining manual or cross-site access', () => {

@@ -64,9 +64,11 @@ export interface Snapshot {
   tickets?: TicketCache | null;
   ticketRefreshPending?: boolean;
 }
+export type LanguagePreference = 'system' | 'en' | 'ko';
 export interface Settings {
   enabled: Record<Provider, boolean>;
   strips: Record<PageProvider, boolean>;
+  language: LanguagePreference;
   warning: number;
   danger: number;
 }
