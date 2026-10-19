@@ -15,4 +15,4 @@ export function hasExternalChange(records: MutationRecord[]): boolean {
   });
 }
 
-export const OBSERVED_ATTRIBUTES = ['hidden', 'aria-hidden', 'inert', 'style', 'class', 'contenteditable', 'aria-label', 'data-testid', 'data-test-id', 'data-cds'];
+export const OBSERVED_ATTRIBUTES = ['hidden', 'aria-hidden', 'inert', 'open', 'role', 'style', 'class', 'contenteditable', 'aria-label', 'data-testid', 'data-test-id', 'data-cds'];

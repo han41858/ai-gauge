@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { checkGaugeMatchesUsage } from './gauge-checks.mjs';
+import { checkModalIsolation } from './modal-checks.mjs';
 
 // Claude chin placement, progress updates and cache reliability states.
 export async function runClaudeChecks({ evaluate, pause, waitForPlacement, content }) {
@@ -11,6 +12,7 @@ export async function runClaudeChecks({ evaluate, pause, waitForPlacement, conte
     const editor = '<div id="claude-inner" class="relative w-full min-w-0" style="min-width:0;width:100%;position:relative"><div contenteditable="true" class="ProseMirror" style="min-height:48px">private Claude prompt</div></div>';
     await evaluate(`history.replaceState(null,'',${JSON.stringify(containsEditor ? '/new' : '/chat/fixture')});document.body.innerHTML=${JSON.stringify(`<main><div style="min-height:700px;display:flex;flex-direction:column;justify-content:center"><form><div id="claude-surface" class="bg-surface-3" style="padding:12px;background:#e7ebef;border-radius:16px">${containsEditor ? '' : editor}<div id="claude-chin" data-cds="ChatComposerChin" style="padding:8px;background:#d4dbe3;border-radius:12px">${containsEditor ? editor : ''}<div id="claude-toolbar" role="toolbar"><button type="button">Attach</button><button type="button">Send</button></div></div></div></form></div></main>`)};window.__claudeControls=[...document.querySelectorAll('#claude-toolbar button')];window.__claudeChinStyle=document.getElementById('claude-chin').getAttribute('style');window.dispatchEvent(new PopStateEvent('popstate'));`);
     await waitForPlacement('claude-chin');
+    if (containsEditor) await checkModalIsolation({ evaluate, pause, waitForPlacement }, 'claude', 'claude-chin');
     assert(await evaluate(`(()=>{const chin=document.getElementById('claude-chin'),host=document.getElementById('ai-gauge-usage-strip'),toolbar=document.getElementById('claude-toolbar');return !chin.contains(host)&&!document.getElementById('claude-inner').contains(host)&&chin.getAttribute('style')===window.__claudeChinStyle&&window.__claudeControls.every((button,i)=>toolbar.children[i]===button);})()`), 'Claude strip follows ChatComposerChin for containing and sibling editors without changing the toolbar');
     assert.equal(await evaluate('document.querySelector(".ProseMirror").textContent'), 'private Claude prompt');
     assert.equal(await evaluate('document.querySelectorAll("#claude-toolbar button").length'), 2);

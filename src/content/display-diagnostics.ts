@@ -1,4 +1,4 @@
-import { findComposerTarget } from './selectors';
+import { findComposerTarget, isRendered } from './selectors';
 import type { PageProvider } from '../shared/types';
 
 export interface ReadyDisplayDiagnostic {
@@ -23,14 +23,9 @@ export function authorizedDisplayRequest(message: unknown, sender: chrome.runtim
 }
 
 function visible(element: HTMLElement): boolean {
-  if (!element.isConnected || element.closest('[hidden],[inert],[aria-hidden="true"]')) return false;
+  if (!isRendered(element)) return false;
   const win = element.ownerDocument.defaultView;
   if (!win) return false;
-  for (let node: HTMLElement | null = element; node; node = node.parentElement) {
-    const style = win.getComputedStyle(node);
-    if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse'
-      || style.contentVisibility === 'hidden' || style.opacity === '0') return false;
-  }
   return [...element.getClientRects()].some(box => box.width > 1 && box.height > 1
     && box.right > 0 && box.bottom > 0 && box.left < win.innerWidth && box.top < win.innerHeight);
 }
