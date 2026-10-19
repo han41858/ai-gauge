@@ -5,7 +5,7 @@ import { UsageStrip } from '../src/content/usage-strip';
 import { usageParts } from '../src/content/usage-label';
 import { defaults } from '../src/storage/settings';
 import { emptySnapshot, FRESH_MS } from '../src/storage/snapshots';
-import type { View } from '../src/shared/types';
+import type { PageProvider, UsageLimit, View } from '../src/shared/types';
 
 function view(percent: number | null = 17): View {
   const settings = defaults(); settings.enabled.chatgpt = true;
@@ -18,14 +18,18 @@ function view(percent: number | null = 17): View {
   } };
 }
 
-function fixture() {
-  const dom = new JSDOM('<main><form><div id="prompt-textarea" contenteditable="true"></div><button>Send</button></form></main>', { url: 'https://chatgpt.com/' });
+function fixture(provider: PageProvider = 'chatgpt') {
+  const composer = provider === 'gemini'
+    ? '<input-area-v2><rich-textarea><div contenteditable="true"></div></rich-textarea><button>Send</button></input-area-v2>'
+    : '<form><div id="prompt-textarea" contenteditable="true"></div><button>Send</button></form>';
+  const urls = { chatgpt: 'https://chatgpt.com/', codex: 'https://chatgpt.com/codex', claude: 'https://claude.ai/new', gemini: 'https://gemini.google.com/app' };
+  const dom = new JSDOM(`<main>${composer}</main>`, { url: urls[provider] });
   const roots = new Map<HTMLElement, ShadowRoot>();
   const original = dom.window.HTMLElement.prototype.attachShadow;
   dom.window.HTMLElement.prototype.attachShadow = function(this: HTMLElement, options: ShadowRootInit) {
     const root = original.call(this, options); roots.set(this, root); return root;
   };
-  const doc = dom.window.document, strip = new UsageStrip('chatgpt', doc);
+  const doc = dom.window.document, strip = new UsageStrip(provider, doc);
   const elements = () => {
     const host = doc.getElementById('ai-gauge-usage-strip')!;
     const root = roots.get(host)!;
@@ -339,7 +343,6 @@ test('composer selection keeps text, reset, progress, needle and color on the sa
         { ...base, percent: weeklyUsed, resetsAt: weeklyHours === null ? null : new Date(now + weeklyHours * 3_600_000).toISOString() },
         { ...base, id: 'product:review:primary_window', percent: 100 }
       ];
-      current.snapshots.claude = { ...current.snapshots.chatgpt, provider: 'claude' };
       strip.update(current);
       const { root, progress, current: text, reset } = elements();
       assert.equal(text.textContent, `사용량: ${expected}%`);
@@ -358,4 +361,85 @@ test('composer selection keeps text, reset, progress, needle and color on the sa
     assert.equal(elements().progress.hidden, true);
     assert.equal(elements().reset.textContent, '🕒 초기화: 확인 불가');
   } finally { Date.now = originalNow; dom.window.close(); }
+});
+
+test('all four composers use their own provider selection while ChatGPT and Codex share updates and invalidation', () => {
+  const pages = { chatgpt: fixture('chatgpt'), codex: fixture('codex'), claude: fixture('claude'), gemini: fixture('gemini') };
+  const now = Date.now(), originalNow = Date.now; Date.now = () => now;
+  try {
+    const current = view();
+    current.settings.enabled = { chatgpt: true, claude: true, gemini: true };
+    const base = current.snapshots.chatgpt.limits[0]!;
+    const bucket = (id: string, percent: number, milliseconds: number | null, category: UsageLimit['category']): UsageLimit => ({
+      ...base, id, percent, category, resetsAt: milliseconds === null ? null : new Date(now + milliseconds).toISOString()
+    });
+    current.snapshots.chatgpt.limits = [
+      bucket('shared:primary_window', 20, 3 * 3_600_000, 'product'),
+      bucket('shared:secondary_window', 85, 4 * 86_400_000, 'product'),
+      bucket('product:review:primary_window', 100, null, 'product')
+    ];
+    current.snapshots.claude = { ...current.snapshots.chatgpt, provider: 'claude', limits: [
+      bucket('five_hour', 80, 5 * 60_000, 'window'),
+      bucket('seven_day', 100, 4 * 86_400_000, 'window'),
+      bucket('seven_day_sonnet', 100, null, 'model')
+    ] };
+    current.snapshots.gemini = { ...current.snapshots.chatgpt, provider: 'gemini', limits: [
+      bucket('five_hour', 60, 45_000, 'window'), bucket('seven_day', 90, 4 * 86_400_000, 'window')
+    ] };
+    const update = () => { for (const page of Object.values(pages)) page.strip.update(current); };
+    const shown = (provider: PageProvider, percent: number, countdown: string) => {
+      const { root, progress, current: label, reset } = pages[provider].elements();
+      assert.equal(label.textContent, `사용량: ${percent}%`, provider);
+      assert.equal(progress.hidden, false, provider);
+      assert.equal(progress.value, percent, provider);
+      assert.equal(reset.textContent, `🕒 초기화: ${countdown}`, provider);
+      assert.equal(root.querySelector<SVGGElement>('.gauge-needle')!.style.transform, `rotate(${-90 + percent * 1.8}deg)`, provider);
+      assert.equal(root.querySelector('.gauge-arc')!.getAttribute('stroke'), percent >= 90 ? '#FF454E' : percent >= 70 ? '#FFAE32' : '#2DE5F4', provider);
+    };
+    update();
+    shown('chatgpt', 20, '3시간 후'); shown('codex', 20, '3시간 후');
+    shown('claude', 100, '4일 후'); shown('gemini', 60, '1분 미만');
+    current.snapshots.chatgpt.limits[0]!.percent = 0;
+    current.snapshots.claude.limits[1]!.percent = 70;
+    update();
+    shown('chatgpt', 0, '3시간 후'); shown('codex', 0, '3시간 후');
+    shown('claude', 80, '5분 후'); shown('gemini', 60, '1분 미만');
+    Object.assign(current.snapshots.chatgpt, { usageInvalidated: true, state: 'error', errorCode: 'tab_access_failed', failures: 3 });
+    update();
+    for (const provider of ['chatgpt', 'codex'] as const) {
+      const { root, progress, current: label, reset } = pages[provider].elements();
+      assert.equal(label.textContent, '사용량: 확인 불가');
+      assert.equal(progress.hidden, true);
+      assert.equal(progress.hasAttribute('value'), false);
+      assert.equal(reset.textContent, '🕒 초기화: 확인 불가');
+      assert.equal(root.querySelector('.gauge-needle')!.getAttribute('visibility'), 'hidden');
+      assert.equal(root.querySelector('.gauge-arc')!.getAttribute('stroke'), '#8893A0');
+    }
+    shown('claude', 80, '5분 후'); shown('gemini', 60, '1분 미만');
+  } finally { Date.now = originalNow; for (const page of Object.values(pages)) page.dom.window.close(); }
+});
+
+test('an elapsed excluded feature or model reset still invalidates the complete cached snapshot', () => {
+  for (const provider of ['chatgpt', 'claude'] as const) {
+    const { dom, strip, elements } = fixture(provider);
+    try {
+      const current = view(20), base = current.snapshots.chatgpt.limits[0]!;
+      current.settings.enabled[provider] = true;
+      current.snapshots[provider] = { ...current.snapshots.chatgpt, provider, limits: [
+        { ...base, id: provider === 'chatgpt' ? 'shared:primary_window' : 'five_hour', category: provider === 'chatgpt' ? 'product' : 'window' },
+        { ...base, id: provider === 'chatgpt' ? 'product:review:primary_window' : 'seven_day_sonnet',
+          category: provider === 'chatgpt' ? 'product' : 'model', percent: 100 }
+      ] };
+      strip.update(current);
+      assert.equal(elements().progress.value, 20);
+      current.snapshots[provider].limits[1]!.resetsAt = new Date(Date.now() - 1000).toISOString();
+      strip.update(current);
+      const { root, progress, current: label, reset } = elements();
+      assert.equal(label.textContent, '사용량: 확인 불가');
+      assert.equal(progress.hidden, true);
+      assert.equal(reset.textContent, '🕒 초기화: 확인 불가');
+      assert.equal(root.querySelector('.status')!.textContent, '초기화 후 확인 중');
+      assert.equal(root.querySelector('.gauge-needle')!.getAttribute('visibility'), 'hidden');
+    } finally { dom.window.close(); }
+  }
 });

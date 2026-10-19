@@ -14,12 +14,16 @@ export function highestUsageLimit(limits: readonly UsageLimit[]): UsageLimit | n
   return highest;
 }
 
-/** Only common buckets established by the adapters may represent the composer. */
-export function composerUsageLimit(provider: Provider, limits: readonly UsageLimit[]): UsageLimit | null {
-  const common = limits.filter(limit => provider === 'chatgpt'
+function isCommonComposerLimit(provider: Provider, limit: UsageLimit): boolean {
+  // OpenAI additional_rate_limits also use category 'product'; only rate_limit is shared.
+  return provider === 'chatgpt'
     ? limit.category === 'product' && ['shared:primary_window', 'shared:secondary_window'].includes(limit.id)
-    : limit.category === 'window');
-  const valid = common.filter(limit => percent(limit.percent) !== null);
+    : limit.category === 'window';
+}
+
+/** The caller applies snapshot freshness before presenting this common-bucket selection. */
+export function composerUsageLimit(provider: Provider, limits: readonly UsageLimit[]): UsageLimit | null {
+  const valid = limits.filter(limit => isCommonComposerLimit(provider, limit) && percent(limit.percent) !== null);
   const exhausted = valid.filter(limit => limit.percent === 100);
   const candidates = exhausted.length ? exhausted : valid;
   let selected: UsageLimit | null = null;

@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { composerUsageLimit, highestUsageLimit } from '../src/shared/usage-selection';
+import { parseChatGPT, parseClaude } from '../src/providers/parsers';
+import { parseGemini } from '../src/providers/gemini-parser';
 import { badge } from '../src/background/badge';
 import { defaults } from '../src/storage/settings';
 import { emptySnapshot, FRESH_MS } from '../src/storage/snapshots';
@@ -159,6 +162,9 @@ test('composer selects exhaustion first, otherwise earliest reset (requested sce
     const limits = [timed('five_hour', a, at), timed('seven_day', b, bt)];
     const before = structuredClone(limits);
     for (const provider of ['claude', 'gemini'] as const) assert.equal(composerUsageLimit(provider, limits), limits[expected]);
+    const shared = limits.map((limit, index) => ({ ...limit, category: 'product' as const,
+      id: index === 0 ? 'shared:primary_window' : 'shared:secondary_window' }));
+    assert.equal(composerUsageLimit('chatgpt', shared), shared[expected]);
     assert.deepEqual(limits, before);
   }
 });
@@ -176,6 +182,22 @@ test('composer ties retain response order; missing resets fall back to highest u
   assert.equal(composerUsageLimit('claude', [first, timed('valid', 0, 2)] )?.id, 'valid');
 });
 
+test('composer compares reset instants across timezones and keeps unknown exhausted ties in response order', () => {
+  const first = timed('five_hour', 20, 2);
+  const second = { ...timed('seven_day', 80, 2), resetsAt: '2026-10-14T21:00:00+09:00' };
+  for (const used of [20, 100]) {
+    first.percent = used;
+    second.percent = used === 100 ? 100 : 80;
+    assert.equal(composerUsageLimit('claude', [first, second]), first);
+    assert.equal(composerUsageLimit('claude', [second, first]), second);
+  }
+  first.resetsAt = null;
+  second.resetsAt = 'invalid';
+  assert.equal(composerUsageLimit('claude', [first, second]), first);
+  assert.equal(composerUsageLimit('claude', [second, first]), second);
+  assert.equal(composerUsageLimit('claude', [timed('known', 100, 96), second]), second);
+});
+
 test('composer ignores invalid usage and scoped models/features without changing badge selection', () => {
   const common = timed('five_hour', 0, 2), model = limit('sonnet', 100, 'model');
   const invalid = [null, NaN, Infinity, -1, 101].map((used, i) => timed(String(i), used, 1));
@@ -186,6 +208,30 @@ test('composer ignores invalid usage and scoped models/features without changing
   const feature = { ...model, id: 'product:review:primary_window', category: 'product' as const };
   assert.equal(composerUsageLimit('chatgpt', [feature, shared]), shared);
   assert.equal(composerUsageLimit('chatgpt', [feature]), null);
-  assert.equal(composerUsageLimit('gemini', [common]), common);
+  assert.equal(composerUsageLimit('gemini', [model, feature, common]), common);
+  assert.equal(composerUsageLimit('gemini', [model, feature]), null);
+  const unknownScope = { ...feature, id: 'shared:unrecognized_window' };
+  assert.equal(composerUsageLimit('chatgpt', [unknownScope, common, shared]), shared);
+  assert.equal(composerUsageLimit('chatgpt', [{ ...shared, percent: null }, feature]), null);
   assert.equal(composerUsageLimit('chatgpt', []), null);
+});
+
+test('adapter fixture contracts distinguish common limits from exhausted model and feature limits', () => {
+  const input = (name: string) => JSON.parse(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), 'utf8'));
+  const chatgptInput = input('chatgpt');
+  chatgptInput.additional_rate_limits[0].rate_limit.primary_window.used_percent = 100;
+  const chatgpt = parseChatGPT(chatgptInput);
+  assert.equal(composerUsageLimit('chatgpt', chatgpt)?.id, 'shared:primary_window');
+  assert.equal(highestUsageLimit(chatgpt)?.id, 'product:Synthetic Product:primary_window');
+  const claudeInput = input('claude');
+  claudeInput.seven_day_sonnet.utilization = 100;
+  claudeInput.limits[0].percent = 100;
+  const claude = parseClaude(claudeInput);
+  assert.equal(composerUsageLimit('claude', claude)?.id, 'five_hour');
+  assert.equal(highestUsageLimit(claude)?.id, 'seven_day_sonnet');
+  assert.equal(composerUsageLimit('claude', claude.filter(limit => limit.category === 'model')), null);
+  const gemini = parseGemini(input('gemini-observed'));
+  assert.equal(composerUsageLimit('gemini', gemini), gemini[1]);
+  assert.equal(composerUsageLimit('gemini', gemini)?.id, 'five_hour');
+  assert.equal(highestUsageLimit(gemini), gemini[0], 'the badge still keeps the first maximum usage');
 });

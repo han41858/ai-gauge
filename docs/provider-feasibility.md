@@ -100,6 +100,18 @@ OpenAI의 [`openai/codex` 커밋 `95273b84fbff40f9df7d71d50f1ca52c6489b25d`](htt
 - 배지는 탭별 표시 소스를 사용합니다. ChatGPT·Codex는 ChatGPT, Claude와 Gemini는 해당 데이터이며 무관한 탭이나 URL을 확인할 수 없는 탭에는 숫자를 표시하지 않습니다.
 - 기본 개발 빌드의 로컬 진단은 구조 개수·탐색 성공·표시 여부 같은 제한된 수치와 불리언만 반환합니다. 배포용 빌드에서는 진단 UI·요청 처리를 비활성화합니다.
 
+### 입력창 대표 한도의 적용 범위
+
+2026-10-19 기존 파서·fixture·저장 계약을 재검토했습니다. 새로운 로그인 API 호출이나 추가 수집은 하지 않았습니다.
+
+| 제공자 | 대표값 후보의 기존 계약 | 제외 범위와 확인 한계 |
+| --- | --- | --- |
+| ChatGPT / Codex | `rate_limit`의 `shared:primary_window`·`shared:secondary_window`, category `product` | `additional_rate_limits`도 `product`이므로 category만으로 공통 여부를 정하지 않습니다. `product:*`는 대표값에서 제외합니다. 기본 버킷도 일반 Chat 대화 전체의 한도라는 의미는 아닙니다. |
+| Claude | `five_hour`·`seven_day`를 파서가 category `window`로 구분 | `seven_day_*` 등 category `model`인 개별 한도를 제외합니다. 현재 입력창의 선택 모델과 제한의 적용 관계를 새로 추정하지 않습니다. |
+| Gemini | 관찰된 `jSf9Qc`의 type 1·2를 파서가 category `window`로 구분 | 관찰 응답에 모델·기능별 적용 관계가 없습니다. 두 창 밖의 범위를 만들거나 전체 기능의 사용 가능 여부로 확대하지 않습니다. |
+
+선택 함수는 이미 정규화된 후보만 비교합니다. 표시 전에 실행하는 기존 캐시 신뢰성 판단은 전체 스냅샷을 대상으로 하므로, 대표값에서 제외한 모델·기능 한도라도 초기화가 경과하면 새 수집까지 기존 `초기화 후 확인 중` 상태를 유지합니다. 범위별 캐시 무효화로 바꾸지 않습니다.
+
 ### 실제 표시 위치 확인 범위
 
 사용자는 이전 빌드에서 **ChatGPT 홈·채팅과 Claude 홈·채팅 위치가 정상**이라고 확인했습니다. `/codex/cloud`가 `https://chatgpt.com/`로 이동하는 화면은 허용된 호스트의 명시적인 `ComposerLayoutFooter-` 구조로 맥락을 보완합니다. ChatGPT와 Codex에 공통으로 존재할 수 있는 Body/Root 클래스만으로 Codex라고 판정하지 않습니다.
