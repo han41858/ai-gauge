@@ -13,7 +13,7 @@ function view(percent: number | null = 17): View {
   return { settings, permissions: { chatgpt: true, gemini: true, claude: true }, snapshots: {
     gemini: emptySnapshot('gemini'), claude: emptySnapshot('claude'),
     chatgpt: { ...emptySnapshot('chatgpt'), state: 'ok', collectedAt: now, checkedAt: now, errorCode: null,
-      limits: [{ id: 'weekly', label: '7일', category: 'window', percent, resetsAt: new Date(now + 49 * 3_600_000).toISOString(),
+      limits: [{ id: 'shared:secondary_window', label: '7일', category: 'product', percent, resetsAt: new Date(now + 49 * 3_600_000).toISOString(),
         windowSeconds: 604800, remaining: null, unit: null, source: 'api' }] }
   } };
 }
@@ -174,7 +174,7 @@ test('the inline gauge shares the text and progress selection and changes color 
   const { dom, strip, elements } = fixture();
   try {
     const current = view(17);
-    current.snapshots.chatgpt.limits.push({ ...current.snapshots.chatgpt.limits[0]!, id: 'five-hour', percent: 84 });
+    current.snapshots.chatgpt.limits.push({ ...current.snapshots.chatgpt.limits[0]!, id: 'shared:primary_window', percent: 84, resetsAt: new Date(Date.now() + 3_600_000).toISOString() });
     strip.update(current);
     const before = elements(), gauge = before.root.querySelector('.usage-gauge')!;
     const needle = gauge.querySelector<SVGGElement>('.gauge-needle')!, arc = gauge.querySelector('.gauge-arc')!;
@@ -320,4 +320,42 @@ test('a tab execution failure without a successful cache stays neutral and does 
     assert.equal(root.querySelector('.gauge-needle')!.getAttribute('visibility'), 'hidden');
     assert.doesNotMatch(host.getAttribute('aria-label')!, /사이트 접근 설정|사용량: 0%/);
   } finally { dom.window.close(); }
+});
+
+test('composer selection keeps text, reset, progress, needle and color on the same common bucket', () => {
+  const { dom, strip, elements } = fixture();
+  const now = Date.now();
+  const originalNow = Date.now; Date.now = () => now;
+  try {
+    for (const [shortUsed, shortHours, weeklyUsed, weeklyHours, expected, hours] of [
+      [20, 2, 85, 96, 20, 2], [100, 2, 70, 96, 100, 2], [20, 2, 100, 96, 100, 96],
+      [100, 2, 100, 96, 100, 96], [50, null, 80, 96, 80, 96], [90, null, 60, null, 90, null],
+      [100, null, 100, 96, 100, null]
+    ] as const) {
+      const current = view();
+      const base = current.snapshots.chatgpt.limits[0]!;
+      current.snapshots.chatgpt.limits = [
+        { ...base, id: 'shared:primary_window', percent: shortUsed, resetsAt: shortHours === null ? null : new Date(now + shortHours * 3_600_000).toISOString() },
+        { ...base, percent: weeklyUsed, resetsAt: weeklyHours === null ? null : new Date(now + weeklyHours * 3_600_000).toISOString() },
+        { ...base, id: 'product:review:primary_window', percent: 100 }
+      ];
+      current.snapshots.claude = { ...current.snapshots.chatgpt, provider: 'claude' };
+      strip.update(current);
+      const { root, progress, current: text, reset } = elements();
+      assert.equal(text.textContent, `사용량: ${expected}%`);
+      assert.equal(progress.value, expected);
+      assert.equal(reset.textContent, hours === null ? '🕒 초기화: 확인 불가' : hours === 96 ? '🕒 초기화: 4일 후' : '🕒 초기화: 2시간 후');
+      assert.equal(root.querySelector<SVGGElement>('.gauge-needle')!.style.transform, `rotate(${-90 + expected * 1.8}deg)`);
+      assert.equal(root.querySelector('.gauge-arc')!.getAttribute('stroke'), expected >= 90 ? '#FF454E' : expected >= 70 ? '#FFAE32' : '#2DE5F4');
+      current.snapshots.chatgpt.usageInvalidated = true;
+      strip.update(current);
+      assert.equal(elements().progress.hidden, true);
+      assert.equal(root.querySelector('.gauge-needle')!.getAttribute('visibility'), 'hidden');
+    }
+    const scopedOnly = view(100);
+    scopedOnly.snapshots.chatgpt.limits[0]!.id = 'product:review:primary_window';
+    strip.update(scopedOnly);
+    assert.equal(elements().progress.hidden, true);
+    assert.equal(elements().reset.textContent, '🕒 초기화: 확인 불가');
+  } finally { Date.now = originalNow; dom.window.close(); }
 });

@@ -32,7 +32,7 @@ const limit = (label = '7일'): UsageLimit => ({ id: 'weekly', label, category: 
 function snapshot(api: Presentation, provider: Snapshot['provider'] = 'chatgpt'): Snapshot {
   return { ...api.emptySnapshot(provider), state: 'ok', errorCode: null, collectedAt: now, checkedAt: now,
     plan: { label: provider === 'chatgpt' ? 'Pro 500' : provider === 'claude' ? 'Max 20x' : 'AI Ultra', checkedAt: now },
-    limits: [limit()], tickets: { checkedAt: now, failures: 0, inventory: { mode: 'detail', usableCount: null,
+    limits: [{ ...limit(), ...(provider === 'chatgpt' ? { id: 'shared:secondary_window', category: 'product' as const } : {}) }], tickets: { checkedAt: now, failures: 0, inventory: { mode: 'detail', usableCount: null,
       cooldownUntil: null, grants: [{ kind: 'full', count: 1, startsAt: null, expiresAt: iso(2 * day),
         usableNow: true, clears: ['five_hour', 'seven_day'], requiresLimit: false, blocked: false, selected: null }] } } };
 }

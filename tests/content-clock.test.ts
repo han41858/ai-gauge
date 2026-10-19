@@ -14,7 +14,7 @@ const bundle = bundleEntry('src/content/index.ts');
 function collected(percent: number, collectedAt: number, resetsAt: number): Snapshot {
   return {
     ...emptySnapshot('chatgpt'), state: 'ok', collectedAt, checkedAt: collectedAt, errorCode: null,
-    limits: [{ id: 'weekly', label: '주간', category: 'window', percent,
+    limits: [{ id: 'shared:secondary_window', label: '주간', category: 'product', percent,
       resetsAt: new Date(resetsAt).toISOString(), windowSeconds: 604800, remaining: null, unit: null, source: 'api' }]
   };
 }

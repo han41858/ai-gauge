@@ -13,8 +13,8 @@ export async function runGeminiChecks({ cdp, session, evaluate, pause, waitForPl
   await waitForPlacement('gemini-composer');
   await evaluate(`window.__geminiStrip=document.getElementById('ai-gauge-usage-strip');window.__geminiProgress=window.__fixtureUsageRoot.querySelector('progress');`);
   await evaluate(content);
-  assert(await evaluate(`document.querySelectorAll('#ai-gauge-usage-strip').length===1&&window.__geminiProgress.value===42&&document.querySelector('rich-textarea [contenteditable]').textContent==='private Gemini prompt'&&document.querySelectorAll('#gemini-toolbar button').length===2`), 'Gemini reuses one strip and highest reported limit without changing its input or controls');
-  assert.equal(await evaluate(`window.__fixtureUsageRoot.querySelector('.reset').textContent`), '🕒 초기화: 1일 후', 'Gemini uses the same largest-unit Korean reset countdown');
+  assert(await evaluate(`document.querySelectorAll('#ai-gauge-usage-strip').length===1&&window.__geminiProgress.value===0&&document.querySelector('rich-textarea [contenteditable]').textContent==='private Gemini prompt'&&document.querySelectorAll('#gemini-toolbar button').length===2`), 'Gemini reuses one strip and earliest-reset common limit without changing its input or controls');
+  assert.equal(await evaluate(`window.__fixtureUsageRoot.querySelector('.reset').textContent`), '🕒 초기화: 1시간 후', 'Gemini uses the same largest-unit Korean reset countdown');
   assert.equal(await evaluate(`window.__fixtureUsageRoot.querySelector('.tickets')`), null, 'Gemini has no ticket link');
   const geminiDiagnostic = await evaluate(`new Promise(resolve=>{for(const fn of window.__runtimeListeners)fn({type:'display-diagnostics'},{id:'fixture',url:'chrome-extension://fixture/popup.html'},resolve)})`);
   assert.equal(geminiDiagnostic.provider, 'gemini'); assert.equal(geminiDiagnostic.targetFound, true);
@@ -25,10 +25,10 @@ export async function runGeminiChecks({ cdp, session, evaluate, pause, waitForPl
     await waitForPlacement('gemini-composer');
     assert(await evaluate(`document.getElementById('ai-gauge-usage-strip')===window.__geminiStrip&&window.__fixtureUsageRoot.querySelector('progress')===window.__geminiProgress`), 'Gemini helper changes retain the same strip and progress node');
   }
-  await evaluate(`window.__fixture.snapshots.gemini.limits.find(limit=>limit.id==='gemini:2').percent=42.25;window.__fixture.snapshots.gemini.collectedAt=Date.now();for(const fn of window.__storageListeners)fn({'settings:v2':{}},'local');`);
+  await evaluate(`window.__fixture.snapshots.gemini.limits.find(limit=>limit.id==='gemini:1').percent=42.25;window.__fixture.snapshots.gemini.collectedAt=Date.now();for(const fn of window.__storageListeners)fn({'settings:v2':{}},'local');`);
   for (let i = 0; i < 20; i++) { if (await evaluate('window.__geminiProgress.value===42.25')) break; await pause(50); }
   assert(await evaluate(`window.__fixtureUsageRoot.querySelector('progress')===window.__geminiProgress&&window.__geminiProgress.value===42.25&&window.__geminiStrip.getAttribute('aria-label').includes('사용량: 42%')`), 'Gemini fractional usage changes update the existing bar even with unchanged rounded text');
-  await evaluate(`window.__fixture.snapshots.gemini.limits.find(limit=>limit.id==='gemini:2').percent=63;for(const fn of window.__runtimeListeners)fn({type:'invalidate'},{id:'fixture'});`);
+  await evaluate(`window.__fixture.snapshots.gemini.limits.find(limit=>limit.id==='gemini:1').percent=63;for(const fn of window.__runtimeListeners)fn({type:'invalidate'},{id:'fixture'});`);
   for (let i = 0; i < 20; i++) { if (await evaluate('window.__geminiProgress.value===63')) break; await pause(50); }
   assert(await evaluate(`window.__fixtureUsageRoot.querySelector('progress')===window.__geminiProgress&&window.__geminiProgress.value===63&&window.__geminiStrip.getAttribute('aria-label').includes('사용량: 63%')`), 'Gemini runtime invalidation updates its own visible usage');
   await checkGaugeMatchesUsage(evaluate,pause);

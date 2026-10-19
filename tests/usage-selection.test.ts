@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { highestUsageLimit } from '../src/shared/usage-selection';
+import { composerUsageLimit, highestUsageLimit } from '../src/shared/usage-selection';
 import { badge } from '../src/background/badge';
 import { defaults } from '../src/storage/settings';
 import { emptySnapshot, FRESH_MS } from '../src/storage/snapshots';
@@ -143,4 +143,49 @@ test('Gemini badge selects its highest actual usage with legible blue and white 
   assert.equal(badge(view, 'https://gemini.google.com/app', NOW).text, '0%');
   view.snapshots.gemini.limits[0]!.percent = null;
   assert.equal(badge(view, 'https://gemini.google.com/app', NOW).text, '—');
+});
+
+const timed = (id: string, used: number | null, hours: number | null): UsageLimit => ({
+  ...limit(id, used), resetsAt: hours === null ? null : new Date(NOW + hours * 3_600_000).toISOString()
+});
+
+test('composer selects exhaustion first, otherwise earliest reset (requested scenarios)', () => {
+  for (const [a, at, b, bt, expected] of [
+    [20, 2, 85, 96, 0], [100, 2, 70, 96, 0], [20, 2, 100, 96, 1],
+    [100, 2, 100, 96, 1], [50, null, 80, 96, 1], [90, null, 60, null, 0],
+    [0, 2, 100, 96, 1], [0, 2, 0, 96, 0],
+    [100, null, 100, 96, 0], [100, 2, 100, null, 1], [100, null, 20, 2, 0]
+  ] as const) {
+    const limits = [timed('five_hour', a, at), timed('seven_day', b, bt)];
+    const before = structuredClone(limits);
+    for (const provider of ['claude', 'gemini'] as const) assert.equal(composerUsageLimit(provider, limits), limits[expected]);
+    assert.deepEqual(limits, before);
+  }
+});
+
+test('composer ties retain response order; missing resets fall back to highest usage', () => {
+  for (const used of [20, 100]) {
+    const first = timed('a', used, 2), second = timed('b', 100, 2);
+    if (used < 100) second.percent = 80;
+    assert.equal(composerUsageLimit('claude', [first, second]), first);
+    assert.equal(composerUsageLimit('claude', [second, first]), second);
+  }
+  const first = timed('a', 80, null), second = timed('b', 80, null);
+  assert.equal(composerUsageLimit('claude', [first, second]), first);
+  first.resetsAt = 'invalid';
+  assert.equal(composerUsageLimit('claude', [first, timed('valid', 0, 2)] )?.id, 'valid');
+});
+
+test('composer ignores invalid usage and scoped models/features without changing badge selection', () => {
+  const common = timed('five_hour', 0, 2), model = limit('sonnet', 100, 'model');
+  const invalid = [null, NaN, Infinity, -1, 101].map((used, i) => timed(String(i), used, 1));
+  assert.equal(composerUsageLimit('claude', [...invalid, model, common]), common);
+  assert.equal(composerUsageLimit('claude', [model, ...invalid]), null);
+  assert.equal(highestUsageLimit([common, model]), model);
+  const shared = { ...common, id: 'shared:primary_window', category: 'product' as const };
+  const feature = { ...model, id: 'product:review:primary_window', category: 'product' as const };
+  assert.equal(composerUsageLimit('chatgpt', [feature, shared]), shared);
+  assert.equal(composerUsageLimit('chatgpt', [feature]), null);
+  assert.equal(composerUsageLimit('gemini', [common]), common);
+  assert.equal(composerUsageLimit('chatgpt', []), null);
 });

@@ -15,7 +15,7 @@ const grant = (changes: Partial<ResetTicketGrant> = {}): ResetTicketGrant => ({ 
   requiresLimit: false, blocked: false, selected: null, ...changes });
 const snapshot = (provider: Snapshot['provider']): Snapshot => ({ ...emptySnapshot(provider), state: 'ok',
   collectedAt: now, checkedAt: now, errorCode: null,
-  limits: [{ id: 'weekly', label: '주간', category: 'window', percent: 42, resetsAt: iso(7 * 24 * hour),
+  limits: [{ id: provider === 'chatgpt' ? 'shared:secondary_window' : 'seven_day', label: '주간', category: provider === 'chatgpt' ? 'product' : 'window', percent: 42, resetsAt: iso(7 * 24 * hour),
     windowSeconds: 604800, remaining: null, unit: null, source: 'api' }],
   tickets: { checkedAt: now, failures: 0, inventory: { mode: 'detail', grants: [grant()], usableCount: null, cooldownUntil: null } }
 });
