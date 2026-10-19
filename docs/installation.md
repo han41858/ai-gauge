@@ -22,13 +22,13 @@ npm run check
 
 설치 시 서버나 Node.js는 필요하지 않습니다. 업데이트는 기존 폴더를 교체하고 확장과 사이트 탭을 새로고침합니다. AI Gauge는 하나만 활성화하세요. 관리되는 Chrome에서 개발자 모드가 차단되면 해당 정책 아래에서는 설치할 수 없습니다.
 
-`npm run package`는 검증한 `dist`를 재빌드하지 않고 ZIP으로 묶습니다. ZIP 루트에는 manifest와 실행 파일, assets에는 크기별 아이콘, `_locales/en`·`_locales/ko`에는 번역 카탈로그가 들어가며 docs·INSTALL·상위 폴더는 없습니다. ZIP 드래그 설치는 이 환경에서 실측하지 못했으므로 압축을 풀고 manifest가 바로 있는 폴더를 로드하는 방법을 권장합니다.
+`npm run package`는 검증한 `dist`를 재빌드하지 않고 ZIP으로 묶습니다. `check`·브라우저 검증은 개발용 `dist`를 만들 수 있으므로 최종 ZIP 생성 직전에 `npm run build:release`와 `npm run audit:extension`을 실행합니다. ZIP 루트에는 manifest와 실행 파일, assets에는 크기별 아이콘, `_locales/en`·`_locales/ko`에는 번역 카탈로그가 들어가며 docs·INSTALL·상위 폴더는 없습니다. ZIP 드래그 설치는 이 환경에서 실측하지 못했으므로 압축을 풀고 manifest가 바로 있는 폴더를 로드하는 방법을 권장합니다.
 
 팝업 설정의 언어 선택은 `시스템 기본 언어`, `영어`, `한국어`입니다. 기본값 `시스템 기본 언어`는 Chrome UI 언어가 한국어이면 한국어, 그 외에는 영어이며 페이지의 언어와는 독립적입니다. 직접 언어를 선택하면 저장 버튼 없이 열린 팝업과 표시줄에도 반영됩니다. 영어 입력창은 `🕒 Resets in 4 hours`, `🎫 Ticket expires in 2 days`처럼 표시하고 팝업의 정확한 날짜·시각은 현지 시간대를 유지합니다. 시스템 기본에서 Chrome UI 언어를 바꾼 경우에는 Chrome이 안내하는 재시작을 완료한 뒤 확인합니다.
 
 버전과 ZIP 이름은 빌드 시작 시각의 한국 시간 `YYYYMMDDHHmm`입니다. Chrome 내부 버전만 같은 시각의 `YYYY.M.D.HHmm`으로 변환합니다. 소스 버전은 `0.0.0`으로 두고 수동으로 증가시키지 않습니다.
 
-소스·문서는 GitHub main에서 확인할 수 있고 검증한 설치 ZIP은 기존 main의 `downloads`에 게시합니다. 개발용과 정식 배포용 최신 ZIP을 각각 한 개씩 유지하고 README에서 종류별 버전과 링크를 구분합니다. 정식 배포용은 `npm run build:release`로 생성하며 진단 UI와 응답이 비활성화됩니다. 새 ZIP의 내용을 검증한 뒤 같은 종류의 이전 ZIP과 해당 README 링크를 함께 교체하고 게시 후 다운로드를 확인합니다. 다른 종류의 최신 ZIP은 유지합니다. 파일명은 `ai-gauge-YYYYMMDDHHmm.zip`이며 과거 Git 이력은 지우지 않습니다. 단순 ZIP 재배포를 위해 새 브랜치를 만들지 않으며, 동일 파일 재제공 시 원래 버전·바이트를 유지합니다.
+소스·문서는 GitHub main에서 확인할 수 있고 검증한 설치 ZIP은 기존 main의 `downloads`에 게시합니다. 앞으로 정식 배포용 ZIP만 생성·게시하며 개발용 ZIP은 새로 만들거나 갱신하지 않습니다. 개발 빌드는 필요한 로컬 검증에 사용합니다. 정식 배포용은 `npm run build:release`로 생성하며 진단 UI와 응답이 비활성화됩니다. 새 ZIP의 내용을 검증한 뒤 이전 배포용 ZIP과 README의 해당 버전·링크를 함께 교체하고 게시 후 다운로드를 확인합니다. 파일명은 `ai-gauge-YYYYMMDDHHmm.zip`이며 과거 Git 이력은 지우지 않습니다. 단순 ZIP 재배포를 위해 새 브랜치를 만들지 않으며, 동일 파일 재제공 시 원래 버전·바이트를 유지합니다.
 
 ## 사용과 표시
 
@@ -85,7 +85,7 @@ npm test                      # 파서·저장·스케줄러·권한·UI 회귀
 npm run build                 # 개발용 dist
 npm run build:release         # 진단 UI/응답 제외
 npm run audit:extension       # 권한·목적지·로컬 코드 검사
-npm run package               # 기존 dist만 ZIP으로 묶음
+npm run package               # 검증한 정식 dist만 ZIP으로 묶음
 npm run test:browser:fixture   # Chromium + 합성 DOM/Chrome API
 npm run test:browser:extension # 실제 unpacked 설치 smoke
 ```
