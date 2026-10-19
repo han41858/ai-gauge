@@ -2,7 +2,7 @@ import { composerUsageLimit } from '../shared/usage-selection';
 import { type PageProvider, type View } from '../shared/types';
 import { displayProvider, shouldShowStrip } from '../shared/display-policy';
 import { usageParts } from './usage-label';
-import { findComposerTarget, retainsComposerMarker, type ComposerTarget } from './selectors';
+import { findComposerTarget, retainsComposerTarget, type ComposerTarget } from './selectors';
 import { effectiveSnapshot } from '../storage/snapshots';
 import { inlineTicketDisplay } from '../shared/ticket-presentation';
 import { UsageGauge, USAGE_GAUGE_CSS } from './usage-gauge';
@@ -22,12 +22,9 @@ export class UsageStrip {
     if ([...this.doc.querySelectorAll('#ai-gauge-usage-strip')].some(node => node !== this.host)) { this.remove(); return; }
     const next = findComposerTarget(this.doc, p);
     if (next) this.target = next;
-    // A temporary mirror editor or disabled input during streaming must not
-    // destroy a known composer. Actual removal/hiding and route changes still do.
-    else if (!this.target || !retainsComposerMarker(this.target) || !this.target.anchor.isConnected || this.hidden(this.target.anchor)
-      || (this.target.scope && (!this.target.scope.isConnected || !this.target.scope.contains(this.target.anchor)))
-      || (this.target.input && (!this.target.input.isConnected || this.hidden(this.target.input)
-        || !(this.target.scope ?? this.target.anchor).contains(this.target.input)))) { this.remove(); return; }
+    // Keep a known composer through transient editors and modal isolation;
+    // actual hiding, removal or loss of its composer structure still clears it.
+    else if (!this.target || !retainsComposerTarget(this.target)) { this.remove(); return; }
     const anchor = this.target!.anchor;
     const snapshot = effectiveSnapshot(view.snapshots[displayProvider(p)]), limit = composerUsageLimit(displayProvider(p), snapshot.limits) ?? undefined;
     const parts = usageParts(snapshot, limit);
@@ -108,14 +105,6 @@ progress::-moz-progress-bar{background:currentColor;border-radius:999px}
       }
     }
     if (this.host.getAttribute('aria-label') !== parts.label) this.host.setAttribute('aria-label', parts.label);
-  }
-  private hidden(input: HTMLElement): boolean {
-    if (input.closest('[hidden],[inert],[aria-hidden="true"]')) return true;
-    for (let node: HTMLElement | null = input; node; node = node.parentElement) {
-      const style = this.doc.defaultView?.getComputedStyle(node);
-      if (style?.display === 'none' || style?.visibility === 'hidden' || style?.visibility === 'collapse') return true;
-    }
-    return false;
   }
   private currentText: HTMLElement | null = null;
   private resetText: HTMLElement | null = null;

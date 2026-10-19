@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { checkGaugeMatchesUsage } from './gauge-checks.mjs';
+import { checkModalIsolation } from './modal-checks.mjs';
 
 // Codex composer placement, root-URL recognition and strip stability.
 export async function runCodexChecks({ evaluate, pause, waitForPlacement, content }) {
@@ -13,6 +14,7 @@ export async function runCodexChecks({ evaluate, pause, waitForPlacement, conten
   await evaluate(content); assert.equal(await evaluate('document.querySelectorAll("#ai-gauge-usage-strip").length'), 1);
   await evaluate(`history.replaceState(null,'','/');document.body.innerHTML='<main><section><div id="codex-root" class="layout ComposerLayoutRoot-XCKS7O" style="padding:12px;border:1px solid gray;border-radius:16px"><textarea style="min-height:48px">private Codex prompt</textarea><div id="codex-footer" class="ComposerLayoutFooter-_8IVRO" style="display:flex;align-items:center;gap:8px"><button type="button">Environment</button><button type="button">Send</button></div></div><p>Shortcut hints</p></section></main>';window.__codexFooterStyle=document.getElementById('codex-footer').getAttribute('style');window.__codexControls=[...document.querySelectorAll('#codex-footer button')];window.dispatchEvent(new PopStateEvent('popstate'));`);
   await waitForPlacement('codex-root');
+  await checkModalIsolation({ evaluate, pause, waitForPlacement }, 'codex', 'codex-root');
   assert(await evaluate(`(()=>{const root=document.getElementById('codex-root'),footer=document.getElementById('codex-footer'),strip=document.getElementById('ai-gauge-usage-strip');return !root.contains(strip)&&footer.getAttribute('style')===window.__codexFooterStyle&&window.__codexControls.every((button,i)=>footer.children[i]===button)&&strip.getAttribute('aria-label').startsWith('사용량: 42%');})()`), 'Redirected Codex home places shared usage after the root without altering its footer controls or layout');
   await evaluate(`window.__rootStrip=document.getElementById('ai-gauge-usage-strip');document.getElementById('codex-root').className='layout ComposerLayoutRoot-newHash';document.getElementById('codex-footer').className='ComposerLayoutFooter-newHash';const hint=document.createElement('span');hint.id='late-footer-hint';hint.textContent='Shortcut';document.getElementById('codex-footer').append(hint);`);
   await pause(400);

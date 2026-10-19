@@ -5,7 +5,9 @@ const EDITABLE = '[contenteditable],textarea';
 const COMPOSER = 'form[data-chatgpt-composer],form[data-type="unified-composer"],[data-testid="codex-composer"],[data-testid="composer"]';
 const EXPLICIT_INPUT = `#prompt-textarea,${COMPOSER.split(',').flatMap(container => [`${container} textarea`, `${container} [contenteditable]`]).join(',')}`;
 const OWN_UI = '#ai-gauge-usage-strip';
-const EXCLUDED = `[hidden],[inert],[aria-hidden="true"],dialog,[role="dialog"],[role="search"],nav,[data-message-author-role],[data-testid="user-message"],[data-testid^="conversation-turn-"],${OWN_UI}`;
+const MODAL_BACKGROUND = '[inert],[aria-hidden="true"]';
+const EXCLUDED_REGION = `[hidden],dialog,[role="dialog"],[role="alertdialog"],[role="search"],nav,[data-message-author-role],[data-testid="user-message"],[data-testid^="conversation-turn-"],${OWN_UI}`;
+const EXCLUDED = `${MODAL_BACKGROUND},${EXCLUDED_REGION}`;
 const SHELL = 'html,body,main,[role="main"],[role="application"],article,aside';
 const UNRELATED_REGION = 'main,[role="main"],[role="application"],article,aside,nav,header,[role="search"],[data-message-author-role],[data-testid="user-message"],[data-testid^="conversation-turn-"]';
 const STOP = 'button[data-testid="stop-button"],button[aria-label="Stop response" i],button[aria-label="응답 중지"]';
@@ -18,8 +20,8 @@ export const SELECTORS: Record<PageProvider, { input: string; stop: string }> = 
   gemini: { input: GEMINI_INPUT, stop: GEMINI_STOP }
 };
 
-function visible(element: HTMLElement): boolean {
-  if (!element.isConnected || element.closest(EXCLUDED)) return false;
+export function isRendered(element: HTMLElement): boolean {
+  if (!element.isConnected || element.closest('[hidden],dialog:not([open])')) return false;
   for (let node: HTMLElement | null = element; node; node = node.parentElement) {
     const style = node.ownerDocument.defaultView?.getComputedStyle(node);
     if (style?.display === 'none' || style?.visibility === 'hidden' || style?.visibility === 'collapse'
@@ -28,9 +30,23 @@ function visible(element: HTMLElement): boolean {
   return true;
 }
 
+function visible(element: HTMLElement, modalBackground = false): boolean {
+  return !element.closest(modalBackground ? EXCLUDED_REGION : EXCLUDED) && isRendered(element);
+}
+
+function isModalBackground(element: HTMLElement): boolean {
+  const isolated = element.closest(MODAL_BACKGROUND);
+  if (!isolated) return false;
+  // Dialog libraries isolate their still-painted background from focus and
+  // assistive technology. Retain an existing strip without undoing that isolation.
+  return [...element.ownerDocument.querySelectorAll<HTMLElement>('dialog[open],[role="dialog"],[role="alertdialog"]')]
+    .some(dialog => !isolated.contains(dialog) && !dialog.contains(element)
+      && !dialog.closest(`${MODAL_BACKGROUND},${OWN_UI}`) && isRendered(dialog) && onScreen(dialog));
+}
+
 export function hasStreamingControl(doc: Document, provider: PageProvider): boolean {
   return [...doc.querySelectorAll<HTMLElement>(SELECTORS[provider].stop)].some(control =>
-    visible(control) && (provider !== 'gemini' || (!control.closest('[contenteditable]') && geminiBoundary(control) !== null)));
+    visible(control, isModalBackground(control)) && (provider !== 'gemini' || (!control.closest('[contenteditable]') && geminiBoundary(control) !== null)));
 }
 
 function editingHost(element: Element): boolean {
@@ -165,16 +181,23 @@ function classPrefixElements(doc: Document, prefix: string): HTMLElement[] {
     .filter(element => hasClassPrefix(element, prefix));
 }
 
-function eligibleAnchor(anchor: HTMLElement): boolean {
-  return visible(anchor) && onScreen(anchor) && !anchor.closest('[contenteditable]')
+function eligibleAnchor(anchor: HTMLElement, modalBackground = false): boolean {
+  return visible(anchor, modalBackground) && onScreen(anchor) && !anchor.closest('[contenteditable]')
     && !anchor.querySelector(UNRELATED_REGION);
 }
 
-export function retainsComposerMarker(target: ComposerTarget): boolean {
+function retainsComposerMarker(target: ComposerTarget, modalBackground: boolean): boolean {
   if (!target.marker) return true;
   const { anchor, marker } = target;
-  return eligibleAnchor(anchor) && (marker === 'claude' ? anchor.matches('div[data-cds="ChatComposerChin"]')
+  return eligibleAnchor(anchor, modalBackground) && (marker === 'claude' ? anchor.matches('div[data-cds="ChatComposerChin"]')
     : hasClassPrefix(anchor, marker === 'chatgpt' ? 'ComposerLayoutBody-' : marker === 'codex' ? 'ComposerLayoutRoot-' : 'ComposerLayoutFooter-'));
+}
+
+export function retainsComposerTarget(target: ComposerTarget): boolean {
+  const { anchor, input, scope } = target, modalBackground = isModalBackground(anchor);
+  return visible(anchor, modalBackground) && retainsComposerMarker(target, modalBackground)
+    && (!scope || (scope.isConnected && scope.contains(anchor)))
+    && (!input || (visible(input, modalBackground) && (scope ?? anchor).contains(input)));
 }
 
 function associateMarker(anchor: HTMLElement, markers: HTMLElement[]): ComposerTarget {
@@ -194,16 +217,16 @@ function requestedTargets(doc: Document, provider: PageProvider): ComposerTarget
   const markers = (provider === 'chatgpt' ? classPrefixElements(doc, 'ComposerLayoutBody-')
     : provider === 'codex' ? classPrefixElements(doc, 'ComposerLayoutRoot-')
       : [...doc.querySelectorAll<HTMLElement>('div[data-cds="ChatComposerChin"]')])
-    .filter(eligibleAnchor);
+    .filter(anchor => eligibleAnchor(anchor));
   return markers.map(anchor => ({ ...associateMarker(anchor, markers), marker: provider }));
 }
 
 function codexFooters(doc: Document): HTMLElement[] {
-  return classPrefixElements(doc, 'ComposerLayoutFooter-').filter(eligibleAnchor);
+  return classPrefixElements(doc, 'ComposerLayoutFooter-').filter(anchor => eligibleAnchor(anchor));
 }
 
 export function hasCodexFooter(doc: Document): boolean {
-  return codexFooters(doc).length > 0;
+  return classPrefixElements(doc, 'ComposerLayoutFooter-').some(anchor => eligibleAnchor(anchor, isModalBackground(anchor)));
 }
 
 function codexFooterTargets(doc: Document): ComposerTarget[] {
