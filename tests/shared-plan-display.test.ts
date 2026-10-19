@@ -7,7 +7,7 @@ import { emptySnapshot } from '../src/storage/snapshots';
 import type { UsageLimit, View } from '../src/shared/types';
 
 const limit = (id: string, label: string, percent: number): UsageLimit => ({
-  id, label, category: 'window', percent, resetsAt: null, windowSeconds: 604800,
+  id: id === 'weekly' ? 'shared:secondary_window' : 'shared:primary_window', label, category: 'product', percent, resetsAt: null, windowSeconds: 604800,
   remaining: null, unit: null, source: 'api'
 });
 const enabledView = (): View => {
@@ -92,7 +92,7 @@ test('general chat placement obeys its own strip preference independently of the
   } finally { dom.window.close(); }
 });
 
-test('the general chat strip uses the highest actual usage even if an old preference selected another limit', () => {
+test('the general chat strip falls back to highest usage when resets are unknown even if an old preference selected another limit', () => {
   const dom = fixture();
   try {
     const view = enabledView();
