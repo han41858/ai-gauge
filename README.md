@@ -14,7 +14,7 @@ ChatGPT, Claude, Gemini의 사용량과 초기화 시간을 한곳에서 확인�
 
 </div>
 
-[정식 빌드 ZIP 다운로드 — 202610191922](https://github.com/han41858/ai-gauge/raw/refs/heads/main/downloads/ai-gauge-202610191922.zip) · [개발 빌드 ZIP — 202610191916](https://github.com/han41858/ai-gauge/raw/refs/heads/main/downloads/ai-gauge-202610191916.zip) · [설치 방법](docs/installation.md)
+[정식 빌드 ZIP 다운로드 — 202610201517](https://github.com/han41858/ai-gauge/raw/refs/heads/main/downloads/ai-gauge-202610201517.zip) · [개발 빌드 ZIP — 202610191916](https://github.com/han41858/ai-gauge/raw/refs/heads/main/downloads/ai-gauge-202610191916.zip) · [설치 방법](docs/installation.md)
 
 ChatGPT와 Codex는 동일한 플랜 사용량을 표시합니다. ChatGPT·Claude·Gemini의 실제 사용량 수집 성공은 사용자가 확인했습니다. 세부 검증 범위는 [검증 결과](docs/validation.md)를 참고하세요.
 
