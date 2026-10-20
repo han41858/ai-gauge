@@ -55,6 +55,38 @@ test('inline progress displays real zero, full usage and precise fractional valu
   } finally { dom.window.close(); }
 });
 
+test('every composer progress fill matches its gauge at default and fractional threshold boundaries', () => {
+  const cases = [
+    { warning: 70, danger: 90, values: [[0, '#2DE5F4'], [30, '#2DE5F4'], [69.9, '#2DE5F4'],
+      [70, '#FFAE32'], [89.9, '#FFAE32'], [90, '#FF454E'], [100, '#FF454E']] },
+    { warning: 30.25, danger: 75.5, values: [[30.249, '#2DE5F4'], [30.25, '#FFAE32'],
+      [75.499, '#FFAE32'], [75.5, '#FF454E']] }
+  ] as const;
+  for (const provider of ['chatgpt', 'codex', 'claude', 'gemini'] as const) {
+    const { dom, strip, elements } = fixture(provider);
+    try {
+      for (const { warning, danger, values } of cases) {
+        for (const [value, expected] of values) {
+          const current = view(value), source = provider === 'codex' ? 'chatgpt' : provider;
+          current.settings.enabled[source] = true;
+          Object.assign(current.settings, { warning, danger });
+          current.snapshots[source] = { ...current.snapshots.chatgpt, provider: source,
+            limits: [{ ...current.snapshots.chatgpt.limits[0]!,
+              id: source === 'chatgpt' ? 'shared:primary_window' : 'five_hour',
+              category: source === 'chatgpt' ? 'product' : 'window' }] };
+          strip.update(current);
+          const { progress, root } = elements();
+          assert.equal(progress.style.getPropertyValue('--usage-color'), expected, `${provider}: ${value}`);
+          assert.equal(root.querySelector('.gauge-arc')!.getAttribute('stroke'), expected, `${provider}: ${value}`);
+          assert.equal(progress.value, value, 'fractional fill is not rounded to the displayed text');
+          assert.equal(progress.max, 100);
+          assert.equal(progress.hidden, false);
+        }
+      }
+    } finally { dom.window.close(); }
+  }
+});
+
 test('missing and invalid usage hide progress instead of clamping it or inventing zero', () => {
   const { dom, strip, elements } = fixture();
   try {
@@ -94,6 +126,7 @@ test('unreliable snapshots hide progress, while normal cache age preserves the e
     assert.equal(elements().progress, previous.progress);
     assert.equal(elements().progress.hidden, false);
     assert.equal(elements().progress.value, 63);
+    assert.equal(elements().progress.style.getPropertyValue('--usage-color'), '#2DE5F4');
     assert.doesNotMatch(elements().host.getAttribute('aria-label')!, /오래된|갱신 필요/);
   } finally { dom.window.close(); }
 });
@@ -187,6 +220,7 @@ test('the inline gauge shares the text and progress selection and changes color 
     assert.equal(before.current.previousElementSibling, gauge);
     assert.equal(before.current.textContent, '사용량: 84%');
     assert.equal(before.progress.value, 84);
+    assert.equal(before.progress.style.getPropertyValue('--usage-color'), '#FFAE32');
     assert.equal(needle.style.transform, `rotate(${-90 + 84 * 1.8}deg)`);
     assert.equal(arc.getAttribute('stroke'), '#FFAE32');
     assert.equal(gauge.getAttribute('aria-hidden'), 'true');
@@ -200,6 +234,9 @@ test('the inline gauge shares the text and progress selection and changes color 
     assert.equal(records[0]!.target, arc);
     assert.equal(records[0]!.attributeName, 'stroke');
     assert.equal(arc.getAttribute('stroke'), '#FF454E');
+    assert.equal(before.progress.style.getPropertyValue('--usage-color'), '#FF454E');
+    assert.equal(needle.style.transform, `rotate(${-90 + 84 * 1.8}deg)`);
+    assert.equal(elements().progress, before.progress);
     for (let i = 0; i < 20; i++) strip.mount();
     assert.equal(observer.takeRecords().length, 0, 'time-only redraws leave an unchanged gauge untouched');
     assert.equal(elements().root.querySelector('.usage-gauge'), gauge);
@@ -264,6 +301,7 @@ test('first and repeated tab execution failures retain cached text, progress, ga
       assert.equal(next.progress, before.progress);
       assert.equal(next.progress.hidden, false);
       assert.equal(next.progress.value, 63);
+      assert.equal(next.progress.style.getPropertyValue('--usage-color'), '#2DE5F4');
       assert.equal(next.current.textContent, '사용량: 63%');
       assert.equal(next.reset, before.reset);
       assert.equal(next.reset.textContent, resetLabel);
@@ -347,6 +385,7 @@ test('composer selection keeps text, reset, progress, needle and color on the sa
       const { root, progress, current: text, reset } = elements();
       assert.equal(text.textContent, `사용량: ${expected}%`);
       assert.equal(progress.value, expected);
+      assert.equal(progress.style.getPropertyValue('--usage-color'), expected >= 90 ? '#FF454E' : expected >= 70 ? '#FFAE32' : '#2DE5F4');
       assert.equal(reset.textContent, hours === null ? '🕒 초기화: 확인 불가' : hours === 96 ? '🕒 초기화: 4일 후' : '🕒 초기화: 2시간 후');
       assert.equal(root.querySelector<SVGGElement>('.gauge-needle')!.style.transform, `rotate(${-90 + expected * 1.8}deg)`);
       assert.equal(root.querySelector('.gauge-arc')!.getAttribute('stroke'), expected >= 90 ? '#FF454E' : expected >= 70 ? '#FFAE32' : '#2DE5F4');

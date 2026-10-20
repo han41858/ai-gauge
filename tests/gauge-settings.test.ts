@@ -101,6 +101,30 @@ test('a valid display save submits visibility and both thresholds together while
   } finally { p.dom.window.close(); }
 });
 
+test('popup progress recolors immediately after autosave and external threshold changes without collecting usage', async () => {
+  const p = popup();
+  try {
+    await settled();
+    const now = Date.now();
+    Object.assign(p.state.snapshots.chatgpt, { state: 'ok', errorCode: null, collectedAt: now, checkedAt: now,
+      limits: [{ id: 'shared:primary_window', label: '5시간', category: 'product', percent: 17.25,
+        windowSeconds: 18000, resetsAt: new Date(now + 3_600_000).toISOString(), remaining: null, unit: null, source: 'api' }] });
+    const color = () => p.doc.querySelector('progress')!.style.getPropertyValue('--usage-color');
+    p.notify(); await settled();
+    assert.equal(color(), '#2DE5F4');
+    const initialMessages = p.messages.length;
+    p.edit('gauge-warning', '17.25'); p.submit(); await settled();
+    assert.equal(color(), '#FFAE32');
+    p.edit('gauge-warning', '10.5'); p.edit('gauge-danger', '17.25'); p.submit(); await settled();
+    assert.equal(color(), '#FF454E');
+    p.state.settings.warning = 70; p.state.settings.danger = 90;
+    p.notify(); await settled();
+    assert.equal(color(), '#2DE5F4');
+    assert.equal(p.doc.querySelector('progress')!.value, 17.25);
+    assert.deepEqual(p.messages.slice(initialMessages).map(message => message.type), ['display-settings', 'display-settings', 'read']);
+  } finally { p.dom.window.close(); }
+});
+
 test('failed saves and incoming cache updates retain unsaved gauge input for correction or retry', async () => {
   const p = popup();
   try {

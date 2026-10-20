@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { checkStripProgressColors } from './progress-checks.mjs';
 import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,6 +13,7 @@ export async function runGeminiChecks({ cdp, session, evaluate, pause, waitForPl
   await evaluate(`chrome.runtime.sendMessage=window.__fixtureSend;window.__fixtureHost='https://gemini.google.com';history.replaceState(null,'','/app');document.body.innerHTML='<main><div id="gemini-slot"><input-area-v2 id="gemini-composer" style="display:block;padding:12px;border:1px solid gray;border-radius:16px"><rich-textarea style="display:block"><div role="textbox" class="ql-editor textarea" contenteditable="true" style="min-height:48px">private Gemini prompt</div></rich-textarea><div id="gemini-toolbar" role="toolbar"><button type="button">Attach</button><button type="button" aria-label="Send message">Send</button></div></input-area-v2><p id="gemini-helper" hidden>Shortcut hints</p></div></main>';`);
   await evaluate(content);
   await waitForPlacement('gemini-composer');
+  await checkStripProgressColors({ cdp, session, evaluate, pause }, 'gemini');
   await checkModalIsolation({ evaluate, pause, waitForPlacement }, 'gemini', 'gemini-composer');
   await evaluate(`window.__geminiStrip=document.getElementById('ai-gauge-usage-strip');window.__geminiProgress=window.__fixtureUsageRoot.querySelector('progress');`);
   await evaluate(content);

@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
+import { checkStripProgressColors } from './progress-checks.mjs';
 import { checkGaugeMatchesUsage } from './gauge-checks.mjs';
 import { checkModalIsolation } from './modal-checks.mjs';
 
 // Claude chin placement, progress updates and cache reliability states.
-export async function runClaudeChecks({ evaluate, pause, waitForPlacement, content }) {
+export async function runClaudeChecks({ cdp, session, evaluate, pause, waitForPlacement, content }) {
   await evaluate(`window.__fixtureHost='https://claude.ai';history.replaceState(null,'','/new');document.body.innerHTML='<main><div style="min-height:700px;display:flex;flex-direction:column;justify-content:center"><div id="claude-slot"><div id="visual-box" style="padding:12px;border:1px solid gray"><div style="display:flex;flex-direction:column;gap:12px"><div class="ProseMirror" contenteditable="true">private Claude prompt</div><div id="toolbar"><button>Attach</button><button>Send</button></div></div></div></div></div><p>Disclaimer</p></main>';window.dispatchEvent(new PopStateEvent('popstate'));`);
   await waitForPlacement('visual-box');
+  await checkStripProgressColors({ cdp, session, evaluate, pause }, 'claude');
   assert.equal(await evaluate('document.querySelector(".ProseMirror").textContent'), 'private Claude prompt');
   assert.equal(await evaluate('document.querySelectorAll("#toolbar button").length'), 2);
   for (const containsEditor of [true, false]) {

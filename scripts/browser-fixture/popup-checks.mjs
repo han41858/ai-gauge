@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { checkPopupProgressColors } from './progress-checks.mjs';
+import { checkPopupUsageAlignment } from './popup-alignment-checks.mjs';
 import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,6 +12,8 @@ export async function runPopupChecks({ cdp, session, evaluate, pause, port, buil
   for (let i = 0; i < 100; i++) { state = await evaluate('({cards:document.querySelectorAll(".card").length,text:document.body?.textContent??"",width:document.documentElement?.scrollWidth??0,clientWidth:document.documentElement?.clientWidth??0})'); if (state.cards === 3) break; await pause(100); }
   assert.equal(state.cards, 3, JSON.stringify({state,exceptions})); assert.match(state.text, /42%/); assert.match(state.text, /0%/); assert.doesNotMatch(state.text, /오래된 데이터|오래된 정보|입력창에는|최근 수집 성공|Work \/ Codex 공유/); assert(state.width <= state.clientWidth);
   assert.doesNotMatch(state.text, /새로고침|사이트 열기/);
+  await checkPopupProgressColors({ cdp, session, evaluate, pause });
+  await checkPopupUsageAlignment({ cdp, session, evaluate, pause });
   assert(await evaluate(`Array.from(document.querySelectorAll('.card h2')).every(title=>{const link=title.querySelector('a'),s=link&&getComputedStyle(link),h=getComputedStyle(title);return link&&s.color===h.color&&s.fontSize===h.fontSize&&s.fontWeight===h.fontWeight&&s.textDecorationLine==='none'&&s.cursor==='pointer'&&link.target==='_blank'&&link.rel==='noopener noreferrer';})`), 'Service title links keep the existing heading appearance and pointer cursor');
   for (const [provider, href] of Object.entries({ chatgpt: 'https://chatgpt.com/', claude: 'https://claude.ai/', gemini: 'https://gemini.google.com/' })) {
     await evaluate(`{const link=document.querySelector('[data-provider="${provider}"] h2 a');window.__providerActivated=null;link.addEventListener('click',event=>{event.preventDefault();window.__providerActivated=link.href;},{once:true});link.focus();}`);

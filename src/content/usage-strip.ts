@@ -6,6 +6,7 @@ import { findComposerTarget, retainsComposerTarget, type ComposerTarget } from '
 import { effectiveSnapshot } from '../storage/snapshots';
 import { inlineTicketDisplay } from '../shared/ticket-presentation';
 import { UsageGauge, USAGE_GAUGE_CSS } from './usage-gauge';
+import { usageColor } from '../shared/usage-color';
 import { setLanguagePreference, t, uiLanguage } from '../shared/i18n';
 export class UsageStrip {
   private host: HTMLElement | null = null;
@@ -45,10 +46,11 @@ ${USAGE_GAUGE_CSS}
 .tickets{flex:0 0 auto;max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:inherit;opacity:.8;text-decoration:underline;text-underline-offset:3px}
 .tickets:focus-visible{outline:2px solid currentColor;outline-offset:2px;border-radius:2px}
 .usage:has(.status:not([hidden])) .reset{display:none}
-progress{appearance:none;-webkit-appearance:none;width:80px;max-width:100%;height:6px;flex:0 0 80px;box-sizing:border-box;border:0;border-radius:999px;overflow:hidden;background:#8893a033;color:inherit;accent-color:currentColor}
+progress{appearance:none;-webkit-appearance:none;width:80px;max-width:100%;height:6px;flex:0 0 80px;box-sizing:border-box;border:0;border-radius:999px;overflow:hidden;background:#8893a033;accent-color:var(--usage-color)}
 progress::-webkit-progress-bar{background:#8893a033;border-radius:999px}
-progress::-webkit-progress-value{background:currentColor;border-radius:999px}
-progress::-moz-progress-bar{background:currentColor;border-radius:999px}
+progress::-webkit-progress-value{background:var(--usage-color);border-radius:999px;transition:background-color 300ms ease}
+progress::-moz-progress-bar{background:var(--usage-color);border-radius:999px;transition:background-color 300ms ease}
+@media (prefers-reduced-motion:reduce){progress::-webkit-progress-value{transition:none}progress::-moz-progress-bar{transition:none}}
 @container ai-gauge (max-width:900px){.tickets{display:none}}
 @container ai-gauge (max-width:520px){.reset{display:none}}
 @container ai-gauge (max-width:280px){progress{display:none}}
@@ -83,6 +85,8 @@ progress::-moz-progress-bar{background:currentColor;border-radius:999px}
     const progressLabel = t('format_usage_name');
     if (this.progress!.getAttribute('aria-label') !== progressLabel) this.progress!.setAttribute('aria-label', progressLabel);
     this.gauge!.update(parts.percent, view.settings);
+    const color = usageColor(parts.percent, view.settings);
+    if (this.progress!.style.getPropertyValue('--usage-color') !== color) this.progress!.style.setProperty('--usage-color', color);
     if (this.currentText!.textContent !== parts.current) this.currentText!.textContent = parts.current;
     if (this.resetText!.textContent !== parts.reset) this.resetText!.textContent = parts.reset;
     const status = parts.status ?? '';

@@ -1,6 +1,7 @@
 import { HOME_URLS, NAMES, PROVIDERS, type Provider, type View } from '../shared/types';
 import { resetLabel, statusText, usagePercentLabel } from '../shared/format';
 import { percent } from '../shared/validation';
+import { usageColor } from '../shared/usage-color';
 import { currentPlanLabel } from '../shared/plan';
 import { effectiveSnapshot } from '../storage/snapshots';
 import { ticketDisplay } from '../shared/ticket-presentation';
@@ -44,6 +45,7 @@ export function renderCards(container: HTMLElement, view: View, actions: Actions
         const used = percent(limit.percent);
         if (used !== null) {
           const bar = el('progress'); bar.max = 100; bar.value = used;
+          bar.style.setProperty('--usage-color', usageColor(used, view.settings));
           bar.setAttribute('aria-label', t(s.state === 'ok' ? 'popup_limit_usage' : 'popup_limit_previous_usage', name));
           row.append(bar);
         }

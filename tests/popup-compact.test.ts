@@ -69,10 +69,40 @@ test('compact popup preserves real window and model distinctions while stripping
   } finally { dom.window.close(); }
 });
 
+test('all popup limits use their own percentage for default and fractional threshold colors', () => {
+  const { dom, cards } = fixture(), v = view();
+  try {
+    const cases = [
+      { warning: 70, danger: 90, values: [[0, '#2DE5F4'], [30, '#2DE5F4'], [69.9, '#2DE5F4'],
+        [70, '#FFAE32'], [89.9, '#FFAE32'], [90, '#FF454E'], [100, '#FF454E']] },
+      { warning: 30.25, danger: 75.5, values: [[30.249, '#2DE5F4'], [30.25, '#FFAE32'],
+        [75.499, '#FFAE32'], [75.5, '#FF454E']] }
+    ] as const;
+    for (const { warning, danger, values } of cases) {
+      Object.assign(v.settings, { warning, danger });
+      for (const provider of ['chatgpt', 'claude', 'gemini'] as const) {
+        v.snapshots[provider].limits = values.map(([value], i) => ({
+          ...usage(`${provider}:${i}`, `Limit ${i}`, value),
+          category: (['window', 'product', 'model'] as const)[i % 3]!,
+          windowSeconds: i === 0 ? 18000 : 604800
+        }));
+      }
+      const before = structuredClone(v);
+      renderCards(cards, v, noop, now);
+      for (const provider of ['chatgpt', 'claude', 'gemini'] as const) {
+        const bars = [...cards.querySelectorAll<HTMLProgressElement>(`[data-provider="${provider}"] progress`)];
+        assert.deepEqual(bars.map(bar => [bar.value, bar.style.getPropertyValue('--usage-color')]), values, provider);
+        assert(bars.every(bar => bar.max === 100));
+      }
+      assert.deepEqual(v, before, 'presentation does not change collection data, ordering or settings');
+    }
+  } finally { dom.window.close(); }
+});
+
 test('popup and input strip share validated usage while popup retains the full local reset text', () => {
   const { dom, cards } = fixture(), v = view();
   try {
-    for (const percent of [0, 17.25, null, Number.NaN, -1, 101]) {
+    for (const percent of [0, 17.25, null, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, -1, 101]) {
       for (const resetsAt of [new Date(now + 49 * 3_600_000).toISOString(), new Date(now + 2 * 3_600_000).toISOString(), null, '2026-10-14T18:00:00']) {
         const item = { ...usage('week', 'Work / Codex 공유 · 7일', percent), resetsAt };
         v.snapshots.chatgpt.limits = [item];
@@ -128,11 +158,36 @@ test('popup and all supported page badges retain cached usage after repeated tab
     renderCards(cards, v, noop, now + 180_000);
     assert.equal(cards.querySelector('.status,.old'), null);
     assert.deepEqual([...cards.querySelectorAll('progress')].map(progress => progress.value), [15, 30, 42]);
+    assert.deepEqual([...cards.querySelectorAll('progress')].map(progress => progress.style.getPropertyValue('--usage-color')),
+      ['#2DE5F4', '#2DE5F4', '#2DE5F4']);
     for (const [url, expected] of [['https://chatgpt.com/', '15%'], ['https://chatgpt.com/codex/cloud', '15%'],
       ['https://claude.ai/', '30%'], ['https://gemini.google.com/', '42%']]) {
       assert.equal(badge(v, url, now + 180_000).text, expected);
     }
     assert.doesNotMatch(cards.textContent!, /확인 불가|사이트 접근 설정 확인|다시 확인 중|이전 수집값/);
+  } finally { dom.window.close(); }
+});
+
+test('age alone preserves threshold colors while unreliable previous values retain their separate presentation', () => {
+  const { dom, cards } = fixture(), v = view();
+  try {
+    v.snapshots.chatgpt.limits[0]!.percent = 95;
+    v.snapshots.chatgpt.collectedAt = now - 3_600_000;
+    v.snapshots.chatgpt.state = 'stale';
+    renderCards(cards, v, noop, now);
+    let card = cards.querySelector('[data-provider="chatgpt"]')!;
+    assert.equal(card.querySelector('.old'), null);
+    assert.equal(card.querySelector('progress')!.style.getPropertyValue('--usage-color'), '#FF454E');
+    for (const state of ['error', 'signed_out', 'rate_limited', 'unsupported'] as const) {
+      Object.assign(v.snapshots.chatgpt, { state, errorCode: 'network', failures: 2 });
+      renderCards(cards, v, noop, now);
+      card = cards.querySelector('[data-provider="chatgpt"]')!;
+      const bar = card.querySelector('.old progress') as HTMLProgressElement;
+      assert(bar, 'a retained previous value must use the existing muted old-state styling');
+      assert.equal(bar.value, 95);
+      assert.match(bar.getAttribute('aria-label')!, /이전 값/);
+      assert.match(card.textContent!, /이전 수집값/);
+    }
   } finally { dom.window.close(); }
 });
 
