@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
+import { checkStripProgressColors } from './progress-checks.mjs';
 import { checkGaugeMatchesUsage } from './gauge-checks.mjs';
 import { checkModalIsolation } from './modal-checks.mjs';
 
 // Codex composer placement, root-URL recognition and strip stability.
-export async function runCodexChecks({ evaluate, pause, waitForPlacement, content }) {
+export async function runCodexChecks({ cdp, session, evaluate, pause, waitForPlacement, content }) {
   let count = 0;
   for (let i = 0; i < 20; i++) { count = await evaluate('document.querySelectorAll("#ai-gauge-usage-strip").length'); if (count === 1) break; await pause(100); }
   assert.equal(count, 1); assert.equal(await evaluate('document.querySelector("form").nextElementSibling.id'), 'ai-gauge-usage-strip');
+  await checkStripProgressColors({ cdp, session, evaluate, pause }, 'codex');
   await checkGaugeMatchesUsage(evaluate,pause);
   assert.equal(await evaluate(`window.__fixtureUsageRoot.querySelector('.tickets').href`), 'https://chatgpt.com/settings/usage?tab=overview', 'Codex uses the same ChatGPT ticket link');
   assert.equal(await evaluate(`window.__fixtureUsageRoot.querySelector('.tickets').textContent`), '🎫 티켓 만료: 23시간 후', 'Codex uses the same earliest ChatGPT ticket expiry and Korean countdown');

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { checkStripProgressColors } from './progress-checks.mjs';
 import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,6 +11,7 @@ export async function runChatGPTChecks({ cdp, session, evaluate, pause, waitForP
   await evaluate(`window.__fixtureHost='https://chatgpt.com';`);
   await evaluate(`history.replaceState(null,'','/');document.body.innerHTML='<main><div style="min-height:700px;display:flex;flex-direction:column;justify-content:center"><div id="chatgpt-slot"><form id="chatgpt-home"><div id="chatgpt-body" class="layout ComposerLayoutBody-uBBf1A" style="padding:12px;border:1px solid gray;border-radius:16px"><div id="prompt-textarea" contenteditable="true" style="min-height:48px">private ChatGPT prompt</div><button>Send</button></div></form><p id="chatgpt-helper" hidden>Shortcut hints</p></div></div></main>';window.__chatgptControls=[...document.querySelectorAll('#chatgpt-body button')];window.dispatchEvent(new PopStateEvent('popstate'));`);
   await waitForPlacement('chatgpt-body');
+  await checkStripProgressColors({ cdp, session, evaluate, pause }, 'chatgpt');
   await checkModalIsolation({ evaluate, pause, waitForPlacement }, 'chatgpt', 'chatgpt-body');
   assert(await evaluate(`!document.getElementById('chatgpt-body').contains(document.getElementById('ai-gauge-usage-strip'))&&document.getElementById('prompt-textarea').textContent==='private ChatGPT prompt'&&window.__chatgptControls.every(button=>button.isConnected)`), 'ChatGPT home strip is the immediate sibling after ComposerLayoutBody, outside the input surface');
   let ordinary;

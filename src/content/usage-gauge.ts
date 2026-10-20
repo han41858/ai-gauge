@@ -1,5 +1,6 @@
 import type { Settings } from '../shared/types';
 import { percent as validPercent } from '../shared/validation';
+import { usageColor } from '../shared/usage-color';
 import backgroundSource from '../../assets/gauge-background.svg';
 import needleSource from '../../assets/gauge-needle.svg';
 
@@ -56,7 +57,7 @@ export class UsageGauge {
 
   update(value: number | null, thresholds: Thresholds): void {
     const used = validPercent(value);
-    const color = used === null ? '#8893A0' : used >= thresholds.danger ? '#FF454E' : used >= thresholds.warning ? '#FFAE32' : '#2DE5F4';
+    const color = usageColor(used, thresholds);
     if (this.arc.getAttribute('stroke') !== color) this.arc.setAttribute('stroke', color);
     if (this.value === used) return;
     // Initial/unknown data has no meaningful starting angle. Snap to the first
