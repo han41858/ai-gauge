@@ -10,7 +10,6 @@ import { failure, success } from '../src/background/scheduler';
 import { CollectionError } from '../src/shared/errors';
 import { badge } from '../src/background/badge';
 import { usageParts } from '../src/content/usage-label';
-import { resetLabel } from '../src/shared/format';
 import type { Provider, UsageLimit, View } from '../src/shared/types';
 
 const now = 1_700_000_000_000;
@@ -99,7 +98,7 @@ test('all popup limits use their own percentage for default and fractional thres
   } finally { dom.window.close(); }
 });
 
-test('popup and input strip share validated usage while popup retains the full local reset text', () => {
+test('popup and input strip share validated usage and identical reset countdown text', () => {
   const { dom, cards } = fixture(), v = view();
   try {
     for (const percent of [0, 17.25, null, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, -1, 101]) {
@@ -110,7 +109,7 @@ test('popup and input strip share validated usage while popup retains the full l
         const card = cards.querySelector('[data-provider="chatgpt"]')!;
         const parts = usageParts(v.snapshots.chatgpt, item, now);
         assert.equal(card.querySelector('.percent')!.textContent, parts.current);
-        assert.equal(card.querySelector('.reset')!.textContent, resetLabel(resetsAt, now));
+        assert.equal(card.querySelector('.reset')!.textContent, parts.reset);
         assert.equal(card.querySelectorAll('progress').length, parts.percent === null ? 0 : 1);
         assert.doesNotMatch(card.textContent!, /현재 사용량/);
       }

@@ -38,7 +38,7 @@ export async function runI18nChecks({ cdp, session, evaluate, pause, waitForPlac
       assert.equal(await evaluate('document.documentElement.lang'), korean ? 'ko' : 'en');
       assert.equal(await evaluate(`document.querySelector('[data-provider="chatgpt"] .percent').textContent`), korean ? '사용량: 42%' : 'Usage: 42%');
       assert.equal(await evaluate('navigator.language'), pageLanguage, 'Navigator preferences intentionally differ from the selected Chrome UI language');
-      assert.match(await evaluate(`document.querySelector('[data-provider="chatgpt"] .reset').textContent`), /\d{2}:\d{2}/, 'The popup still shows exact reset time');
+      assert.equal(await evaluate(`document.querySelector('[data-provider="chatgpt"] .reset').textContent`), korean ? '🕒 초기화: 4시간 후' : '🕒 Resets in 4 hours', 'Popup uses the same localized countdown as the input strip');
       assert.equal(await evaluate(`document.querySelectorAll('[data-provider="chatgpt"] .ticket-expiry').length`), 2, 'The popup retains each ticket expiry');
       if (!korean) assert.doesNotMatch(await evaluate('document.body.innerText'), /[가-힣]/, `Visible ${language} popup text uses the English catalog, including cached window labels`);
       if (language === 'en' || korean) await checkPopupLanguagePreferences({ cdp, session, evaluate, waitFor, language });

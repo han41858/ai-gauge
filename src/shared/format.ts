@@ -22,23 +22,12 @@ export function relativeTime(remaining: number): string | null {
   }
   return t('format_less_than_minute');
 }
-function resetValue(value: string | null | undefined, now: number, compact = false): string {
-  const reset = resetTime(value);
-  if (reset === null) return t('format_unknown');
-  const at = new Date(reset);
-  const prefix = compact ? '' : `${localStamp(at)}, `;
-  const remaining = at.getTime() - now;
-  if (!Number.isFinite(remaining)) return `${prefix}${t('format_remaining_unknown')}`;
-  if (remaining <= 0) return `${prefix}${t('format_reset_pending')}`;
-  if (compact) return relativeTime(remaining) ?? t('format_remaining_unknown');
-  const hours = Math.floor(remaining / 3_600_000), days = Math.floor(hours / 24);
-  return `${prefix}${t('format_duration_left', `${days > 0 ? `${days}d ` : ''}${hours % 24}h`)}`;
-}
-export const resetLabel = (reset: string | null | undefined, now = Date.now()) => t('format_reset_popup', resetValue(reset, now));
 export function resetCountdownLabel(reset: string | null | undefined, now = Date.now()): string {
   const at = resetTime(reset), remaining = at === null ? null : relativeTime(Date.parse(at) - now);
-  return remaining ? t('format_reset_countdown', remaining) : t('format_reset_unavailable', resetValue(reset, now, true));
+  return remaining ? t('format_reset_countdown', remaining)
+    : t('format_reset_unavailable', t(at === null ? 'format_unknown' : 'format_reset_pending'));
 }
+export const resetLabel = resetCountdownLabel;
 export function usagePercentLabel(value: unknown): string {
   const used = percent(value);
   return t('format_usage', used === null ? t('format_unknown') : `${Math.round(used)}%`);

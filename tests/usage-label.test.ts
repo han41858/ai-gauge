@@ -12,11 +12,11 @@ const limit = (overrides: Partial<UsageLimit> = {}): UsageLimit => ({
   remaining: null, unit: null, source: 'api', ...overrides
 });
 
-test('input usage label keeps the largest countdown unit while popup keeps date and detailed duration', () => {
+test('input and popup use the same largest countdown unit', () => {
   const reset = new Date(2026, 9, 16, 9, 5).getTime();
   const now = reset - 119 * 3_600_000;
   assert.equal(usageLabel(snapshot(), limit(), now), '사용량: 15%  🕒 초기화: 4일 후');
-  assert.equal(resetLabel(limit().resetsAt, now), '🕒 사용량 초기화: 10/16(금) 09:05, 4d 23h 남음');
+  assert.equal(resetLabel(limit().resetsAt, now), '🕒 초기화: 4일 후');
 });
 
 test('a real zero usage remains zero while a sub-hour countdown uses minutes', () => {
@@ -34,6 +34,7 @@ test('countdown changes units at the day, hour and minute boundaries without rou
   ] as const) {
     assert.equal(usageLabel(snapshot(), item, reset - remaining),
       `사용량: 15%  🕒 초기화: ${expected}`, `${remaining}ms remaining`);
+    assert.equal(resetLabel(item.resetsAt, reset - remaining), `🕒 초기화: ${expected}`);
   }
 });
 
@@ -50,6 +51,7 @@ test('input countdown uses one Korean unit for the requested day, hour and minut
   ] as const) {
     assert.equal(usageParts(snapshot(), item, reset - remaining).reset,
       `🕒 초기화: ${expected}`, `${remaining}ms remaining`);
+    assert.equal(resetLabel(item.resetsAt, reset - remaining), `🕒 초기화: ${expected}`);
   }
 });
 
@@ -79,28 +81,26 @@ test('an elapsed reset keeps the pending status without a date in the input stri
   for (const now of [reset, reset + 1, reset + 86_400_000]) {
     assert.equal(usageLabel(snapshot(), item, now),
       '사용량: 15%  🕒 초기화: 초기화 후 확인 중');
-    assert.equal(resetLabel(item.resetsAt, now), '🕒 사용량 초기화: 10/16(금) 09:05, 초기화 후 확인 중');
+    assert.equal(resetLabel(item.resetsAt, now), '🕒 초기화: 초기화 후 확인 중');
   }
 });
 
-test('month and year boundaries preserve popup date details and the input countdown', () => {
+test('month and year boundaries preserve matching popup and input countdowns', () => {
   const reset = new Date(2027, 0, 1, 0, 0).getTime();
   const item = limit({ resetsAt: new Date(reset).toISOString() }), now = reset - 25 * 3_600_000;
   assert.equal(usageLabel(snapshot(), item, now), '사용량: 15%  🕒 초기화: 1일 후');
-  assert.equal(resetLabel(item.resetsAt, now), '🕒 사용량 초기화: 1/1(금) 00:00, 1d 1h 남음');
+  assert.equal(resetLabel(item.resetsAt, now), '🕒 초기화: 1일 후');
 });
 
-test('popup reset date follows the browser timezone while input countdown is timezone-independent', () => {
+test('popup and input countdowns are timezone-independent', () => {
   const original = process.env.TZ;
   const item = limit({ resetsAt: '2026-10-14T23:05:00Z' });
   const now = Date.parse(item.resetsAt!) - 26 * 3_600_000;
   try {
-    for (const [timezone, stamp] of [
-      ['UTC', '10/14(수) 23:05'], ['Asia/Seoul', '10/15(목) 08:05'], ['America/Los_Angeles', '10/14(수) 16:05']
-    ]) {
+    for (const timezone of ['UTC', 'Asia/Seoul', 'America/Los_Angeles']) {
       process.env.TZ = timezone;
       assert.equal(usageLabel(snapshot(), item, now), '사용량: 15%  🕒 초기화: 1일 후');
-      assert.equal(resetLabel(item.resetsAt, now), `🕒 사용량 초기화: ${stamp}, 1d 2h 남음`);
+      assert.equal(resetLabel(item.resetsAt, now), '🕒 초기화: 1일 후');
     }
   } finally {
     if (original === undefined) delete process.env.TZ;
