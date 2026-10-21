@@ -58,6 +58,7 @@ test('English countdown floors the largest unit and uses natural singular, plura
   ] as const) {
     assert.equal(api.relativeTime(duration), text);
     assert.equal(api.resetCountdownLabel(iso(duration), now), `🕒 Resets ${text}`);
+    assert.equal(api.resetLabel(iso(duration), now), `🕒 Resets ${text}`);
     const state = snapshot(api); state.tickets!.inventory.grants[0]!.expiresAt = iso(duration);
     assert.equal(api.inlineTicketDisplay(state, now)!.text, `🎫 Ticket expires ${text}`);
   }
@@ -67,7 +68,7 @@ test('English countdown floors the largest unit and uses natural singular, plura
   assert.equal(api.usagePercentLabel(null), 'Usage: Unavailable');
 });
 
-test('popup reset and ticket dates retain the browser timezone and localized weekdays', () => {
+test('popup reset shares the countdown while ticket dates retain local time and weekdays', () => {
   const initialTimezone = process.env.TZ;
   try {
     for (const [timezone, date] of [['UTC', '10/16'], ['Asia/Seoul', '10/17']] as const) {
@@ -80,7 +81,7 @@ test('popup reset and ticket dates retain the browser timezone and localized wee
         const stamp = `${date}(${weekday}) ${time}`;
         assert.equal(api.ticketDate(new Date(at).toISOString()), stamp);
         assert.equal(api.resetLabel(new Date(at).toISOString(), at - 119 * hour),
-          korean ? `🕒 사용량 초기화: ${stamp}, 4d 23h 남음` : `🕒 Reset: ${stamp}, 4d 23h left`);
+          korean ? '🕒 초기화: 4일 후' : '🕒 Resets in 4 days');
       }
     }
   } finally {
