@@ -35,6 +35,7 @@ function browser(initial: Tab[]) {
       }
     },
     action: {
+      getBadgeText: async ({ tabId }: { tabId?: number }) => tabId === undefined ? globalText : texts.get(tabId) ?? globalText,
       setBadgeText: async (value: TextWrite) => {
         writes.push(value);
         if (value.tabId === undefined) globalText = value.text;
@@ -202,6 +203,8 @@ test('unchanged badges are not rewritten and tab-only updates touch only the nam
     const initial = mock.writes.length;
     await updateBadge(current);
     assert.equal(mock.writes.length, initial, 'an identical view causes no action API writes');
+    await updateBadge(current, [2]);
+    assert.equal(mock.writes.length, initial, 'a tab check with the correct browser text causes no action API writes');
     current.snapshots.claude.limits[0]!.percent = 64;
     await updateBadge(current, [1]);
     assert.equal(mock.writes.length, initial, 'tab 1 is unchanged, and tab 2 was not requested');
@@ -211,6 +214,125 @@ test('unchanged badges are not rewritten and tab-only updates touch only the nam
     mock.tabs.set(1, { id: 1, url: 'https://unrelated.invalid/' });
     await updateBadge(current, [1]);
     assert.equal(mock.current(1), '');
+  } finally { globalThis.chrome = previous; }
+});
+
+test('a named Claude tab restores missing browser text despite an unchanged cached percentage', async () => {
+  const mock = browser([{ id: 1, url: 'https://chatgpt.com/' }, { id: 2, url: 'https://claude.ai/new' }]);
+  const previous = globalThis.chrome;
+  globalThis.chrome = mock.api as unknown as typeof chrome;
+  try {
+    const current = view(); current.snapshots.claude.limits[0]!.percent = 56;
+    await updateBadge(current);
+    assert.equal(mock.current(2), '56%');
+    const initial = mock.writes.length;
+    mock.texts.delete(2);
+    assert.equal(mock.current(2), '');
+    await updateBadge(current, [2]);
+    assert.equal(mock.current(2), '56%');
+    assert.equal(mock.current(1), '15%');
+    assert.deepEqual(mock.writes.slice(initial), [{ tabId: 2, text: '56%' }]);
+    await updateBadge(current, [2]);
+    assert.equal(mock.writes.length, initial + 1, 'a repaired badge does not need another write');
+  } finally { globalThis.chrome = previous; }
+});
+
+for (const observedText of ['', '56%']) {
+  test(`tab repair rechecks a navigation that occurs during the badge read (${observedText || 'empty'})`, async () => {
+    const mock = browser([{ id: 1, url: 'https://claude.ai/new' }]);
+    const previous = globalThis.chrome;
+    let release!: () => void, notifyStarted!: () => void;
+    const blocked = new Promise<void>(resolve => { release = resolve; });
+    const started = new Promise<void>(resolve => { notifyStarted = resolve; });
+    mock.api.action.getBadgeText = async () => { notifyStarted(); await blocked; return observedText; };
+    globalThis.chrome = mock.api as unknown as typeof chrome;
+    try {
+      const current = view(); current.snapshots.claude.limits[0]!.percent = 56;
+      await updateBadge(current);
+      const initial = mock.writes.length;
+      const repair = updateBadge(current, [1]);
+      await started;
+      mock.tabs.set(1, { id: 1, url: 'https://unrelated.invalid/' });
+      mock.texts.delete(1);
+      release();
+      await repair;
+      assert.equal(mock.current(1), '');
+      assert.equal(mock.titles.get(1), 'AI Gauge');
+      assert(mock.writes.slice(initial).every(value => value.text === ''), 'no stale provider number may be written after the badge read');
+    } finally { release(); globalThis.chrome = previous; }
+  });
+}
+
+for (const order of ['target-first', 'full-first'] as const) {
+  test(`a queued tab repair survives merging with a full update (${order})`, async () => {
+    const mock = browser([{ id: 1, url: 'https://chatgpt.com/' }, { id: 2, url: 'https://claude.ai/new' }]);
+    const previous = globalThis.chrome, write = mock.api.action.setBadgeText;
+    let release!: () => void, notifyStarted!: () => void;
+    const blocked = new Promise<void>(resolve => { release = resolve; });
+    const started = new Promise<void>(resolve => { notifyStarted = resolve; });
+    mock.api.action.setBadgeText = async value => {
+      if (value.tabId === 1 && value.text === '16%') { notifyStarted(); await blocked; }
+      await write(value);
+    };
+    globalThis.chrome = mock.api as unknown as typeof chrome;
+    try {
+      const current = view(); current.snapshots.claude.limits[0]!.percent = 56;
+      await updateBadge(current);
+      const initial = mock.writes.length;
+      current.snapshots.chatgpt.limits[0]!.percent = 16;
+      const active = updateBadge(current);
+      await started;
+      mock.texts.delete(2);
+      const queued = order === 'target-first'
+        ? [updateBadge(current, [2]), updateBadge(current)]
+        : [updateBadge(current), updateBadge(current, [2])];
+      release();
+      await Promise.all([active, ...queued]);
+      assert.equal(mock.current(1), '16%');
+      assert.equal(mock.current(2), '56%');
+      assert.deepEqual(mock.writes.slice(initial), [{ tabId: 1, text: '16%' }, { tabId: 2, text: '56%' }]);
+    } finally { release(); globalThis.chrome = previous; }
+  });
+}
+
+test('tab repair preserves real zero, denied permission and unsupported-page badge policies', async () => {
+  const mock = browser([{ id: 1, url: 'https://claude.ai/new' }]);
+  const previous = globalThis.chrome;
+  globalThis.chrome = mock.api as unknown as typeof chrome;
+  try {
+    const current = view(); current.snapshots.claude.limits[0]!.percent = 0;
+    await updateBadge(current);
+    assert.equal(mock.current(1), '0%');
+    mock.texts.delete(1);
+    await updateBadge(current, [1]);
+    assert.equal(mock.current(1), '0%');
+    current.permissions.claude = false;
+    await updateBadge(current);
+    assert.equal(mock.current(1), '—');
+    mock.texts.set(1, '56%');
+    await updateBadge(current, [1]);
+    assert.equal(mock.current(1), '—');
+    mock.tabs.set(1, { id: 1, url: 'https://unrelated.invalid/' });
+    await updateBadge(current);
+    assert.equal(mock.current(1), '');
+    mock.texts.set(1, '56%');
+    await updateBadge(current, [1]);
+    assert.equal(mock.current(1), '');
+  } finally { globalThis.chrome = previous; }
+});
+
+test('a failed tab enumeration rejects the full update and a later update can retry it', async () => {
+  const mock = browser([{ id: 1, url: 'https://claude.ai/new' }]);
+  const previous = globalThis.chrome, query = mock.api.tabs.query;
+  mock.api.tabs.query = async () => { throw new Error('temporary tab enumeration failure'); };
+  globalThis.chrome = mock.api as unknown as typeof chrome;
+  try {
+    const current = view();
+    await assert.rejects(updateBadge(current), /temporary tab enumeration failure/);
+    assert.equal(mock.current(1), '');
+    mock.api.tabs.query = query;
+    await updateBadge(current);
+    assert.equal(mock.current(1), '63%');
   } finally { globalThis.chrome = previous; }
 });
 

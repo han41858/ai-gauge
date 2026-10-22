@@ -30,7 +30,11 @@ async function publish(force = false): Promise<View> {
   const view = await readView(), key = JSON.stringify(view);
   if (!force && key === publishedKey) return view;
   publishedKey = key;
-  await updateBadge(view);
+  try { await updateBadge(view, undefined, force); }
+  catch {
+    if (publishedKey === key) publishedKey = null;
+    return view;
+  }
   // Push only an invalidation signal, not usage payloads into tabs.
   await Promise.all(SITE_GROUPS.map(async site => {
     if (!site.providers.some(p => view.permissions[displayProvider(p)])) return;
@@ -39,7 +43,7 @@ async function publish(force = false): Promise<View> {
   }));
   return view;
 }
-/** A navigated or activated tab needs its own badge even when the shared view is unchanged. */
+/** Verify the visible tab's badge even when the shared view is unchanged. */
 async function publishTab(tabId: number): Promise<void> {
   const view = await publish();
   await updateBadge(view, [tabId]);
@@ -80,9 +84,11 @@ async function initialize() {
   await queueSettingsWrite(async () => {
     await migrateStorage();
   });
-  await reconcile();
-  await publish(true);
-  await refreshAll('periodic');
+  // Restore cached badges before content setup or collection can block on a tab.
+  await Promise.all([
+    publish(true).catch(() => undefined).then(() => refreshAll('periodic')),
+    reconcile()
+  ]);
 }
 chrome.runtime.onMessage.addListener((input: unknown, sender, sendResponse: (reply: Reply) => void) => {
   const message = parseMessage(input);
@@ -115,7 +121,11 @@ chrome.alarms.onAlarm.addListener(a => { if (a.name === ALARM) void refreshAll('
 chrome.runtime.onInstalled.addListener(() => { void initialize().catch(() => undefined); });
 chrome.runtime.onStartup.addListener(() => { void initialize().catch(() => undefined); });
 chrome.tabs.onActivated.addListener(({ tabId }) => {
-  void chrome.tabs.get(tabId).then(async tab => { const p = providerFromUrl(tab.url); if (p) await refresh(displayProvider(p), 'tab'); await publishTab(tabId); }).catch(() => undefined);
+  void chrome.tabs.get(tabId).then(async tab => {
+    await publishTab(tabId);
+    const p = providerFromUrl(tab.url);
+    if (p) { await refresh(displayProvider(p), 'tab'); await publish(); }
+  }).catch(() => undefined);
 });
 chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
   if (change.status === 'loading' || change.status === 'complete' || change.url) void (async () => {
@@ -124,17 +134,17 @@ chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
       // A new document may follow an account switch. Focus, content attachment
       // and SPA conversation routes alone do not prove the account changed.
       if (change.status === 'loading') await scheduler.invalidatePlan(displayProvider(p));
-      if (tab.active && change.status !== 'loading') await refresh(displayProvider(p), 'tab');
     }
     await publishTab(tabId);
+    if (p && tab.active && change.status !== 'loading') { await refresh(displayProvider(p), 'tab'); await publish(); }
   })().catch(() => undefined);
 });
 chrome.windows.onFocusChanged.addListener(windowId => { if (windowId !== -1) void updateBadgeFromFocus().catch(() => undefined); });
 async function updateBadgeFromFocus() {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   const p = providerFromUrl(tab?.url);
-  if (p) await refresh(displayProvider(p), 'tab');
   if (typeof tab?.id === 'number') await publishTab(tab.id); else await publish();
+  if (p) { await refresh(displayProvider(p), 'tab'); await publish(); }
 }
 chrome.permissions.onAdded.addListener(added => {
   // Chrome may close the popup while showing its permission dialog. Complete

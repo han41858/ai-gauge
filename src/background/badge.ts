@@ -20,15 +20,26 @@ export function badge(view: View, activeUrl?: string, now = Date.now()): BadgeVa
   return { text: `${Math.round(limit.percent)}%`, color: SERVICE_COLORS[p], textColor: '#FFFFFF', title: `AI Gauge · ${NAMES[p]} · ${usageText(limit)}` };
 }
 // Last values written per tab in this worker. A restarted worker starts empty and
-// rewrites everything once; afterwards unchanged tabs need no action API calls.
+// rewrites everything once; afterwards unchanged tabs skip redundant writes.
 const written = new Map<number, string>();
 let globalCleared = false;
-async function writeTab(view: View, id: number): Promise<void> {
+async function writeTab(view: View, id: number, verify: boolean): Promise<void> {
   let tab: chrome.tabs.Tab;
   try { tab = await chrome.tabs.get(id); }
   catch { written.delete(id); return; } // A tab may close between query and get.
-  const value = badge(view, tab.url), key = JSON.stringify(value);
-  if (written.get(id) === key) return;
+  let value = badge(view, tab.url), key = JSON.stringify(value);
+  if (written.get(id) === key) {
+    if (!verify) return;
+    // A remembered write does not guarantee that Chrome still shows it.
+    let actual: string | undefined;
+    try { actual = await chrome.action.getBadgeText({ tabId: id }); }
+    catch { /* Try restoring the action if its current text could not be read. */ }
+    // The tab may navigate while Chrome returns the current badge text.
+    try { tab = await chrome.tabs.get(id); }
+    catch { written.delete(id); return; }
+    value = badge(view, tab.url); key = JSON.stringify(value);
+    if (written.get(id) === key && actual === value.text) return;
+  }
   // Navigation or closing after get may reject any individual action call.
   const results = await Promise.allSettled([
     chrome.action.setBadgeText({ tabId: id, text: value.text }),
@@ -38,7 +49,7 @@ async function writeTab(view: View, id: number): Promise<void> {
   ]);
   if (results.every(result => result.status === 'fulfilled')) written.set(id, key); else written.delete(id);
 }
-async function renderBadges(view: View, only: Set<number> | null): Promise<void> {
+async function renderBadges(view: View, only: Set<number> | null, verify: Set<number> | null): Promise<void> {
   if (!globalCleared) {
     // Remove the former global badge so new, unsupported and URL-redacted tabs
     // never inherit a number. Supported pages receive their own tab-scoped value.
@@ -53,30 +64,30 @@ async function renderBadges(view: View, only: Set<number> | null): Promise<void>
   let ids: number[];
   if (only) ids = [...only];
   else {
-    try { ids = (await chrome.tabs.query({})).flatMap(tab => typeof tab.id === 'number' ? [tab.id] : []); }
-    catch { return; }
+    ids = (await chrome.tabs.query({})).flatMap(tab => typeof tab.id === 'number' ? [tab.id] : []);
     const open = new Set(ids);
     for (const id of written.keys()) if (!open.has(id)) written.delete(id);
   }
-  await Promise.all(ids.map(id => writeTab(view, id)));
+  await Promise.all(ids.map(id => writeTab(view, id, verify === null || verify.has(id))));
 }
-let pending: { view: View; only: Set<number> | null } | null = null;
+let pending: { view: View; only: Set<number> | null; verify: Set<number> | null } | null = null;
 let badgeFlight: Promise<void> | null = null;
 async function flushBadges(): Promise<void> {
   try {
     while (pending) {
-      const { view, only } = pending;
+      const { view, only, verify } = pending;
       pending = null;
-      await renderBadges(view, only);
+      await renderBadges(view, only, verify);
     }
   } finally { badgeFlight = null; }
 }
-/** Updates every tab, or only the given tabs. Writes are serialized so a delayed old write cannot overwrite a newer value. */
-export function updateBadge(view: View, tabIds?: number[]): Promise<void> {
+/** Updates all tabs or verifies named tabs. Serialized writes cannot leave an older queued value last. */
+export function updateBadge(view: View, tabIds?: number[], verifyAll = false): Promise<void> {
   const only = tabIds ? new Set(tabIds) : null;
   // The newest view applies to every queued target; a full render absorbs tab-only requests.
   const merged = !pending ? only : !pending.only || !only ? null : new Set([...pending.only, ...only]);
-  pending = { view, only: merged };
+  const verify = verifyAll || pending?.verify === null ? null : new Set([...(pending?.verify ?? []), ...(tabIds ?? [])]);
+  pending = { view, only: merged, verify };
   badgeFlight ??= flushBadges();
   return badgeFlight;
 }
