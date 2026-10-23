@@ -21,7 +21,7 @@ const view = (): View => ({
   permissions: { chatgpt: true, claude: true, gemini: true },
   snapshots: {
     gemini: success(emptySnapshot('gemini'), [usage('gemini-week', '주간', 42)], now),
-    chatgpt: success(emptySnapshot('chatgpt'), [usage('week', 'ChatGPT · 7일', 15)], now),
+    chatgpt: success(emptySnapshot('chatgpt'), [{ ...usage('shared:secondary_window', 'ChatGPT · 7일', 15), category: 'product' }], now),
     claude: success(emptySnapshot('claude'), [usage('claude-week', '7일', 30)], now)
   }
 });

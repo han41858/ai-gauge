@@ -1,4 +1,4 @@
-import { composerUsageLimit } from '../shared/usage-selection';
+import { representativeUsageLimit } from '../shared/usage-selection';
 import { type PageProvider, type View } from '../shared/types';
 import { displayProvider, shouldShowStrip } from '../shared/display-policy';
 import { usageParts } from './usage-label';
@@ -27,7 +27,7 @@ export class UsageStrip {
     // actual hiding, removal or loss of its composer structure still clears it.
     else if (!this.target || !retainsComposerTarget(this.target)) { this.remove(); return; }
     const anchor = this.target!.anchor;
-    const snapshot = effectiveSnapshot(view.snapshots[displayProvider(p)]), limit = composerUsageLimit(displayProvider(p), snapshot.limits) ?? undefined;
+    const snapshot = effectiveSnapshot(view.snapshots[displayProvider(p)]), limit = representativeUsageLimit(displayProvider(p), snapshot.limits) ?? undefined;
     const parts = usageParts(snapshot, limit);
     if (!this.host) {
       this.host = this.doc.createElement('div');

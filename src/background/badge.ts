@@ -1,6 +1,6 @@
 import { NAMES, providerFromUrl, type Provider, type View } from '../shared/types';
 import { displayProvider } from '../shared/display-policy';
-import { highestUsageLimit } from '../shared/usage-selection';
+import { representativeUsageLimit } from '../shared/usage-selection';
 import { effectiveSnapshot } from '../storage/snapshots';
 import { usageText, statusText } from '../shared/format';
 import { setLanguagePreference, t } from '../shared/i18n';
@@ -12,7 +12,7 @@ export function badge(view: View, activeUrl?: string, now = Date.now()): BadgeVa
   const page = providerFromUrl(activeUrl);
   if (!page) return EMPTY;
   const p = displayProvider(page);
-  const s = effectiveSnapshot(view.snapshots[p], now), limit = highestUsageLimit(s.limits);
+  const s = effectiveSnapshot(view.snapshots[p], now), limit = representativeUsageLimit(p, s.limits);
   if (!view.settings.enabled[p] || !view.permissions[p] || s.state !== 'ok' || !limit || limit.percent === null) {
     const reason = !view.settings.enabled[p] ? t('badge_disabled') : !view.permissions[p] ? t('badge_permission_required') : s.state !== 'ok' ? statusText(s) : t('badge_usage_unknown');
     return { text: '—', color: '#697386', textColor: '#FFFFFF', title: `AI Gauge · ${NAMES[p]} · ${reason}` };

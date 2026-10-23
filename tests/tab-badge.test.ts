@@ -9,7 +9,8 @@ interface Tab { id: number; url?: string }
 interface TextWrite { tabId?: number; text: string }
 const snapshot = (provider: Snapshot['provider'], percent: number): Snapshot => ({
   ...emptySnapshot(provider), state: 'ok', errorCode: null, collectedAt: Date.now(), checkedAt: Date.now(),
-  limits: [{ id: 'reported', label: '기간', category: 'window', percent, resetsAt: null,
+  limits: [{ id: provider === 'chatgpt' ? 'shared:primary_window' : 'reported', label: '기간',
+    category: provider === 'chatgpt' ? 'product' : 'window', percent, resetsAt: null,
     windowSeconds: null, remaining: null, unit: null, source: 'api' } satisfies UsageLimit]
 });
 const view = (): View => {
